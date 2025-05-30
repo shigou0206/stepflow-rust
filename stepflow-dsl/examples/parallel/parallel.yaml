@@ -1,0 +1,18 @@
+StartAt: RunParallel
+States:
+  RunParallel:
+    Type: Parallel
+    Branches:
+      - StartAt: A
+        States:
+          A:
+            Type: Task
+            Resource: worker-a
+            End: true
+      - StartAt: B
+        States:
+          B:
+            Type: Task
+            Resource: worker-b
+            End: true
+    End: true

@@ -1,0 +1,21 @@
+{
+  "StartAt": "Choose",
+  "States": {
+    "Choose": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Condition": {
+            "Variable": "$.value",
+            "Operator": "GreaterThan",
+            "Value": 10
+          },
+          "Next": "Pass"
+        }
+      ],
+      "Default": "Fail"
+    },
+    "Pass": { "Type": "Succeed" },
+    "Fail": { "Type": "Fail" }
+  }
+}

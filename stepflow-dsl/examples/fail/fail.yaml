@@ -1,0 +1,6 @@
+StartAt: FailNow
+States:
+  FailNow:
+    Type: Fail
+    Error: SomeError
+    Cause: Something went wrong

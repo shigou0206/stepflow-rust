@@ -1,0 +1,16 @@
+{
+  "StartAt": "MapItems",
+  "States": {
+    "MapItems": {
+      "Type": "Map",
+      "ItemsPath": "$.list",
+      "Iterator": {
+        "StartAt": "Echo",
+        "States": {
+          "Echo": { "Type": "Task", "Resource": "echo", "End": true }
+        }
+      },
+      "End": true
+    }
+  }
+}
