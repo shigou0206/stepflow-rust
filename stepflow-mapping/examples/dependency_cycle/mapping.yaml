@@ -1,0 +1,14 @@
+version: "1.0"
+description: "Circular dependency demo"
+preserve: none
+
+mappings:
+  - key: a
+    type: constant
+    value: 1
+    dependsOn: ["b"]
+
+  - key: b
+    type: constant
+    value: 2
+    dependsOn: ["a"]

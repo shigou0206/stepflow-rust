@@ -1,0 +1,8 @@
+version: "1.0"
+description: "Expr mapping demo"
+preserve: all
+
+mappings:
+  - key: sum
+    type: expr
+    transform: "input.x + input.y"

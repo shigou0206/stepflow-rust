@@ -1,0 +1,14 @@
+version: "1.0"
+description: "Ignore strategy demo"
+preserve: none
+
+mappings:
+  - key: x
+    type: constant
+    value: 1
+    mergeStrategy: ignore
+
+  - key: x
+    type: constant
+    value: 2
+    mergeStrategy: ignore

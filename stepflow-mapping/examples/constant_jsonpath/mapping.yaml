@@ -1,0 +1,11 @@
+version: "1.0"
+description: "Constant and JsonPath combination"
+preserve: none
+
+mappings:
+  - key: extracted
+    type: jsonPath
+    source: "$.foo"
+  - key: staticVal
+    type: constant
+    value: 42

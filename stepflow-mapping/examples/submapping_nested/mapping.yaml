@@ -1,0 +1,19 @@
+version: "1.0"
+description: "Nested subMapping demo"
+preserve: none
+
+mappings:
+  - key: groups
+    type: subMapping
+    source: "$.data.groups"
+    subMappings:
+      - key: name
+        type: jsonPath
+        source: "$.name"
+      - key: members
+        type: subMapping
+        source: "$.members"
+        subMappings:
+          - key: id
+            type: jsonPath
+            source: "$.id"

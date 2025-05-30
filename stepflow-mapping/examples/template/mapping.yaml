@@ -1,0 +1,8 @@
+version: "1.0"
+description: "Template mapping demo"
+preserve: none
+
+mappings:
+  - key: greeting
+    type: template
+    template: "Hello, {{ input.name }}!"

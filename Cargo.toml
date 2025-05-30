@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "stepflow-mapping",
+    "stepflow-engine",
+    "stepflow-dsl"
+]
+resolver = "2"
+
+[workspace.dependencies]
+serde = "1"
+serde_json = "1"

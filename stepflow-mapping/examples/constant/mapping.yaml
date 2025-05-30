@@ -1,0 +1,8 @@
+version: "1.0"
+description: "Constant mapping demo"
+preserve: none
+
+mappings:
+  - key: hello
+    type: constant
+    value: "world"

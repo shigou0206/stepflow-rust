@@ -1,0 +1,16 @@
+version: "1.0"
+description: "Merge strategy demo"
+preserve: none
+
+mappings:
+  - key: settings
+    type: constant
+    value:
+      a: 1
+    mergeStrategy: merge
+
+  - key: settings
+    type: constant
+    value:
+      b: 2
+    mergeStrategy: merge

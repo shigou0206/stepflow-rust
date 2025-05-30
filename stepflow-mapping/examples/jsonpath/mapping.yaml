@@ -1,0 +1,8 @@
+version: "1.0"
+description: "JsonPath mapping demo"
+preserve: none
+
+mappings:
+  - key: val
+    type: jsonPath
+    source: "$.a.b"

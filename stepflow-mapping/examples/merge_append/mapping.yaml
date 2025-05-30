@@ -1,0 +1,14 @@
+version: "1.0"
+description: "Append strategy demo"
+preserve: none
+
+mappings:
+  - key: tags
+    type: constant
+    value: "tag1"
+    mergeStrategy: append
+
+  - key: tags
+    type: constant
+    value: "tag2"
+    mergeStrategy: append

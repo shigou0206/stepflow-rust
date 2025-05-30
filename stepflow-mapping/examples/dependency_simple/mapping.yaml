@@ -1,0 +1,18 @@
+version: "1.0"
+description: "Dependency order demo"
+preserve: none
+
+mappings:
+  - key: a
+    type: constant
+    value: 2
+
+  - key: b
+    type: expr
+    transform: "input.a * 3"
+    dependsOn: ["a"]
+
+  - key: c
+    type: expr
+    transform: "input.b + input.a"
+    dependsOn: ["b", "a"]
