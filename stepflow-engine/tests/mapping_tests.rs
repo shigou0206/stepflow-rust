@@ -18,20 +18,13 @@ const DSL_MAPPING: &str = r#"
     "Task1": {
       "Type": "Task",
       "Resource": "echo",
-
       "InputMapping": {
         "mappings": [
-          { "key": "user", "type": "jsonPath", "source": "$.u" }
-        ]
-      },
-
-      "Parameters": {
-        "mappings": [
-          { "key": "uid", "type": "jsonPath", "source": "$.user.id" },
+          { "key": "user", "type": "jsonPath", "source": "$.u" },
+          { "key": "uid", "type": "jsonPath", "source": "$.u.id" },
           { "key": "msg", "type": "constant", "value": "hi" }
         ]
       },
-
       "End": true
     }
   }
