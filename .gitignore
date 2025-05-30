@@ -1,0 +1,20 @@
+# Rust
+/target/
+/Cargo.lock
+
+# IDE files
+.idea/
+.vscode/
+
+# Mac
+.DS_Store
+
+# Logs
+*.log
+
+# 编译产物
+*.rlib
+*.dylib
+*.exe
+*.dll
+*.so
