@@ -53,7 +53,7 @@ struct UpdateResponse {
 #[tokio::main]
 async fn main() {
     // Create SQLite pool
-    let pool = SqlitePool::connect("sqlite:database.sqlite")
+    let pool = SqlitePool::connect("sqlite:/Users/sryu/projects/v2/stepflow-rust/stepflow-sqlite/data/data.db")
         .await
         .expect("Failed to create SQLite pool");
 
