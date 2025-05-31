@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT task_token as \"task_token!\", \n                  run_id as \"run_id!\", \n                  shard_id as \"shard_id!\", \n                  seq as \"seq!\", \n                  activity_type as \"activity_type!\",\n                  state_name,\n                  input,\n                  result,\n                  status as \"status!\",\n                  error,\n                  error_details,\n                  attempt as \"attempt!\",\n                  max_attempts as \"max_attempts!\",\n                  heartbeat_at,\n                  scheduled_at as \"scheduled_at!\",\n                  started_at,\n                  completed_at,\n                  timeout_seconds,\n                  retry_policy,\n                  version as \"version!\"\n           FROM activity_tasks WHERE task_token = ?",
+  "query": "\n        SELECT task_token as \"task_token!\", \n               run_id as \"run_id!\", \n               shard_id as \"shard_id!\", \n               seq as \"seq!\",\n               activity_type as \"activity_type!\", \n               state_name, input, result,\n               status as \"status!\", error, error_details, \n               attempt as \"attempt!\",\n               max_attempts as \"max_attempts!\", \n               heartbeat_at, scheduled_at as \"scheduled_at!\",\n               started_at, completed_at, \n               timeout_seconds, retry_policy, \n               version as \"version!\"\n        FROM activity_tasks \n        WHERE task_token = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -130,5 +130,5 @@
       false
     ]
   },
-  "hash": "b8db74c713a8d45071277cb9585eb53bbb7e29e680e294e7c216ad78320cdd6c"
+  "hash": "34f2c607bd831b4014f253fde4bee30df73855b6c8277390b1121f106fc0f2bd"
 }

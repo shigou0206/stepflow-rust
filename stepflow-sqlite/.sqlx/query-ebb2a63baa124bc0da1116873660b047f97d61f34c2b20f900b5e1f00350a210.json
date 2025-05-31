@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT \n            run_id as \"run_id!\", \n            workflow_id,\n            shard_id as \"shard_id!\", \n            template_id,\n            mode as \"mode!\",\n            current_state_name,\n            status as \"status!\",\n            workflow_type as \"workflow_type!\",\n            input,\n            input_version as \"input_version!\",\n            result,\n            result_version as \"result_version!\",\n            start_time as \"start_time!\",\n            close_time,\n            current_event_id as \"current_event_id!\",\n            memo,\n            search_attrs,\n            context_snapshot,\n            version as \"version!\"\n        FROM workflow_executions ORDER BY start_time DESC LIMIT ? OFFSET ?\n        ",
+  "query": "\n        SELECT \n            run_id as \"run_id!\", workflow_id, shard_id as \"shard_id!\", template_id,\n            mode as \"mode!\", current_state_name, status as \"status!\",\n            workflow_type as \"workflow_type!\", input, input_version as \"input_version!\",\n            result, result_version as \"result_version!\", start_time as \"start_time!\",\n            close_time, current_event_id as \"current_event_id!\", memo,\n            search_attrs, context_snapshot, version as \"version!\"\n        FROM workflow_executions\n        WHERE status = ? ORDER BY start_time DESC LIMIT ? OFFSET ?\n        ",
   "describe": {
     "columns": [
       {
@@ -100,7 +100,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       true,
@@ -124,5 +124,5 @@
       false
     ]
   },
-  "hash": "83514cea91456da73fba87552cc5f59c7c0df5f4b53ec77ae930fcf955730336"
+  "hash": "ebb2a63baa124bc0da1116873660b047f97d61f34c2b20f900b5e1f00350a210"
 }

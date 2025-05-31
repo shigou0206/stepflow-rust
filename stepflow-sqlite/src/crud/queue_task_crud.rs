@@ -2,7 +2,7 @@ use sqlx::{Executor, Sqlite, Result, QueryBuilder};
 use crate::models::queue_task::{QueueTask, UpdateQueueTask};
 use chrono::Utc;
 
-// 创建任务
+// 创建任务（新增完整字段）
 pub async fn create_task<'e, E>(executor: E, task: &QueueTask) -> Result<()>
 where
     E: Executor<'e, Database = Sqlite>,
@@ -11,8 +11,10 @@ where
         r#"
         INSERT INTO queue_tasks (
             task_id, run_id, state_name, task_payload, status,
-            attempts, max_attempts, error_message, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            attempts, max_attempts, error_message, last_error_at, next_retry_at,
+            queued_at, processing_at, completed_at, failed_at,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         task.task_id,
         task.run_id,
@@ -22,6 +24,12 @@ where
         task.attempts,
         task.max_attempts,
         task.error_message,
+        task.last_error_at,
+        task.next_retry_at,
+        task.queued_at,
+        task.processing_at,
+        task.completed_at,
+        task.failed_at,
         task.created_at,
         task.updated_at
     )
@@ -29,7 +37,7 @@ where
     Ok(())
 }
 
-// 获取指定 task_id 的任务（精确指定字段类型）
+// 获取指定 task_id 的任务（新增字段）
 pub async fn get_task<'e, E>(executor: E, task_id: &str) -> Result<Option<QueueTask>>
 where
     E: Executor<'e, Database = Sqlite>,
@@ -45,6 +53,12 @@ where
                attempts as "attempts!",
                max_attempts as "max_attempts!",
                error_message,
+               last_error_at,
+               next_retry_at,
+               queued_at as "queued_at!",
+               processing_at,
+               completed_at,
+               failed_at,
                created_at as "created_at!",
                updated_at as "updated_at!"
         FROM queue_tasks WHERE task_id = ?
@@ -54,7 +68,7 @@ where
     .fetch_optional(executor).await
 }
 
-// 查找指定状态的任务（例如 pending 状态的任务）
+// 查找指定状态的任务（新增字段）
 pub async fn find_tasks_by_status<'e, E>(
     executor: E, status: &str, limit: i64, offset: i64
 ) -> Result<Vec<QueueTask>>
@@ -72,11 +86,17 @@ where
                attempts as "attempts!",
                max_attempts as "max_attempts!",
                error_message,
+               last_error_at,
+               next_retry_at,
+               queued_at as "queued_at!",
+               processing_at,
+               completed_at,
+               failed_at,
                created_at as "created_at!",
                updated_at as "updated_at!"
         FROM queue_tasks
         WHERE status = ?
-        ORDER BY created_at ASC
+        ORDER BY queued_at ASC
         LIMIT ? OFFSET ?
         "#,
         status,
@@ -86,7 +106,7 @@ where
     .fetch_all(executor).await
 }
 
-// 动态更新任务状态与相关字段（安全实现）
+// 动态更新任务状态与相关字段（安全实现，新增所有字段）
 pub async fn update_task<'e, E>(
     executor: E, task_id: &str, changes: &UpdateQueueTask
 ) -> Result<()>
@@ -109,6 +129,11 @@ where
     set_field!(status);
     set_field!(attempts);
     set_field!(error_message);
+    set_field!(last_error_at);
+    set_field!(next_retry_at);
+    set_field!(processing_at);
+    set_field!(completed_at);
+    set_field!(failed_at);
 
     // 确保至少更新 updated_at
     if has_fields {
@@ -122,7 +147,7 @@ where
     Ok(())
 }
 
-// 删除任务记录
+// 删除任务记录（无需更改）
 pub async fn delete_task<'e, E>(executor: E, task_id: &str) -> Result<()>
 where
     E: Executor<'e, Database = Sqlite>,

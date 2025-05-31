@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT \n            state_id as \"state_id!\",\n            run_id as \"run_id!\",\n            shard_id as \"shard_id!\",\n            state_name as \"state_name!\",\n            state_type as \"state_type!\",\n            status as \"status!\",\n            input,\n            output,\n            error,\n            error_details,\n            started_at,\n            completed_at,\n            created_at as \"created_at!\",\n            updated_at as \"updated_at!\",\n            version as \"version!\"\n        FROM workflow_states WHERE run_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?\n        ",
+  "query": "\n        SELECT \n            state_id as \"state_id!\",\n            run_id as \"run_id!\",\n            shard_id as \"shard_id!\",\n            state_name as \"state_name!\",\n            state_type as \"state_type!\",\n            status as \"status!\",\n            input, output, error, error_details,\n            started_at, completed_at,\n            created_at as \"created_at!\",\n            updated_at as \"updated_at!\",\n            version as \"version!\"\n        FROM workflow_states WHERE state_id = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -80,7 +80,7 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 1
     },
     "nullable": [
       true,
@@ -100,5 +100,5 @@
       false
     ]
   },
-  "hash": "65c1c3b530c95b9854007dfcb376dad5023ae40d94598d83bd7ff032611f2afa"
+  "hash": "a37fae8c38fbaf29afcd2faab152b541ddebdd3751dff07980398077472d3e10"
 }

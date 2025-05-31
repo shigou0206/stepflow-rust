@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT \n            id as \"id!\",\n            run_id as \"run_id!\",\n            shard_id as \"shard_id!\",\n            event_id as \"event_id!\",\n            event_type as \"event_type!\",\n            state_id,\n            state_type,\n            trace_id,\n            parent_event_id,\n            context_version,\n            attributes,\n            attr_version as \"attr_version!\",\n            timestamp as \"timestamp!\",\n            archived as \"archived!\"\n        FROM workflow_events WHERE run_id = ? ORDER BY event_id ASC LIMIT ? OFFSET ?\n        ",
+  "query": "\n        SELECT \n            id as \"id!\",\n            run_id as \"run_id!\",\n            shard_id as \"shard_id!\",\n            event_id as \"event_id!\",\n            event_type as \"event_type!\",\n            state_id, state_type, trace_id, parent_event_id, context_version,\n            attributes, attr_version as \"attr_version!\",\n            timestamp as \"timestamp!\",\n            archived as \"archived!\"\n        FROM workflow_events\n        WHERE run_id = ?\n        ORDER BY event_id ASC\n        LIMIT ? OFFSET ?\n        ",
   "describe": {
     "columns": [
       {
@@ -94,5 +94,5 @@
       false
     ]
   },
-  "hash": "9ee86aae5c1559d3710de1cbb733c8c29f1a949a53dbc36ffcf53da14e4052b8"
+  "hash": "b74ef68defe78ed5a07f409fcf496923d33f9612b16cb9374918c417ccbd0457"
 }

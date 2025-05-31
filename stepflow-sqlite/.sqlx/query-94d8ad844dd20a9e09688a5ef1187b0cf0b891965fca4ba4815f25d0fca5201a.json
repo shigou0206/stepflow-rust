@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT \n            timer_id as \"timer_id!\",\n            run_id as \"run_id!\",\n            shard_id as \"shard_id!\",\n            fire_at as \"fire_at!\",\n            status as \"status!\",\n            version as \"version!\",\n            state_name as \"state_name!\"\n        FROM timers WHERE fire_at <= ? AND status = 'scheduled' ORDER BY fire_at ASC LIMIT ?\n        ",
+  "query": "\n        SELECT timer_id as \"timer_id!\",\n               run_id as \"run_id!\",\n               shard_id as \"shard_id!\",\n               fire_at as \"fire_at!\",\n               status as \"status!\",\n               version as \"version!\",\n               state_name as \"state_name!\"\n        FROM timers WHERE timer_id = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -40,7 +40,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       true,
@@ -52,5 +52,5 @@
       false
     ]
   },
-  "hash": "1b3a37c0b904de1a1eef7d1e4d9b9d9a418b807a3f79f5c5ac2df29f81ff91ac"
+  "hash": "94d8ad844dd20a9e09688a5ef1187b0cf0b891965fca4ba4815f25d0fca5201a"
 }

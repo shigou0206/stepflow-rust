@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT \n            run_id as \"run_id!\", \n            workflow_id,\n            shard_id as \"shard_id!\", \n            template_id,\n            mode as \"mode!\",\n            current_state_name,\n            status as \"status!\",\n            workflow_type as \"workflow_type!\",\n            input,\n            input_version as \"input_version!\",\n            result,\n            result_version as \"result_version!\",\n            start_time as \"start_time!\",\n            close_time,\n            current_event_id as \"current_event_id!\",\n            memo,\n            search_attrs,\n            context_snapshot,\n            version as \"version!\"\n        FROM workflow_executions WHERE run_id = ?\n        ",
+  "query": "\n        SELECT \n            run_id as \"run_id!\", workflow_id, shard_id as \"shard_id!\", template_id,\n            mode as \"mode!\", current_state_name, status as \"status!\",\n            workflow_type as \"workflow_type!\", input, input_version as \"input_version!\",\n            result, result_version as \"result_version!\", start_time as \"start_time!\",\n            close_time, current_event_id as \"current_event_id!\", memo,\n            search_attrs, context_snapshot, version as \"version!\"\n        FROM workflow_executions\n        WHERE run_id = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -124,5 +124,5 @@
       false
     ]
   },
-  "hash": "4310b1a13e584bbc50a82e699ebda143ba76a8654281153fedd5a56ca00e1ad4"
+  "hash": "e4f507b7ce06e517c62f30aff19e789e4034e94c2f54233e227efb65c183b4c8"
 }

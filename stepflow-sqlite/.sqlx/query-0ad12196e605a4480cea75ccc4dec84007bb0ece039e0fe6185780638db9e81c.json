@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT template_id as \"template_id!\", \n                  name as \"name!\", \n                  description,\n                  dsl_definition as \"dsl_definition!\", \n                  version as \"version!\", \n                  created_at as \"created_at!\", \n                  updated_at as \"updated_at!\"\n           FROM workflow_templates WHERE template_id = ?",
+  "query": "\n        SELECT template_id as \"template_id!\", \n               name as \"name!\", \n               description,\n               dsl_definition as \"dsl_definition!\", \n               version as \"version!\", \n               created_at as \"created_at!\", \n               updated_at as \"updated_at!\"\n        FROM workflow_templates \n        ORDER BY created_at DESC \n        LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -40,7 +40,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       true,
@@ -52,5 +52,5 @@
       false
     ]
   },
-  "hash": "d1bd1243b9bf9773f8b9d69e2ef6ad1f51c67ba792a223cceb4f58fb462ea456"
+  "hash": "0ad12196e605a4480cea75ccc4dec84007bb0ece039e0fe6185780638db9e81c"
 }

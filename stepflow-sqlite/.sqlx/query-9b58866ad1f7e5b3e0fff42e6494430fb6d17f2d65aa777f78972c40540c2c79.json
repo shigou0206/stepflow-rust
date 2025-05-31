@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT \n            run_id as \"run_id!\", \n            workflow_id, \n            workflow_type, \n            start_time, \n            close_time, \n            status, \n            memo, \n            search_attrs, \n            version as \"version!\"\n        FROM workflow_visibility \n        WHERE run_id = ?\n        ",
+  "query": "\n        SELECT run_id as \"run_id!\", workflow_id, workflow_type, start_time, close_time, \n               status, memo, search_attrs, version as \"version!\"\n        FROM workflow_visibility\n        WHERE status = ?\n        ORDER BY start_time DESC\n        LIMIT ? OFFSET ?\n        ",
   "describe": {
     "columns": [
       {
@@ -50,7 +50,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 3
     },
     "nullable": [
       true,
@@ -64,5 +64,5 @@
       false
     ]
   },
-  "hash": "d123f59c1e61fe2a9addca48dc9746c204d020f4cdaa64a80820c5cc271e2ce1"
+  "hash": "9b58866ad1f7e5b3e0fff42e6494430fb6d17f2d65aa777f78972c40540c2c79"
 }
