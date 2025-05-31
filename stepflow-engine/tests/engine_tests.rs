@@ -3,14 +3,24 @@
 
 use once_cell::sync::Lazy;
 use serde_json::json;
-use sqlx::SqlitePool;
+use sqlx::{SqlitePool, migrate::Migrator};
 use stepflow_dsl::dsl::WorkflowDSL;
+use stepflow_storage::PersistenceManagerImpl;
+use std::sync::Arc;
 use stepflow_engine::engine::{
     WorkflowEngine, WorkflowMode, memory_stub::MemoryQueue, memory_stub::MemoryStore,
 };
 
+static MIGRATOR: Migrator = sqlx::migrate!("../stepflow-sqlite/migrations");
+
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
-    SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+    let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+    futures::executor::block_on(MIGRATOR.run(&pool)).expect("Failed to run migrations");
+    pool
+});
+
+static TEST_PERSISTENCE: Lazy<Arc<PersistenceManagerImpl>> = Lazy::new(|| {
+    Arc::new(PersistenceManagerImpl::new(TEST_POOL.clone()))
 });
 
 // -----------------------------------------------------------------------------
@@ -22,7 +32,7 @@ fn build_engine(dsl: WorkflowDSL, mode: WorkflowMode) -> WorkflowEngine<MemorySt
         dsl,
         json!({}),
         mode,
-        MemoryStore,
+        MemoryStore::new(TEST_PERSISTENCE.clone()),
         MemoryQueue::new(),
         TEST_POOL.clone(),
     )

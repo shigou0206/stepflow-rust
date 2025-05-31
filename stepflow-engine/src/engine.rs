@@ -8,6 +8,12 @@ use log::debug;
 use serde_json::Value;
 use sqlx::{Sqlite, Transaction, SqlitePool, Acquire};
 use stepflow_dsl::{state::base::BaseState, State, WorkflowDSL};
+use std::sync::Arc;
+use std::collections::VecDeque;
+use tokio::sync::Mutex;
+use stepflow_storage::PersistenceManager;
+use stepflow_sqlite::models::queue_task::{QueueTask, UpdateQueueTask};
+use uuid::Uuid;
 
 use crate::{
     command::{step_once, Command},
@@ -66,49 +72,134 @@ pub trait TaskQueue: Send + Sync {
 #[cfg(feature = "memory_stub")]
 pub mod memory_stub {
     use super::*;
-    use std::collections::VecDeque;
-    use tokio::sync::Mutex;
 
-    pub struct MemoryStore;
+    pub struct MemoryStore {
+        persistence: Arc<dyn PersistenceManager>,
+    }
+
+    impl MemoryStore {
+        pub fn new(persistence: Arc<dyn PersistenceManager>) -> Self {
+            Self { persistence }
+        }
+    }
+
     #[async_trait::async_trait]
     impl TaskStore for MemoryStore {
         async fn insert_task(
             &self,
             _tx: &mut Transaction<'_, Sqlite>,
-            _run: &str,
-            _st: &str,
-            _res: &str,
-            _inp: &Value,
+            run_id: &str,
+            state_name: &str,
+            resource: &str,
+            input: &Value,
         ) -> Result<(), String> {
-            Ok(())
+            let task = QueueTask {
+                task_id: Uuid::new_v4().to_string(),
+                run_id: run_id.to_string(),
+                state_name: state_name.to_string(),
+                task_payload: Some(input.to_string()),
+                status: "pending".to_string(),
+                attempts: 0,
+                max_attempts: 3,
+                error_message: None,
+                last_error_at: None,
+                next_retry_at: None,
+                queued_at: Utc::now().naive_utc(),
+                processing_at: None,
+                completed_at: None,
+                failed_at: None,
+                created_at: Utc::now().naive_utc(),
+                updated_at: Utc::now().naive_utc(),
+            };
+
+            self.persistence.create_queue_task(&task)
+                .await
+                .map_err(|e| e.to_string())
         }
+
         async fn update_task_status(
             &self,
             _tx: &mut Transaction<'_, Sqlite>,
-            _run: &str,
-            _st: &str,
-            _status: &str,
-            _res: &Value,
+            run_id: &str,
+            state_name: &str,
+            status: &str,
+            result: &Value,
         ) -> Result<(), String> {
-            Ok(())
+            // 先查找对应的任务
+            let tasks = self.persistence.find_queue_tasks_by_status("pending", 100, 0)
+                .await
+                .map_err(|e| e.to_string())?;
+            
+            if let Some(task) = tasks.into_iter().find(|t| t.run_id == run_id && t.state_name == state_name) {
+                let now = Utc::now().naive_utc();
+                let changes = match status {
+                    "completed" => UpdateQueueTask {
+                        status: Some(status.to_string()),
+                        completed_at: Some(now),
+                        updated_at: Some(now),
+                        ..Default::default()
+                    },
+                    "failed" => {
+                        let attempts = task.attempts + 1;
+                        if attempts >= task.max_attempts {
+                            UpdateQueueTask {
+                                status: Some("failed".to_string()),
+                                attempts: Some(attempts),
+                                failed_at: Some(now),
+                                error_message: Some(result.to_string()),
+                                updated_at: Some(now),
+                                ..Default::default()
+                            }
+                        } else {
+                            // 计算下次重试时间，使用指数退避
+                            let retry_delay = std::cmp::min(
+                                30, // 最大30秒
+                                5 * 2_i64.pow(attempts as u32) // 5s, 10s, 20s...
+                            );
+                            let next_retry = now + chrono::Duration::seconds(retry_delay);
+                            
+                            UpdateQueueTask {
+                                status: Some("pending".to_string()),
+                                attempts: Some(attempts),
+                                error_message: Some(result.to_string()),
+                                last_error_at: Some(now),
+                                next_retry_at: Some(next_retry),
+                                updated_at: Some(now),
+                                ..Default::default()
+                            }
+                        }
+                    },
+                    _ => UpdateQueueTask {
+                        status: Some(status.to_string()),
+                        updated_at: Some(now),
+                        ..Default::default()
+                    }
+                };
+
+                self.persistence.update_queue_task(&task.task_id, &changes)
+                    .await
+                    .map_err(|e| e.to_string())
+            } else {
+                Err("Task not found".to_string())
+            }
         }
     }
 
     pub struct MemoryQueue(pub Mutex<VecDeque<(String, String)>>);
+    
     impl MemoryQueue {
         pub fn new() -> Self {
             Self(Mutex::new(VecDeque::new()))
         }
     }
+
     #[async_trait::async_trait]
     impl TaskQueue for MemoryQueue {
         async fn push(&self, _tx: &mut Transaction<'_, Sqlite>, run_id: &str, state_name: &str) -> Result<(), String> {
-            self.0
-                .lock()
-                .await
-                .push_back((run_id.to_owned(), state_name.to_owned()));
+            self.0.lock().await.push_back((run_id.to_owned(), state_name.to_owned()));
             Ok(())
         }
+
         async fn pop(&self, _tx: &mut Transaction<'_, Sqlite>) -> Result<Option<(String, String)>, String> {
             Ok(self.0.lock().await.pop_front())
         }

@@ -3,12 +3,18 @@ use once_cell::sync::Lazy;
 use serde_json::json;
 use sqlx::SqlitePool;
 use stepflow_dsl::WorkflowDSL;
+use stepflow_storage::PersistenceManagerImpl;
+use std::sync::Arc;
 use stepflow_engine::{
     engine::{memory_stub::{MemoryQueue, MemoryStore}, WorkflowEngine, WorkflowMode},
 };
 
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
     SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
+
+static TEST_PERSISTENCE: Lazy<Arc<PersistenceManagerImpl>> = Lazy::new(|| {
+    Arc::new(PersistenceManagerImpl::new(TEST_POOL.clone()))
 });
 
 #[tokio::test]
@@ -28,7 +34,7 @@ async fn fail_state_inline() {
 
     let engine = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore, MemoryQueue::new(), TEST_POOL.clone()
+        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone()
     );
     let err = engine.run_inline().await.unwrap_err();
     assert!(err.contains("BadThings"));
@@ -51,7 +57,7 @@ async fn succeed_pass_inline() {
 
     let out = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore, MemoryQueue::new(), TEST_POOL.clone()
+        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone()
     ).run_inline().await.unwrap();
     assert_eq!(out["bye"], "world");
 }

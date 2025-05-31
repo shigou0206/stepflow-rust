@@ -3,12 +3,18 @@ use once_cell::sync::Lazy;
 use serde_json::json;
 use sqlx::SqlitePool;
 use stepflow_dsl::WorkflowDSL;
+use stepflow_storage::PersistenceManagerImpl;
+use std::sync::Arc;
 use stepflow_engine::{
     engine::{memory_stub::{MemoryStore, MemoryQueue}, WorkflowEngine, WorkflowMode},
 };
 
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
     SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
+
+static TEST_PERSISTENCE: Lazy<Arc<PersistenceManagerImpl>> = Lazy::new(|| {
+    Arc::new(PersistenceManagerImpl::new(TEST_POOL.clone()))
 });
 
 #[tokio::test]
@@ -60,7 +66,7 @@ async fn full_flow_inline() {
         dsl.clone(),
         json!({ "foo": 1 }),
         WorkflowMode::Inline,
-        MemoryStore,
+        MemoryStore::new(TEST_PERSISTENCE.clone()),
         MemoryQueue::new(),
         TEST_POOL.clone(),
     )

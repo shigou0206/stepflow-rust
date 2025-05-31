@@ -3,6 +3,8 @@ use once_cell::sync::Lazy;
 use serde_json::json;
 use sqlx::SqlitePool;
 use stepflow_dsl::WorkflowDSL;
+use stepflow_storage::PersistenceManagerImpl;
+use std::sync::Arc;
 use stepflow_engine::{
     engine::{
         memory_stub::{MemoryQueue, MemoryStore},
@@ -13,6 +15,10 @@ use chrono::{Utc, Duration};
 
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
     SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
+
+static TEST_PERSISTENCE: Lazy<Arc<PersistenceManagerImpl>> = Lazy::new(|| {
+    Arc::new(PersistenceManagerImpl::new(TEST_POOL.clone()))
 });
 
 #[tokio::test]
@@ -28,7 +34,7 @@ async fn wait_seconds_inline() {
     "#).unwrap();
     let engine = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore, MemoryQueue::new(), TEST_POOL.clone()
+        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone()
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["ok"], true);
@@ -49,7 +55,7 @@ async fn wait_timestamp_inline() {
     let dsl: WorkflowDSL = serde_json::from_str(&dsl).unwrap();
     let engine = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore, MemoryQueue::new(), TEST_POOL.clone()
+        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone()
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["ok"], true);
