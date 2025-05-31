@@ -1,0 +1,140 @@
+mod common;
+
+use common::setup_pool;
+use stepflow_sqlite::crud::queue_task_crud::*;
+use stepflow_sqlite::models::queue_task::{QueueTask, UpdateQueueTask};
+use stepflow_sqlite::tx_exec;
+use chrono::Utc;
+
+#[tokio::test]
+async fn test_create_and_get_queue_task() {
+    let pool = setup_pool().await;
+    let mut tx = pool.begin().await.unwrap();
+
+    let task = QueueTask {
+        task_id: "task_q_001".to_string(),
+        run_id: "run_q_001".to_string(),
+        state_name: "initial".to_string(),
+        task_payload: Some(r#"{"key": "value"}"#.to_string()),
+        status: "pending".to_string(),
+        attempts: 0,
+        max_attempts: 3,
+        error_message: None,
+        created_at: Utc::now().naive_utc(),
+        updated_at: Utc::now().naive_utc(),
+    };
+
+    tx_exec!(tx, create_task(&task)).unwrap();
+    let fetched = tx_exec!(tx, get_task(&task.task_id)).unwrap().unwrap();
+
+    assert_eq!(fetched.task_id, task.task_id);
+    assert_eq!(fetched.status, "pending");
+    assert_eq!(fetched.task_payload, Some(r#"{"key": "value"}"#.to_string()));
+
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_update_queue_task() {
+    let pool = setup_pool().await;
+    let mut tx = pool.begin().await.unwrap();
+
+    let task = QueueTask {
+        task_id: "task_q_002".to_string(),
+        run_id: "run_q_002".to_string(),
+        state_name: "initial".to_string(),
+        task_payload: None,
+        status: "pending".to_string(),
+        attempts: 0,
+        max_attempts: 3,
+        error_message: None,
+        created_at: Utc::now().naive_utc(),
+        updated_at: Utc::now().naive_utc(),
+    };
+
+    tx_exec!(tx, create_task(&task)).unwrap();
+
+    let updates = UpdateQueueTask {
+        status: Some("processing".to_string()),
+        attempts: Some(1),
+        error_message: None,
+        updated_at: None,
+    };
+
+    tx_exec!(tx, update_task(&task.task_id, &updates)).unwrap();
+    let updated = tx_exec!(tx, get_task(&task.task_id)).unwrap().unwrap();
+
+    assert_eq!(updated.status, "processing");
+    assert_eq!(updated.attempts, 1);
+
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_find_queue_tasks_by_status() {
+    let pool = setup_pool().await;
+    let mut tx = pool.begin().await.unwrap();
+
+    let task1 = QueueTask {
+        task_id: "task_q_003".to_string(),
+        run_id: "run_q_003".to_string(),
+        state_name: "state1".to_string(),
+        task_payload: None,
+        status: "pending".to_string(),
+        attempts: 0,
+        max_attempts: 3,
+        error_message: None,
+        created_at: Utc::now().naive_utc(),
+        updated_at: Utc::now().naive_utc(),
+    };
+
+    let task2 = QueueTask {
+        task_id: "task_q_004".to_string(),
+        run_id: "run_q_004".to_string(),
+        state_name: "state2".to_string(),
+        task_payload: None,
+        status: "pending".to_string(),
+        attempts: 0,
+        max_attempts: 3,
+        error_message: None,
+        created_at: Utc::now().naive_utc(),
+        updated_at: Utc::now().naive_utc(),
+    };
+
+    tx_exec!(tx, create_task(&task1)).unwrap();
+    tx_exec!(tx, create_task(&task2)).unwrap();
+
+    let tasks = tx_exec!(tx, find_tasks_by_status("pending", 10, 0)).unwrap();
+
+    assert!(tasks.iter().any(|t| t.task_id == task1.task_id));
+    assert!(tasks.iter().any(|t| t.task_id == task2.task_id));
+
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_delete_queue_task() {
+    let pool = setup_pool().await;
+    let mut tx = pool.begin().await.unwrap();
+
+    let task = QueueTask {
+        task_id: "task_q_005".to_string(),
+        run_id: "run_q_005".to_string(),
+        state_name: "state3".to_string(),
+        task_payload: None,
+        status: "pending".to_string(),
+        attempts: 0,
+        max_attempts: 3,
+        error_message: None,
+        created_at: Utc::now().naive_utc(),
+        updated_at: Utc::now().naive_utc(),
+    };
+
+    tx_exec!(tx, create_task(&task)).unwrap();
+    tx_exec!(tx, delete_task(&task.task_id)).unwrap();
+
+    let fetched = tx_exec!(tx, get_task(&task.task_id)).unwrap();
+    assert!(fetched.is_none());
+
+    tx.rollback().await.unwrap();
+}

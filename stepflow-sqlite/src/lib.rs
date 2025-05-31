@@ -9,6 +9,7 @@ pub mod models {
     pub mod workflow_state;
     pub mod workflow_template;
     pub mod workflow_visibility;
+    pub mod queue_task;
 }
 
 pub mod crud {
@@ -19,6 +20,7 @@ pub mod crud {
     pub mod timer_crud;
     pub mod workflow_event_crud;
     pub mod workflow_visibility_crud;
+    pub mod queue_task_crud;
 }
 
 #[macro_export]
