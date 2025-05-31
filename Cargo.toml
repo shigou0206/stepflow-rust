@@ -2,7 +2,9 @@
 members = [
     "stepflow-mapping",
     "stepflow-engine",
-    "stepflow-dsl"
+    "stepflow-dsl",
+    "stepflow-sqlite",
+    "stepflow-storage",
 ]
 resolver = "2"
 

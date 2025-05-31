@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT \n            run_id as \"run_id!\", \n            workflow_id, \n            workflow_type, \n            start_time, \n            close_time, \n            status, \n            memo, \n            search_attrs, \n            version as \"version!\"\n        FROM workflow_visibility \n        WHERE run_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "run_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "workflow_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "workflow_type",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "start_time",
+        "ordinal": 3,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "close_time",
+        "ordinal": 4,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "status",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "memo",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "search_attrs",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "version!",
+        "ordinal": 8,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "d123f59c1e61fe2a9addca48dc9746c204d020f4cdaa64a80820c5cc271e2ce1"
+}

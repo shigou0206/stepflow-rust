@@ -1,0 +1,128 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT \n            run_id as \"run_id!\", \n            workflow_id,\n            shard_id as \"shard_id!\", \n            template_id,\n            mode as \"mode!\",\n            current_state_name,\n            status as \"status!\",\n            workflow_type as \"workflow_type!\",\n            input,\n            input_version as \"input_version!\",\n            result,\n            result_version as \"result_version!\",\n            start_time as \"start_time!\",\n            close_time,\n            current_event_id as \"current_event_id!\",\n            memo,\n            search_attrs,\n            context_snapshot,\n            version as \"version!\"\n        FROM workflow_executions WHERE run_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "run_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "workflow_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "shard_id!",
+        "ordinal": 2,
+        "type_info": "Int64"
+      },
+      {
+        "name": "template_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "mode!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "current_state_name",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "workflow_type!",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "input",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "input_version!",
+        "ordinal": 9,
+        "type_info": "Int64"
+      },
+      {
+        "name": "result",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "result_version!",
+        "ordinal": 11,
+        "type_info": "Int64"
+      },
+      {
+        "name": "start_time!",
+        "ordinal": 12,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "close_time",
+        "ordinal": 13,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "current_event_id!",
+        "ordinal": 14,
+        "type_info": "Int64"
+      },
+      {
+        "name": "memo",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "search_attrs",
+        "ordinal": 16,
+        "type_info": "Text"
+      },
+      {
+        "name": "context_snapshot",
+        "ordinal": 17,
+        "type_info": "Text"
+      },
+      {
+        "name": "version!",
+        "ordinal": 18,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "4310b1a13e584bbc50a82e699ebda143ba76a8654281153fedd5a56ca00e1ad4"
+}

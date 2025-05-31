@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM activity_tasks WHERE task_token = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "09e2ef05370b8e4b8fe7753724ae1f7322a974458210f4b3ae1b5842970430c3"
+}

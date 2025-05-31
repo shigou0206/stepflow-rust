@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT \n            timer_id as \"timer_id!\",\n            run_id as \"run_id!\",\n            shard_id as \"shard_id!\",\n            fire_at as \"fire_at!\",\n            status as \"status!\",\n            version as \"version!\",\n            state_name as \"state_name!\"\n        FROM timers WHERE fire_at <= ? AND status = 'scheduled' ORDER BY fire_at ASC LIMIT ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "timer_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "run_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "shard_id!",
+        "ordinal": 2,
+        "type_info": "Int64"
+      },
+      {
+        "name": "fire_at!",
+        "ordinal": 3,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "status!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "version!",
+        "ordinal": 5,
+        "type_info": "Int64"
+      },
+      {
+        "name": "state_name!",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1b3a37c0b904de1a1eef7d1e4d9b9d9a418b807a3f79f5c5ac2df29f81ff91ac"
+}

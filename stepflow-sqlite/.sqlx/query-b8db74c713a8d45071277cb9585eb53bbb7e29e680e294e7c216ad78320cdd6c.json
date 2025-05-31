@@ -1,0 +1,134 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT task_token as \"task_token!\", \n                  run_id as \"run_id!\", \n                  shard_id as \"shard_id!\", \n                  seq as \"seq!\", \n                  activity_type as \"activity_type!\",\n                  state_name,\n                  input,\n                  result,\n                  status as \"status!\",\n                  error,\n                  error_details,\n                  attempt as \"attempt!\",\n                  max_attempts as \"max_attempts!\",\n                  heartbeat_at,\n                  scheduled_at as \"scheduled_at!\",\n                  started_at,\n                  completed_at,\n                  timeout_seconds,\n                  retry_policy,\n                  version as \"version!\"\n           FROM activity_tasks WHERE task_token = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "task_token!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "run_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "shard_id!",
+        "ordinal": 2,
+        "type_info": "Int64"
+      },
+      {
+        "name": "seq!",
+        "ordinal": 3,
+        "type_info": "Int64"
+      },
+      {
+        "name": "activity_type!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "state_name",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "input",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "result",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "error",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_details",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "attempt!",
+        "ordinal": 11,
+        "type_info": "Int64"
+      },
+      {
+        "name": "max_attempts!",
+        "ordinal": 12,
+        "type_info": "Int64"
+      },
+      {
+        "name": "heartbeat_at",
+        "ordinal": 13,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "scheduled_at!",
+        "ordinal": 14,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "started_at",
+        "ordinal": 15,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "completed_at",
+        "ordinal": 16,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "timeout_seconds",
+        "ordinal": 17,
+        "type_info": "Int64"
+      },
+      {
+        "name": "retry_policy",
+        "ordinal": 18,
+        "type_info": "Text"
+      },
+      {
+        "name": "version!",
+        "ordinal": 19,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "b8db74c713a8d45071277cb9585eb53bbb7e29e680e294e7c216ad78320cdd6c"
+}
