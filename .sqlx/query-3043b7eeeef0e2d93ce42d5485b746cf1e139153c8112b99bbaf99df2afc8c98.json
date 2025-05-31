@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT template_id as \"template_id!\", \n               name as \"name!\", \n               description,\n               dsl_definition as \"dsl_definition!\", \n               version as \"version!\", \n               created_at as \"created_at!\", \n               updated_at as \"updated_at!\"\n        FROM workflow_templates WHERE template_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "template_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "dsl_definition!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "version!",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 5,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!",
+        "ordinal": 6,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3043b7eeeef0e2d93ce42d5485b746cf1e139153c8112b99bbaf99df2afc8c98"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM workflow_executions WHERE run_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "48cc0f6e24ef8458e409dd7170a5d11080931d0c0eb8effe6ff21d3d679c7605"
+}

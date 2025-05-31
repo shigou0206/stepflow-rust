@@ -1,13 +1,19 @@
 // stepflow-engine/tests/mapping_tests.rs
 //! Verify Input-Mapping + Parameters integration inside Task handler.
 
+use once_cell::sync::Lazy;
 use serde_json::{json, Value};
+use sqlx::SqlitePool;
 use stepflow_dsl::WorkflowDSL;
 use stepflow_engine::engine::{
     memory_stub::{MemoryQueue, MemoryStore},
     WorkflowEngine,
     WorkflowMode,
 };
+
+static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
+    SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
 
 /// DSL: Task1 先把 `$.u` 映射到 `user`，然后把
 ///      Parameters 映射为 { uid, msg }
@@ -47,6 +53,7 @@ async fn task_input_mapping_inline() {
         WorkflowMode::Inline,
         MemoryStore,
         MemoryQueue::new(),
+        TEST_POOL.clone(),
     );
 
     // 4️⃣ 执行

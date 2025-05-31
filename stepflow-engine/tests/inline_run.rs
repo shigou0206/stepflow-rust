@@ -1,6 +1,8 @@
 //! 集成测试：Inline 模式 Task → Pass → 终态
 
+use once_cell::sync::Lazy;
 use serde_json::json;
+use sqlx::SqlitePool;
 use stepflow_dsl::dsl::WorkflowDSL;
 use stepflow_engine::{
     engine::{
@@ -9,6 +11,10 @@ use stepflow_engine::{
         memory_stub::{MemoryStore, MemoryQueue},
     },
 };
+
+static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
+    SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
 
 /// DSL: Task1 执行后进入 Pass1，Pass1 输出 `"msg":"done"` 并终止
 const SIMPLE_DSL: &str = r#"
@@ -42,6 +48,7 @@ async fn run_inline_task_pass() {
         WorkflowMode::Inline,
         MemoryStore,          // 内存 TaskStore
         MemoryQueue::new(),   // 内存 TaskQueue
+        TEST_POOL.clone(),    // SQLite pool
     );
 
     // 3. 跑到底

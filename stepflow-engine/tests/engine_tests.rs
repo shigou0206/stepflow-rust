@@ -1,11 +1,17 @@
 // stepflow-engine/tests/engine_tests.rs
 //! Integration‑level tests covering various state types
 
+use once_cell::sync::Lazy;
 use serde_json::json;
+use sqlx::SqlitePool;
 use stepflow_dsl::dsl::WorkflowDSL;
 use stepflow_engine::engine::{
     WorkflowEngine, WorkflowMode, memory_stub::MemoryQueue, memory_stub::MemoryStore,
 };
+
+static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
+    SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
 
 // -----------------------------------------------------------------------------
 // Helper to build engine quickly
@@ -18,6 +24,7 @@ fn build_engine(dsl: WorkflowDSL, mode: WorkflowMode) -> WorkflowEngine<MemorySt
         mode,
         MemoryStore,
         MemoryQueue::new(),
+        TEST_POOL.clone(),
     )
 }
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO activity_tasks (\n            task_token, run_id, shard_id, seq, activity_type, state_name, input, result,\n            status, error, error_details, attempt, max_attempts, heartbeat_at,\n            scheduled_at, started_at, completed_at, timeout_seconds, retry_policy, version\n        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 20
+    },
+    "nullable": []
+  },
+  "hash": "80ae493f16dc071ab1476ec60c870ee51dc136c6bbe304b92866e2e579df879c"
+}

@@ -6,6 +6,7 @@
 use chrono::{DateTime, Utc};
 use log::debug;
 use serde_json::Value;
+use sqlx::{Sqlite, Transaction, SqlitePool, Acquire};
 use stepflow_dsl::{state::base::BaseState, State, WorkflowDSL};
 
 use crate::{
@@ -27,6 +28,7 @@ pub enum WorkflowMode {
 pub trait TaskStore: Send + Sync {
     async fn insert_task(
         &self,
+        tx: &mut Transaction<'_, Sqlite>,
         run_id: &str,
         state_name: &str,
         resource: &str,
@@ -35,6 +37,7 @@ pub trait TaskStore: Send + Sync {
 
     async fn update_task_status(
         &self,
+        tx: &mut Transaction<'_, Sqlite>,
         run_id: &str,
         state_name: &str,
         status: &str,
@@ -44,7 +47,17 @@ pub trait TaskStore: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait TaskQueue: Send + Sync {
-    async fn push(&self, run_id: &str, state_name: &str) -> Result<(), String>;
+    async fn push(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        run_id: &str,
+        state_name: &str,
+    ) -> Result<(), String>;
+
+    async fn pop(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<Option<(String, String)>, String>;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -61,6 +74,7 @@ pub mod memory_stub {
     impl TaskStore for MemoryStore {
         async fn insert_task(
             &self,
+            _tx: &mut Transaction<'_, Sqlite>,
             _run: &str,
             _st: &str,
             _res: &str,
@@ -70,6 +84,7 @@ pub mod memory_stub {
         }
         async fn update_task_status(
             &self,
+            _tx: &mut Transaction<'_, Sqlite>,
             _run: &str,
             _st: &str,
             _status: &str,
@@ -87,12 +102,15 @@ pub mod memory_stub {
     }
     #[async_trait::async_trait]
     impl TaskQueue for MemoryQueue {
-        async fn push(&self, run_id: &str, state_name: &str) -> Result<(), String> {
+        async fn push(&self, _tx: &mut Transaction<'_, Sqlite>, run_id: &str, state_name: &str) -> Result<(), String> {
             self.0
                 .lock()
                 .await
                 .push_back((run_id.to_owned(), state_name.to_owned()));
             Ok(())
+        }
+        async fn pop(&self, _tx: &mut Transaction<'_, Sqlite>) -> Result<Option<(String, String)>, String> {
+            Ok(self.0.lock().await.pop_front())
         }
     }
 }
@@ -118,6 +136,7 @@ pub struct WorkflowEngine<S: TaskStore, Q: TaskQueue> {
     pub mode: WorkflowMode,
     pub store: S,
     pub queue: Q,
+    pub pool: SqlitePool,
 
     pub finished: bool,
     pub updated_at: DateTime<Utc>,
@@ -131,6 +150,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         mode: WorkflowMode,
         store: S,
         queue: Q,
+        pool: SqlitePool,
     ) -> Self {
         Self {
             run_id,
@@ -140,6 +160,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             mode,
             store,
             queue,
+            pool,
             finished: false,
             updated_at: Utc::now(),
         }
@@ -199,6 +220,8 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         &mut self,
         cmd: Command,
     ) -> Result<(StepOutcome, Option<String>), String> {
+        let mut conn = self.pool.acquire().await.map_err(|e| e.to_string())?;
+        let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
         let state_name = cmd.state_name();
         let state_enum = &self.dsl.states[&state_name];
 
@@ -232,6 +255,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
                     &exec_in,
                     &self.store,
                     &self.queue,
+                    &mut tx,
                 )
                 .await?,
                 t.base.next.clone(),
@@ -267,6 +291,8 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             _ => unreachable!("command/state mismatch"),
         };
 
+        tx.commit().await.map_err(|e| e.to_string())?;
+        
         // ---- ③ Output-Mapping + merge ----
         let new_ctx = pipeline.apply_output(&raw_out, &self.context)?;
 

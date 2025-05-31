@@ -1,9 +1,15 @@
 // tests/flow_tests.rs
+use once_cell::sync::Lazy;
 use serde_json::json;
+use sqlx::SqlitePool;
 use stepflow_dsl::WorkflowDSL;
 use stepflow_engine::{
     engine::{memory_stub::{MemoryStore, MemoryQueue}, WorkflowEngine, WorkflowMode},
 };
+
+static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
+    SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
 
 #[tokio::test]
 async fn full_flow_inline() {
@@ -55,7 +61,8 @@ async fn full_flow_inline() {
         json!({ "foo": 1 }),
         WorkflowMode::Inline,
         MemoryStore,
-        MemoryQueue::new()
+        MemoryQueue::new(),
+        TEST_POOL.clone(),
     )
     .run_inline()
     .await

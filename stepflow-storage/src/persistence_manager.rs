@@ -7,7 +7,7 @@ use stepflow_sqlite::models::workflow_state::{WorkflowState, UpdateWorkflowState
 use stepflow_sqlite::models::timer::{Timer, UpdateTimer};
 use stepflow_sqlite::models::workflow_template::{WorkflowTemplate, UpdateWorkflowTemplate};
 use stepflow_sqlite::models::workflow_visibility::{WorkflowVisibility, UpdateWorkflowVisibility};
-
+use stepflow_sqlite::models::queue_task::{QueueTask, UpdateQueueTask};
 #[async_trait::async_trait]
 pub trait PersistenceManager: Send + Sync {
     // workflow_execution接口定义：
@@ -60,4 +60,11 @@ pub trait PersistenceManager: Send + Sync {
     async fn find_visibilities_by_status(&self, status: &str, limit: i64, offset: i64) -> Result<Vec<WorkflowVisibility>, sqlx::Error>;
     async fn update_visibility(&self, run_id: &str, changes: &UpdateWorkflowVisibility) -> Result<(), sqlx::Error>;
     async fn delete_visibility(&self, run_id: &str) -> Result<(), sqlx::Error>;
+
+    // Queue tasks 持久化接口
+    async fn create_queue_task(&self, task: &QueueTask) -> Result<(), sqlx::Error>;
+    async fn get_queue_task(&self, task_id: &str) -> Result<Option<QueueTask>, sqlx::Error>;
+    async fn update_queue_task(&self, task_id: &str, changes: &UpdateQueueTask) -> Result<(), sqlx::Error>;
+    async fn delete_queue_task(&self, task_id: &str) -> Result<(), sqlx::Error>;
+    async fn find_queue_tasks_by_status(&self, status: &str, limit: i64, offset: i64) -> Result<Vec<QueueTask>, sqlx::Error>;
 }

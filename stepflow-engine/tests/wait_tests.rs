@@ -1,5 +1,7 @@
 // tests/wait_tests.rs
+use once_cell::sync::Lazy;
 use serde_json::json;
+use sqlx::SqlitePool;
 use stepflow_dsl::WorkflowDSL;
 use stepflow_engine::{
     engine::{
@@ -8,6 +10,10 @@ use stepflow_engine::{
     },
 };
 use chrono::{Utc, Duration};
+
+static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
+    SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
 
 #[tokio::test]
 async fn wait_seconds_inline() {
@@ -22,7 +28,7 @@ async fn wait_seconds_inline() {
     "#).unwrap();
     let engine = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore, MemoryQueue::new()
+        WorkflowMode::Inline, MemoryStore, MemoryQueue::new(), TEST_POOL.clone()
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["ok"], true);
@@ -43,7 +49,7 @@ async fn wait_timestamp_inline() {
     let dsl: WorkflowDSL = serde_json::from_str(&dsl).unwrap();
     let engine = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore, MemoryQueue::new()
+        WorkflowMode::Inline, MemoryStore, MemoryQueue::new(), TEST_POOL.clone()
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["ok"], true);

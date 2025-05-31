@@ -6,6 +6,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::collections::HashMap;
+use sqlx::SqlitePool;
 
 use stepflow_dsl::dsl::WorkflowDSL;
 use stepflow_engine::engine::{
@@ -50,17 +51,23 @@ struct UpdateResponse {
 
 #[tokio::main]
 async fn main() {
+    // Create SQLite pool
+    let pool = SqlitePool::connect("sqlite:database.sqlite")
+        .await
+        .expect("Failed to create SQLite pool");
+
     // 1. 全局共享一个 Map，保存所有 Deferred 模式下的引擎
     let engines: Engines = Arc::new(Mutex::new(HashMap::new()));
-    // 2. 为了方便传给 warp 里各个 handler，我们 clone 一份 Arc<Mutex<...>>
     let engines_for_filter = engines.clone();
     let engines_filter = warp::any().map(move || engines_for_filter.clone());
+    let pool_filter = warp::any().map(move || pool.clone());
 
     // ========== 定义 /start ==========
     let start_route = warp::path("start")
         .and(warp::post())
         .and(warp::body::json())
         .and(engines_filter.clone())
+        .and(pool_filter.clone())
         .and_then(start_handler);
 
     // ========== 定义 /update ==========
@@ -81,8 +88,8 @@ async fn main() {
     warp::serve(routes).run(([0, 0, 0, 0], 3030)).await;
 }
 
-/// 处理 “POST /start”
-async fn start_handler(req: StartRequest, engines: Engines) -> Result<impl Reply, Rejection> {
+/// 处理 "POST /start"
+async fn start_handler(req: StartRequest, engines: Engines, pool: SqlitePool) -> Result<impl Reply, Rejection> {
     // 1. 把 JSON Value 反序列化为 WorkflowDSL
     let dsl: WorkflowDSL = match serde_json::from_value(req.dsl.clone()) {
         Ok(x) => x,
@@ -107,9 +114,10 @@ async fn start_handler(req: StartRequest, engines: Engines) -> Result<impl Reply
         WorkflowMode::Deferred,
         MemoryStore,
         MemoryQueue::new(),
+        pool.clone(),
     );
 
-    // 4. “先执行一次 advance_once” —— 这会让第一个 Task 写入到内存队列
+    // 4. "先执行一次 advance_once" —— 这会让第一个 Task 写入到内存队列
     if let Err(e) = engine.advance_once().await {
         let resp = StartResponse {
             success: false,
@@ -128,7 +136,7 @@ async fn start_handler(req: StartRequest, engines: Engines) -> Result<impl Reply
     Ok(warp::reply::json(&resp))
 }
 
-/// 处理 “POST /update”
+/// 处理 "POST /update"
 async fn update_handler(req: UpdateRequest, engines: Engines) -> Result<impl Reply, Rejection> {
     let mut map = engines.lock().await;
     // 1. 找到对应的 engine

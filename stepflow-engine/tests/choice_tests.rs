@@ -1,7 +1,9 @@
 // stepflow-engine/tests/choice_tests.rs
 //! 验证 Choice State 分支行为（通用 Operator + Value 语法）
 
+use once_cell::sync::Lazy;
 use serde_json::json;
+use sqlx::SqlitePool;
 use stepflow_dsl::dsl::WorkflowDSL;
 use stepflow_engine::{
     engine::{
@@ -10,6 +12,10 @@ use stepflow_engine::{
         WorkflowMode,
     },
 };
+
+static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
+    SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
 
 const DSL_CHOICE: &str = r#"
 {
@@ -54,6 +60,7 @@ async fn choice_branch_inline() {
         WorkflowMode::Inline,
         MemoryStore,
         MemoryQueue::new(),
+        TEST_POOL.clone(),
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["tag"], "big");
@@ -66,6 +73,7 @@ async fn choice_branch_inline() {
         WorkflowMode::Inline,
         MemoryStore,
         MemoryQueue::new(),
+        TEST_POOL.clone(),
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["tag"], "small");

@@ -1,10 +1,16 @@
 // tests/mapping_params_tests.rs
 
+use once_cell::sync::Lazy;
 use serde_json::{json, Value};
+use sqlx::SqlitePool;
 use stepflow_dsl::WorkflowDSL;
 use stepflow_engine::{
     engine::{memory_stub::{MemoryStore, MemoryQueue}, WorkflowEngine, WorkflowMode},
 };
+
+static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
+    SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+});
 
 #[tokio::test]
 async fn input_and_output_mapping() {
@@ -13,7 +19,7 @@ async fn input_and_output_mapping() {
     //    - 同时把常量 "foo" 映射到 b
     //    - 业务执行完毕后，只用 OutputMapping 把 _ran 抽取到 c
     //
-    // 由于当前引擎实现会将 OutputMapping 的结果合并到“原始上下文”上，
+    // 由于当前引擎实现会将 OutputMapping 的结果合并到"原始上下文"上，
     // 最终保留 x 和 c，而 a、b 会在业务环节生成后被丢弃。
     let dsl: WorkflowDSL = serde_json::from_str(r#"
     {
@@ -52,7 +58,8 @@ async fn input_and_output_mapping() {
         init_ctx.clone(),
         WorkflowMode::Inline,
         MemoryStore,
-        MemoryQueue::new()
+        MemoryQueue::new(),
+        TEST_POOL.clone(),
     )
     .run_inline()
     .await
@@ -66,7 +73,7 @@ async fn input_and_output_mapping() {
     //      OutputMapping 将它抽取到 c，所以最终 out["c"] == "tool::echo"
     assert_eq!(out["c"], "tool::echo");
 
-    // 注意：因为当前版本的引擎把 OutputMapping 合并到“原始上下文”上，
+    // 注意：因为当前版本的引擎把 OutputMapping 合并到"原始上下文"上，
     // 所以这里 a、b 虽然经过 InputMapping 和业务逻辑产生，但并不会出现在最终结果里。
     // 如果想要保留 a、b，需要改动引擎的合并逻辑（将 OutputMapping 合并在业务逻辑产生的上下文上）。
 }

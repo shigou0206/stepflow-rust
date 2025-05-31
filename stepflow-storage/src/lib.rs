@@ -9,4 +9,6 @@ pub use persistence::activity_task::ActivityTaskPersistence;
 pub use persistence::workflow_state::WorkflowStatePersistence;
 pub use persistence::timer::TimerPersistence;
 pub use persistence::workflow_template::WorkflowTemplatePersistence;
+pub use persistence::workflow_visibility::WorkflowVisibilityPersistence;
+pub use persistence::queue_task::QueueTaskPersistence;
 pub use manager_impl::PersistenceManagerImpl;

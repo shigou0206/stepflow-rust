@@ -5,3 +5,4 @@ pub mod workflow_state;
 pub mod timer;
 pub mod workflow_template;
 pub mod workflow_visibility;
+pub mod queue_task;

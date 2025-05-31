@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE workflow_events SET archived = TRUE, timestamp = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "14f4d98cf31f145998091bbf82c83c4e499cf7db1fd8ff87aed1d8c782b48f67"
+}

@@ -10,6 +10,7 @@ use crate::{
         timer::TimerPersistence,
         workflow_template::WorkflowTemplatePersistence,
         workflow_visibility::WorkflowVisibilityPersistence,
+        queue_task::QueueTaskPersistence,
     },
 };
 use stepflow_sqlite::models::workflow_execution::{WorkflowExecution, UpdateWorkflowExecution};
@@ -19,6 +20,8 @@ use stepflow_sqlite::models::workflow_state::{WorkflowState, UpdateWorkflowState
 use stepflow_sqlite::models::timer::{Timer, UpdateTimer};
 use stepflow_sqlite::models::workflow_template::{WorkflowTemplate, UpdateWorkflowTemplate};
 use stepflow_sqlite::models::workflow_visibility::{WorkflowVisibility, UpdateWorkflowVisibility};
+use stepflow_sqlite::models::queue_task::{QueueTask, UpdateQueueTask};
+
 #[derive(Clone)]
 pub struct PersistenceManagerImpl {
     execution: WorkflowExecutionPersistence,
@@ -28,6 +31,7 @@ pub struct PersistenceManagerImpl {
     timer: TimerPersistence,
     workflow_template: WorkflowTemplatePersistence,
     workflow_visibility: WorkflowVisibilityPersistence,
+    queue_task: QueueTaskPersistence,
 }
 
 impl PersistenceManagerImpl {
@@ -40,6 +44,7 @@ impl PersistenceManagerImpl {
             timer: TimerPersistence::new(pool.clone()),
             workflow_template: WorkflowTemplatePersistence::new(pool.clone()),
             workflow_visibility: WorkflowVisibilityPersistence::new(pool.clone()),
+            queue_task: QueueTaskPersistence::new(pool.clone()),
         }
     }
 }
@@ -201,5 +206,26 @@ impl PersistenceManager for PersistenceManagerImpl {
 
     async fn delete_visibility(&self, run_id: &str) -> Result<(), sqlx::Error> {
         self.workflow_visibility.delete_visibility(run_id).await
+    }
+
+    // queue_task实现接口
+    async fn create_queue_task(&self, task: &QueueTask) -> Result<(), sqlx::Error> {
+        self.queue_task.create_task(task).await
+    }       
+
+    async fn get_queue_task(&self, task_id: &str) -> Result<Option<QueueTask>, sqlx::Error> {
+        self.queue_task.get_task(task_id).await
+    }
+
+    async fn update_queue_task(&self, task_id: &str, changes: &UpdateQueueTask) -> Result<(), sqlx::Error> {
+        self.queue_task.update_task(task_id, changes).await
+    }
+
+    async fn delete_queue_task(&self, task_id: &str) -> Result<(), sqlx::Error> {
+        self.queue_task.delete_task(task_id).await
+    }
+
+    async fn find_queue_tasks_by_status(&self, status: &str, limit: i64, offset: i64) -> Result<Vec<QueueTask>, sqlx::Error> {
+        self.queue_task.find_tasks_by_status(status, limit, offset).await
     }
 }
