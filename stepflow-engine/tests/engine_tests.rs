@@ -113,6 +113,8 @@ async fn fail_state_inline() {
     }"#;
     let dsl: WorkflowDSL = serde_json::from_str(DSL).unwrap();
     let engine = build_engine(dsl, WorkflowMode::Inline);
-    let out = engine.run_inline().await.unwrap();
-    assert_eq!(out["error"], "boom");
+
+    // 由于 Fail 节点会直接报错，这里应当 unwrap_err() 并检查错误里包含 "boom"
+    let err = engine.run_inline().await.unwrap_err();
+    assert!(err.contains("boom"));
 }

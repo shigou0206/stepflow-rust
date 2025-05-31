@@ -4,7 +4,7 @@
 //! handler 只关心业务数据，Mapping 统一收敛在 Engine。
 
 use chrono::{DateTime, Utc};
-use log::{debug, info};
+use log::debug;
 use serde_json::Value;
 use stepflow_dsl::{state::base::BaseState, State, WorkflowDSL};
 
@@ -226,6 +226,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             (Command::ExecuteTask { .. }, State::Task(t)) => (
                 handler::handle_task(
                     self.mode,
+                    &self.run_id,
                     &state_name,
                     t,
                     &exec_in,
@@ -239,10 +240,10 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
                 handler::handle_wait(&state_name, w, &exec_in).await?,
                 w.base.next.clone(),
             ),
-            (Command::Pass { output: _, .. }, State::Pass(p)) => {
-                let out = handler::handle_pass(&state_name, p, &exec_in).await?;
-                (out, p.base.next.clone())
-            },
+            (Command::Pass { .. }, State::Pass(p)) => (
+                handler::handle_pass(&state_name, p, &exec_in).await?,
+                p.base.next.clone(),
+            ),
             (Command::Choice { next_state, .. }, State::Choice(c)) => (
                 handler::handle_choice(&state_name, c, &exec_in).await?,
                 Some(next_state),
@@ -250,11 +251,19 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             (Command::Succeed { output, .. }, _) => {
                 let out = handler::handle_succeed(&state_name, &output).await?;
                 (out, None)
-            },
-            (Command::Fail { .. }, State::Fail(f)) => (
-                handler::handle_fail(&state_name, f, &exec_in).await?,
-                None,
-            ),
+            }
+            // ─────── Fail 状态直接报错 ───────
+            (Command::Fail { error, cause, .. }, State::Fail(_f)) => {
+                // 这里的 error/cause 都是 Option<String>，我们用 unwrap_or_default() 解包
+                let err_msg = error.unwrap_or_default();
+                let cause_msg = cause.unwrap_or_default();
+                let full = if cause_msg.is_empty() {
+                    err_msg.clone()
+                } else {
+                    format!("{}: {}", err_msg, cause_msg)
+                };
+                return Err(full);
+            }
             _ => unreachable!("command/state mismatch"),
         };
 
