@@ -8,6 +8,7 @@ use std::sync::Arc;
 use stepflow_engine::{
     engine::{memory_stub::{MemoryQueue, MemoryStore}, WorkflowEngine, WorkflowMode},
 };
+use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
     SqlitePool::connect_lazy("sqlite::memory:").unwrap()
@@ -34,7 +35,8 @@ async fn fail_state_inline() {
 
     let engine = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone()
+        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone(),
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]))
     );
     let err = engine.run_inline().await.unwrap_err();
     assert!(err.contains("BadThings"));
@@ -57,7 +59,8 @@ async fn succeed_pass_inline() {
 
     let out = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone()
+        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone(),
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]))
     ).run_inline().await.unwrap();
     assert_eq!(out["bye"], "world");
 }

@@ -2421,12 +2421,27 @@ dependencies = [
  "serde_json",
  "sqlx",
  "stepflow-dsl",
+ "stepflow-hook",
  "stepflow-mapping",
  "stepflow-sqlite",
  "stepflow-storage",
  "tokio",
  "uuid",
  "warp",
+]
+
+[[package]]
+name = "stepflow-hook"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "stepflow-sqlite",
+ "stepflow-storage",
+ "tokio",
 ]
 
 [[package]]
@@ -2440,6 +2455,18 @@ dependencies = [
  "serde_yaml",
  "tera",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "stepflow-server"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "serde",
+ "serde_json",
+ "stepflow-hook",
+ "tokio",
+ "warp",
 ]
 
 [[package]]

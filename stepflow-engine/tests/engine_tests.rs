@@ -10,6 +10,7 @@ use std::sync::Arc;
 use stepflow_engine::engine::{
     WorkflowEngine, WorkflowMode, memory_stub::MemoryQueue, memory_stub::MemoryStore,
 };
+use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 
 static MIGRATOR: Migrator = sqlx::migrate!("../stepflow-sqlite/migrations");
 
@@ -35,6 +36,7 @@ fn build_engine(dsl: WorkflowDSL, mode: WorkflowMode) -> WorkflowEngine<MemorySt
         MemoryStore::new(TEST_PERSISTENCE.clone()),
         MemoryQueue::new(),
         TEST_POOL.clone(),
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()])),
     )
 }
 

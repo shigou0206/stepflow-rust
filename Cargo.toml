@@ -4,7 +4,9 @@ members = [
     "stepflow-engine",
     "stepflow-dsl",
     "stepflow-sqlite",
-    "stepflow-storage",
+    "stepflow-storage", 
+    "stepflow-hook", 
+    "stepflow-server",
 ]
 resolver = "2"
 

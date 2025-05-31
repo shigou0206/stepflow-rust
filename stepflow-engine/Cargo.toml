@@ -8,6 +8,7 @@ stepflow-dsl = { path = "../stepflow-dsl" }
 stepflow-storage = { path = "../stepflow-storage" }
 stepflow-sqlite = { path = "../stepflow-sqlite" }
 stepflow-mapping = { path = "../stepflow-mapping" }
+stepflow-hook = { path = "../stepflow-hook" }
 async-trait = "0.1"
 chrono = "0.4"
 log = "0.4"

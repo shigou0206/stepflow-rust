@@ -48,7 +48,7 @@ async fn handle_poll(
     let mut map = engines.lock().await;
 
     // 2. 遍历所有 run_id 对应的 WorkflowEngine，尝试从它的 MemoryQueue pop 一条任务
-    for (run_id, engine) in map.iter_mut() {
+    for (_run_id, engine) in map.iter_mut() {
         // 直接访问 engine.queue 内部的 VecDeque< (String, String) >
         let mut guard = engine.queue.0.lock().await;
         if let Some((r, state_name)) = guard.pop_front() {

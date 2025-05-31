@@ -24,6 +24,32 @@ pub struct WorkflowExecution {
     pub version: i64,
 }
 
+impl Default for WorkflowExecution {
+    fn default() -> Self {
+        Self {
+            run_id: String::new(),
+            workflow_id: None,
+            shard_id: 0,
+            template_id: None,
+            mode: String::new(),
+            current_state_name: None,
+            status: String::new(),
+            workflow_type: String::new(),
+            input: None,
+            input_version: 0,
+            result: None,
+            result_version: 0,
+            start_time: chrono::NaiveDateTime::default(),
+            close_time: None,
+            current_event_id: 0,
+            memo: None,
+            search_attrs: None,
+            context_snapshot: None,
+            version: 0,
+        }
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct UpdateWorkflowExecution {
     pub workflow_id: Option<String>,

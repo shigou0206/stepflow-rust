@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use stepflow_storage::PersistenceManager;
 use stepflow_sqlite::models::queue_task::{QueueTask, UpdateQueueTask};
 use uuid::Uuid;
+use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 
 use crate::{
     command::{step_once, Command},
@@ -90,7 +91,7 @@ pub mod memory_stub {
             _tx: &mut Transaction<'_, Sqlite>,
             run_id: &str,
             state_name: &str,
-            resource: &str,
+            _resource: &str,
             input: &Value,
         ) -> Result<(), String> {
             let task = QueueTask {
@@ -228,6 +229,7 @@ pub struct WorkflowEngine<S: TaskStore, Q: TaskQueue> {
     pub store: S,
     pub queue: Q,
     pub pool: SqlitePool,
+    pub event_dispatcher: Arc<EngineEventDispatcher>,
 
     pub finished: bool,
     pub updated_at: DateTime<Utc>,
@@ -242,6 +244,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         store: S,
         queue: Q,
         pool: SqlitePool,
+        event_dispatcher: Arc<EngineEventDispatcher>,
     ) -> Self {
         Self {
             run_id,
@@ -252,6 +255,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             store,
             queue,
             pool,
+            event_dispatcher,
             finished: false,
             updated_at: Utc::now(),
         }
@@ -262,6 +266,12 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         if self.mode != WorkflowMode::Inline {
             return Err("run_inline called on Deferred engine".into());
         }
+        
+        // 触发工作流开始事件
+        self.event_dispatcher.dispatch(EngineEvent::WorkflowStarted { 
+            run_id: self.run_id.clone() 
+        }).await;
+
         while !self.finished {
             self.advance_once().await?;
         }
@@ -276,6 +286,13 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
                 updated_context: self.context.clone(),
             });
         }
+
+        // 触发节点进入事件
+        self.event_dispatcher.dispatch(EngineEvent::NodeEnter {
+            run_id: self.run_id.clone(),
+            state_name: self.current_state.clone(),
+            input: self.context.clone(),
+        }).await;
 
         // ① 译为 Command
         let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
@@ -302,6 +319,11 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             })?;
         } else {
             self.finished = true;
+            // 触发工作流完成事件
+            self.event_dispatcher.dispatch(EngineEvent::WorkflowFinished {
+                run_id: self.run_id.clone(),
+                result: self.context.clone(),
+            }).await;
         }
         Ok(outcome)
     }
@@ -337,8 +359,8 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
 
         // ---- ② 调 handler (返回 raw_out, logical_next) ----
         let (raw_out, logical_next): (Value, Option<String>) = match (cmd, state_enum) {
-            (Command::ExecuteTask { .. }, State::Task(t)) => (
-                handler::handle_task(
+            (Command::ExecuteTask { .. }, State::Task(t)) => {
+                let result = handler::handle_task(
                     self.mode,
                     &self.run_id,
                     &state_name,
@@ -347,10 +369,17 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
                     &self.store,
                     &self.queue,
                     &mut tx,
-                )
-                .await?,
-                t.base.next.clone(),
-            ),
+                ).await?;
+
+                // 触发节点成功事件
+                self.event_dispatcher.dispatch(EngineEvent::NodeSuccess {
+                    run_id: self.run_id.clone(),
+                    state_name: state_name.clone(),
+                    output: result.clone(),
+                }).await;
+
+                (result, t.base.next.clone())
+            },
             (Command::Wait { .. }, State::Wait(w)) => (
                 handler::handle_wait(&state_name, w, &exec_in).await?,
                 w.base.next.clone(),
@@ -377,6 +406,14 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
                 } else {
                     format!("{}: {}", err_msg, cause_msg)
                 };
+
+                // 触发节点失败事件
+                self.event_dispatcher.dispatch(EngineEvent::NodeFailed {
+                    run_id: self.run_id.clone(),
+                    state_name: state_name.clone(),
+                    error: full.clone(),
+                }).await;
+
                 return Err(full);
             }
             _ => unreachable!("command/state mismatch"),

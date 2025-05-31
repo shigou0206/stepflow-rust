@@ -13,6 +13,7 @@ use stepflow_engine::{
         memory_stub::{MemoryStore, MemoryQueue},
     },
 };
+use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
     SqlitePool::connect_lazy("sqlite::memory:").unwrap()
@@ -55,6 +56,7 @@ async fn run_inline_task_pass() {
         MemoryStore::new(TEST_PERSISTENCE.clone()),          // 内存 TaskStore
         MemoryQueue::new(),   // 内存 TaskQueue
         TEST_POOL.clone(),    // SQLite pool
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()])),
     );
 
     // 3. 跑到底

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use stepflow_engine::{
     engine::{memory_stub::{MemoryStore, MemoryQueue}, WorkflowEngine, WorkflowMode},
 };
+use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
     SqlitePool::connect_lazy("sqlite::memory:").unwrap()
@@ -69,6 +70,7 @@ async fn full_flow_inline() {
         MemoryStore::new(TEST_PERSISTENCE.clone()),
         MemoryQueue::new(),
         TEST_POOL.clone(),
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()])),
     )
     .run_inline()
     .await

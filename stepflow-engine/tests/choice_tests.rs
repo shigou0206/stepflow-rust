@@ -14,6 +14,7 @@ use stepflow_engine::{
         WorkflowMode,
     },
 };
+use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
     SqlitePool::connect_lazy("sqlite::memory:").unwrap()
@@ -67,6 +68,7 @@ async fn choice_branch_inline() {
         MemoryStore::new(TEST_PERSISTENCE.clone()),
         MemoryQueue::new(),
         TEST_POOL.clone(),
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()])),
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["tag"], "big");
@@ -80,6 +82,7 @@ async fn choice_branch_inline() {
         MemoryStore::new(TEST_PERSISTENCE.clone()),
         MemoryQueue::new(),
         TEST_POOL.clone(),
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()])),
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["tag"], "small");

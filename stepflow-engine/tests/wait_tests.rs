@@ -11,6 +11,7 @@ use stepflow_engine::{
         WorkflowEngine, WorkflowMode,
     },
 };
+use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 use chrono::{Utc, Duration};
 
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
@@ -34,7 +35,8 @@ async fn wait_seconds_inline() {
     "#).unwrap();
     let engine = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone()
+        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone(),
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]))
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["ok"], true);
@@ -55,7 +57,8 @@ async fn wait_timestamp_inline() {
     let dsl: WorkflowDSL = serde_json::from_str(&dsl).unwrap();
     let engine = WorkflowEngine::new(
         "r".into(), dsl, json!({}),
-        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone()
+        WorkflowMode::Inline, MemoryStore::new(TEST_PERSISTENCE.clone()), MemoryQueue::new(), TEST_POOL.clone(),
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]))
     );
     let out = engine.run_inline().await.unwrap();
     assert_eq!(out["ok"], true);

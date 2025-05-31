@@ -12,6 +12,7 @@ use stepflow_engine::engine::{
     WorkflowEngine,
     WorkflowMode,
 };
+use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 
 static TEST_POOL: Lazy<SqlitePool> = Lazy::new(|| {
     SqlitePool::connect_lazy("sqlite::memory:").unwrap()
@@ -60,6 +61,7 @@ async fn task_input_mapping_inline() {
         MemoryStore::new(TEST_PERSISTENCE.clone()),
         MemoryQueue::new(),
         TEST_POOL.clone(),
+        Arc::new(EngineEventDispatcher::new(vec![LogHook::new()])),
     );
 
     // 4️⃣ 执行

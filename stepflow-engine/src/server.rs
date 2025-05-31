@@ -15,6 +15,7 @@ use stepflow_engine::engine::{
 };
 use stepflow_engine::http::poll::poll_route; // ✅ 引入我们上面写好的 poll_route
 use stepflow_storage::PersistenceManagerImpl;
+use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 
 /// 所有 Deferred 引擎实例都存放在这个全局 Map 里
 /// Key = run_id，Value = 对应的 WorkflowEngine<MemoryStore, MemoryQueue>
@@ -61,6 +62,10 @@ async fn main() {
     let persistence_manager = Arc::new(PersistenceManagerImpl::new(pool.clone()));
     let persistence_manager_filter = warp::any().map(move || persistence_manager.clone());
 
+    // Create event dispatcher
+    let event_dispatcher = Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
+    let event_dispatcher_filter = warp::any().map(move || event_dispatcher.clone());
+
     // 1. 全局共享一个 Map，保存所有 Deferred 模式下的引擎
     let engines: Engines = Arc::new(Mutex::new(HashMap::new()));
     let engines_for_filter = engines.clone();
@@ -74,6 +79,7 @@ async fn main() {
         .and(engines_filter.clone())
         .and(pool_filter.clone())
         .and(persistence_manager_filter.clone())
+        .and(event_dispatcher_filter.clone())
         .and_then(start_handler);
 
     // ========== 定义 /update ==========
@@ -100,6 +106,7 @@ async fn start_handler(
     engines: Engines, 
     pool: SqlitePool,
     persistence_manager: Arc<PersistenceManagerImpl>,
+    event_dispatcher: Arc<EngineEventDispatcher>,
 ) -> Result<impl Reply, Rejection> {
     // 1. 把 JSON Value 反序列化为 WorkflowDSL
     let dsl: WorkflowDSL = match serde_json::from_value(req.dsl.clone()) {
@@ -126,6 +133,7 @@ async fn start_handler(
         MemoryStore::new(persistence_manager),
         MemoryQueue::new(),
         pool.clone(),
+        event_dispatcher,
     );
 
     // 4. "先执行一次 advance_once" —— 这会让第一个 Task 写入到内存队列
