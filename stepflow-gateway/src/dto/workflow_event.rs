@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use chrono::NaiveDateTime;
-use utoipa::ToSchema;
+use utoipa::{ToSchema, IntoParams};
 
 /// 工作流事件记录请求
 #[derive(Debug, Deserialize, ToSchema)]
@@ -39,16 +39,14 @@ pub struct WorkflowEventDto {
 }
 
 /// 分页查询参数
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListQuery {
-    /// 每页数量，默认 100
     #[serde(default = "default_limit")]
     pub limit: i64,
-    /// 偏移量，默认 0
     #[serde(default)]
     pub offset: i64,
 }
 
 fn default_limit() -> i64 {
-    100
+    20
 } 

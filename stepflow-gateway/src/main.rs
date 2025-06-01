@@ -38,6 +38,11 @@ use utoipa_swagger_ui::SwaggerUi;
         routes::activity_task::complete_task,
         routes::activity_task::fail_task,
         routes::activity_task::heartbeat_task,
+        routes::workflow_event::list_events,
+        routes::workflow_event::get_event,
+        routes::workflow_event::record_event,
+        routes::workflow_event::archive_event,
+        routes::workflow_event::delete_event,
     ),
     components(
         schemas(
@@ -52,6 +57,9 @@ use utoipa_swagger_ui::SwaggerUi;
             dto::activity_task::CompleteRequest,
             dto::activity_task::FailRequest,
             dto::activity_task::HeartbeatRequest,
+            dto::workflow_event::ListQuery,
+            dto::workflow_event::WorkflowEventDto,
+            dto::workflow_event::RecordEventRequest,
         )
     ),
     tags(
@@ -59,6 +67,7 @@ use utoipa_swagger_ui::SwaggerUi;
         (name = "executions", description = "工作流执行管理"),
         (name = "worker", description = "Worker 任务管理"),
         (name = "activity_tasks", description = "活动任务管理"),
+        (name = "workflow_events", description = "工作流事件管理"),
     )
 )]
 struct ApiDoc;

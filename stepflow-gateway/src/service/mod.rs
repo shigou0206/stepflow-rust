@@ -43,3 +43,15 @@ pub trait ActivityTaskService: Clone + Send + Sync + 'static {
     async fn heartbeat_task(&self, task_token: &str, req: HeartbeatRequest) -> AppResult<ActivityTaskDto>;
 }
 
+pub mod workflow_event;
+pub use workflow_event::WorkflowEventSqlxSvc as WorkflowEventSvc;
+use crate::dto::workflow_event::*;
+
+#[async_trait]
+pub trait WorkflowEventService: Clone + Send + Sync + 'static {
+    async fn list_events(&self, limit: i64, offset: i64) -> AppResult<Vec<WorkflowEventDto>>;
+    async fn get_event(&self, id: &str) -> AppResult<WorkflowEventDto>;
+    async fn record_event(&self, req: RecordEventRequest) -> AppResult<WorkflowEventDto>;
+    async fn archive_event(&self, id: &str) -> AppResult<WorkflowEventDto>;
+    async fn delete_event(&self, id: &str) -> AppResult<WorkflowEventDto>;
+}

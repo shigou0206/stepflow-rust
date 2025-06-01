@@ -7,11 +7,11 @@ use crate::{
     app_state::AppState,
     dto::workflow_event::*,
     error::AppResult,
-    service::workflow_event::WorkflowEventService,
+    service::{WorkflowEventSvc, WorkflowEventService},
 };
 use utoipa::ToSchema;
 
-pub fn router() -> Router<AppState> {
+pub fn router(svc: WorkflowEventSvc) -> Router<AppState> {
     Router::new()
         .route("/", get(list_events))
         .route("/", post(record_event))
@@ -19,6 +19,7 @@ pub fn router() -> Router<AppState> {
         .route("/run/:run_id", get(list_events_for_run))
         .route("/:id/archive", post(archive_event))
         .route("/:id", delete(delete_event))
+        .with_state(svc)
 }
 
 /// 获取事件列表
@@ -33,10 +34,10 @@ pub fn router() -> Router<AppState> {
     )
 )]
 async fn list_events(
-    State(state): State<AppState>,
+    State(svc): State<WorkflowEventSvc>,
     Query(query): Query<ListQuery>,
 ) -> AppResult<Json<Vec<WorkflowEventDto>>> {
-    let events = state.workflow_event_svc.list_events(query.limit, query.offset).await?;
+    let events = svc.list_events(query.limit, query.offset).await?;
     Ok(Json(events))
 }
 
@@ -55,11 +56,11 @@ async fn list_events(
     )
 )]
 async fn get_event(
-    State(state): State<AppState>,
+    State(svc): State<WorkflowEventSvc>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<WorkflowEventDto>> {
-    let event = state.workflow_event_svc.get_event(id).await?
-        .ok_or_else(|| crate::error::Error::NotFound("Event not found".into()))?;
+    let event = svc.get_event(id).await?
+        .ok_or_else(|| crate::error::AppError::NotFound)?;
     Ok(Json(event))
 }
 
@@ -78,11 +79,11 @@ async fn get_event(
     )
 )]
 async fn list_events_for_run(
-    State(state): State<AppState>,
+    State(svc): State<WorkflowEventSvc>,
     Path(run_id): Path<String>,
     Query(query): Query<ListQuery>,
 ) -> AppResult<Json<Vec<WorkflowEventDto>>> {
-    let events = state.workflow_event_svc.list_events_for_run(&run_id, query.limit, query.offset).await?;
+    let events = svc.list_events_for_run(&run_id, query.limit, query.offset).await?;
     Ok(Json(events))
 }
 
@@ -99,10 +100,10 @@ async fn list_events_for_run(
     )
 )]
 async fn record_event(
-    State(state): State<AppState>,
+    State(svc): State<WorkflowEventSvc>,
     Json(req): Json<RecordEventRequest>,
 ) -> AppResult<Json<WorkflowEventDto>> {
-    let event = state.workflow_event_svc.record_event(req).await?;
+    let event = svc.record_event(req).await?;
     Ok(Json(event))
 }
 
@@ -121,11 +122,11 @@ async fn record_event(
     )
 )]
 async fn archive_event(
-    State(state): State<AppState>,
+    State(svc): State<WorkflowEventSvc>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<WorkflowEventDto>> {
-    let event = state.workflow_event_svc.archive_event(id).await?
-        .ok_or_else(|| crate::error::Error::NotFound("Event not found".into()))?;
+    let event = svc.archive_event(id).await?
+        .ok_or_else(|| crate::error::AppError::NotFound)?;
     Ok(Json(event))
 }
 
@@ -144,9 +145,9 @@ async fn archive_event(
     )
 )]
 async fn delete_event(
-    State(state): State<AppState>,
+    State(svc): State<WorkflowEventSvc>,
     Path(id): Path<i64>,
 ) -> AppResult<()> {
-    state.workflow_event_svc.delete_event(id).await?;
+    svc.delete_event(id).await?;
     Ok(())
 } 
