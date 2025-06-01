@@ -12,4 +12,5 @@ pub mod impls {
     pub mod log_hook;
     pub mod persist_hook;
     pub mod ws_hook;
+    pub mod metrics_hook;
 }

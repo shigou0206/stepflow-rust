@@ -8,6 +8,7 @@ stepflow-sqlite = { path = "../stepflow-sqlite" }
 stepflow-storage = { path = "../stepflow-storage" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+prometheus = "0.13"
 
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"

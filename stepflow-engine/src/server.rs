@@ -15,7 +15,9 @@ use stepflow_engine::engine::{
 };
 use stepflow_engine::http::poll::poll_route; // ✅ 引入我们上面写好的 poll_route
 use stepflow_storage::PersistenceManagerImpl;
-use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
+use stepflow_hook::{EngineEventDispatcher, impls::{log_hook::LogHook, persist_hook::PersistHook, ws_hook::WsHook}};
+use tokio::sync::mpsc::unbounded_channel;
+use stepflow_hook::ui_event::UiEvent;
 
 /// 所有 Deferred 引擎实例都存放在这个全局 Map 里
 /// Key = run_id，Value = 对应的 WorkflowEngine<MemoryStore, MemoryQueue>
@@ -54,17 +56,31 @@ struct UpdateResponse {
 #[tokio::main]
 async fn main() {
     // Create SQLite pool
-    let pool = SqlitePool::connect("sqlite:/Users/sryu/projects/v2/stepflow-rust/stepflow-sqlite/data/data.db")
+    let pool = SqlitePool::connect("/Users/shigous/projects/github/stepflow-rust/stepflow-sqlite/data/data.db")
         .await
         .expect("Failed to create SQLite pool");
 
+    // Create WebSocket channel for UI events
+    let (ws_tx, ws_rx) = unbounded_channel::<UiEvent>();
+    let ws_tx_for_hook = ws_tx.clone();
+
     // Create persistence manager
     let persistence_manager = Arc::new(PersistenceManagerImpl::new(pool.clone()));
+    let persistence_manager_for_hook = persistence_manager.clone();
     let persistence_manager_filter = warp::any().map(move || persistence_manager.clone());
 
-    // Create event dispatcher
-    let event_dispatcher = Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
+    // Create event dispatcher with LogHook, PersistHook and WsHook
+    let event_dispatcher = Arc::new(EngineEventDispatcher::new(vec![
+        LogHook::new(),
+        PersistHook::new(persistence_manager_for_hook),
+        WsHook::new(ws_tx_for_hook),
+    ]));
     let event_dispatcher_filter = warp::any().map(move || event_dispatcher.clone());
+
+    // Start WebSocket server in background
+    tokio::spawn(async move {
+        stepflow_server::ws::websocket_server::start_ws_server(ws_rx).await;
+    });
 
     // 1. 全局共享一个 Map，保存所有 Deferred 模式下的引擎
     let engines: Engines = Arc::new(Mutex::new(HashMap::new()));
@@ -91,7 +107,14 @@ async fn main() {
 
     // ========== 定义 /poll ==========
     // 注意：这里直接把 Arc<Mutex<HashMap<...>>> 传入 poll_route
-    let poll_route = poll_route(engines.clone());
+    // let poll_route = poll_route(engines.clone());
+
+    let poll_route = warp::path("poll")
+    .and(warp::post())
+    .map(|| {
+        println!("✅ /poll mock 路由被命中！");
+        warp::reply::json(&serde_json::json!({ "mock": true }))
+    });
 
     // 合并所有路由
     let routes = start_route.or(update_route).or(poll_route);
@@ -164,11 +187,13 @@ async fn update_handler(req: UpdateRequest, engines: Engines) -> Result<impl Rep
         engine.context = req.result.clone();
 
         // 3. 推进引擎：循环调用 advance_once，直到碰到下一个 Deferred Task (should_continue=false) 或 执行结束
+        let mut should_remove = false;
         loop {
             match engine.advance_once().await {
                 Ok(step) => {
                     if !step.should_continue {
                         // should_continue==false：要么挂起到另一个 Task，要么整个流程结束
+                        should_remove = engine.finished;
                         break;
                     }
                     // should_continue=true：说明接下来都是 Pass/Choice/Succeed 等，可以继续推进
@@ -184,10 +209,18 @@ async fn update_handler(req: UpdateRequest, engines: Engines) -> Result<impl Rep
             }
         }
 
+        let context = engine.context.clone();
+        let message = "Workflow resumed and updated".into();
+
+        // 4. 如果引擎已完成，从 Map 中移除
+        if should_remove {
+            map.remove(&req.run_id);
+        }
+
         let resp = UpdateResponse {
             success: true,
-            context: engine.context.clone(),
-            message: "Workflow resumed and updated".into(),
+            context,
+            message,
         };
         Ok(warp::reply::json(&resp))
     } else {

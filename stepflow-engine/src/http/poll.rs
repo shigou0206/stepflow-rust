@@ -44,6 +44,7 @@ async fn handle_poll(
     _req: PollRequest,
     engines: Arc<Mutex<HashMap<String, WorkflowEngine<MemoryStore, MemoryQueue>>>>,
 ) -> Result<impl Reply, Rejection> {
+    println!("📥 /poll 被调用");
     // 1. 锁住所有引擎
     let mut map = engines.lock().await;
 
