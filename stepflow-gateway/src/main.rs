@@ -52,6 +52,7 @@ use utoipa_swagger_ui::SwaggerUi;
             dto::execution::ExecDto,
             dto::worker::PollRequest,
             dto::worker::PollResponse,
+            dto::worker::UpdateRequest,
             dto::activity_task::ListQuery,
             dto::activity_task::ActivityTaskDto,
             dto::activity_task::CompleteRequest,

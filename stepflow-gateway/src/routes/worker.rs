@@ -27,11 +27,16 @@ pub async fn poll_task(
     Json(req): Json<PollRequest>,
 ) -> AppResult<Json<PollResponse>> {
     let engines = state.engines.lock().await;
-    
-    // 找到一个 Deferred 模式的引擎
+
+    println!("📡 [/poll] Worker 请求任务: worker_id = {}", req.worker_id);
+    println!("🧠 当前内存中引擎数量: {}", engines.len());
+
     for (run_id, engine) in engines.iter() {
+        println!("🔍 检查引擎: {}, 当前状态: {}, 模式: {:?}", run_id, engine.current_state, engine.mode);
+
         if engine.mode == WorkflowMode::Deferred {
-            // TODO: 检查是否有可执行的任务
+            println!("✅ 分配任务: run_id = {}, state = {}", run_id, engine.current_state);
+
             return Ok(Json(PollResponse {
                 has_task: true,
                 run_id: Some(run_id.clone()),
@@ -40,7 +45,8 @@ pub async fn poll_task(
             }));
         }
     }
-    
+
+    println!("❌ 当前无可执行任务（Deferred）");
     Ok(Json(PollResponse {
         has_task: false,
         run_id: None,
@@ -72,21 +78,30 @@ pub async fn update(
     State(state): State<AppState>,
     Json(req): Json<UpdateRequest>,
 ) -> AppResult<()> {
+    println!("📥 [/update] 收到状态上报: run_id = {}, state_name = {}, status = {}",
+        req.run_id, req.state_name, req.status);
+    
     let mut engines = state.engines.lock().await;
+    println!("🧠 当前引擎数量: {}", engines.len());
+
     if let Some(engine) = engines.get_mut(&req.run_id) {
-        // 更新引擎状态
-        engine.context = req.result;
-        
-        // 推进引擎
-        if let Err(e) = engine.advance_once().await {
-            tracing::error!("引擎推进失败: {}", e);
-            return Ok(());
+        println!("✅ 找到引擎: 当前状态 = {}", engine.current_state);
+
+        engine.context = req.result.clone();
+        println!("📦 更新上下文: {:?}", engine.context);
+
+        match engine.advance_until_blocked().await {
+            Ok(_) => println!("🎯 引擎推进完成（或已阻塞/完成）"),
+            Err(e) => println!("❌ 引擎推进失败: {}", e),
         }
-        
-        // 如果工作流完成，从 Map 中移除
+
         if engine.finished {
+            println!("✅ 工作流已完成，准备移除引擎 {}", req.run_id);
             engines.remove(&req.run_id);
         }
+    } else {
+        println!("❌ 没有找到对应引擎: run_id = {}", req.run_id);
     }
+
     Ok(())
 }

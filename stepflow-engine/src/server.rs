@@ -203,17 +203,29 @@ async fn start_handler(
         info!("✅ 引擎 {} 启动完成并加入 Map", req.run_id);
     }
 
-    // 5. 获取引擎并执行一次
+    // // 5. 获取引擎并执行一次
+    // if let Some(engine) = engines.lock().await.get_mut(&req.run_id) {
+    //     if let Err(e) = engine.advance_once().await {
+    //         error!("❌ Engine.advance_once() 失败: {}", e);
+    //         let resp = StartResponse {
+    //             success: false,
+    //             message: format!("Engine.advance_once() failed: {}", e),
+    //         };
+    //         return Ok(warp::reply::json(&resp));
+    //     }
+    //     info!("✅ 首次 advance_once 成功");
+    // }
+    // 5. 获取引擎并执行多步推进
     if let Some(engine) = engines.lock().await.get_mut(&req.run_id) {
-        if let Err(e) = engine.advance_once().await {
-            error!("❌ Engine.advance_once() 失败: {}", e);
+        if let Err(e) = engine.advance_until_blocked().await {
+            error!("❌ Engine.advance_until_blocked() 失败: {}", e);
             let resp = StartResponse {
                 success: false,
-                message: format!("Engine.advance_once() failed: {}", e),
+                message: format!("Engine.advance_until_blocked() failed: {}", e),
             };
             return Ok(warp::reply::json(&resp));
         }
-        info!("✅ 首次 advance_once 成功");
+        info!("✅ 引擎已推进直到阻塞或完成");
     }
 
     let resp = StartResponse {

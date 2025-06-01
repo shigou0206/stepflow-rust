@@ -5,6 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use log::debug;
+use tracing::info;
 use serde_json::Value;
 use sqlx::{Sqlite, Transaction, SqlitePool, Acquire};
 use stepflow_dsl::{state::base::BaseState, State, WorkflowDSL};
@@ -276,6 +277,28 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             self.advance_once().await?;
         }
         Ok(self.context)
+    }
+
+    pub async fn advance_until_blocked(&mut self) -> Result<(), String> {
+        println!("[Engine] advance_until_blocked called");
+        loop {
+            println!("[Engine] advance_until_blocked called loop");
+            if self.finished {
+                break;
+            }
+
+            let step_result = self.advance_once().await?;
+
+            // 遇到需要等待的节点（例如 Wait/Task），不应自动继续
+            if !step_result.should_continue {
+                break;
+            }
+
+            // next_state 不存在会在 advance_once 中报错
+            // 所以只需要依赖 should_continue 控制循环
+        }
+
+        Ok(())
     }
 
     // ─────────── 推进一步（Inline & Deferred 共用） ───────────

@@ -45,8 +45,10 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
 
         // ② 构造引擎
         let mode = Self::mode_from_str(&req.mode)?;
+        println!("[Execution] mode: {:?}", mode);
         let run_id = uuid::Uuid::new_v4().to_string();
-        let engine = WorkflowEngine::new(
+        println!("[Execution] run_id: {}", run_id);
+        let mut engine = WorkflowEngine::new(
             run_id.clone(),
             dsl,
             req.init_ctx.clone().unwrap_or(Value::Object(Default::default())),
@@ -65,8 +67,18 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
                     .map_err(|e| AppError::BadRequest(format!("执行工作流失败: {}", e)))?;
                 ("COMPLETED".into(), Some(res), Some(chrono::Utc::now()))
             },
+
             WorkflowMode::Deferred => {
+                println!("[Execution] Deferred mode");
+            
+                let _ = engine.advance_until_blocked().await.ok();  // ⬅️ 合法了
+            
+                println!("[Execution] Deferred mode: executed advance_until_blocked");
+            
                 self.state.engines.lock().await.insert(run_id.clone(), engine);
+            
+                println!("[Execution] Deferred mode insert engine");
+            
                 ("RUNNING".into(), None, None)
             }
         };

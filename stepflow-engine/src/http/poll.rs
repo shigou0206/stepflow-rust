@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use warp::{Filter, Rejection, Reply};
+use warp::{Rejection, Reply};
 
 use crate::engine::{WorkflowEngine, memory_stub::{MemoryQueue, MemoryStore}};
 
@@ -25,7 +25,7 @@ pub struct PollResponse {
 }
 
 #[derive(Debug)]
-pub struct JsonError(String);
+pub struct JsonError();
 
 impl warp::reject::Reject for JsonError {}
 
@@ -37,7 +37,7 @@ impl warp::reject::Reject for JsonError {}
 pub fn poll_route(
     engines: Arc<Mutex<HashMap<String, WorkflowEngine<MemoryStore, MemoryQueue>>>>,
 ) -> warp::filters::BoxedFilter<(impl warp::Reply,)> {
-    use log::{debug, error, info};
+    use log::info;
     use warp::Filter;
     
     info!("👋 注册 /poll 路由");
@@ -60,7 +60,7 @@ pub async fn handle_poll(
     req: PollRequest,
     engines: Arc<Mutex<HashMap<String, WorkflowEngine<MemoryStore, MemoryQueue>>>>,
 ) -> Result<impl Reply, Rejection> {
-    use log::{debug, error, info};
+    use log::info;
     
     info!("📥 收到 poll 请求: worker_id = {}", req.worker_id);
 

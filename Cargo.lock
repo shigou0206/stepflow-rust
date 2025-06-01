@@ -2880,6 +2880,7 @@ dependencies = [
  "stepflow-sqlite",
  "stepflow-storage",
  "tokio",
+ "tracing",
  "uuid",
  "warp",
 ]
