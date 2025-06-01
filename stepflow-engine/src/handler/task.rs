@@ -68,8 +68,49 @@ where
 
 /// Mocked inline executor (示例)
 async fn run_tool_inline(resource: &str, input: &Value) -> Result<Value, String> {
-    // 演示：把原输入克隆一份，然后打一个"_ran"标记
-    let mut out = input.clone();
-    out["_ran"] = Value::String(format!("tool::{resource}"));
-    Ok(out)
+    match resource {
+        "http.get" => {
+            // 支持参数: { "url": "...", "headers": {...} }
+            let url = input.get("url").and_then(Value::as_str).ok_or("missing url")?;
+
+            let client = reqwest::Client::new();
+            let mut req = client.get(url);
+
+            // 可选支持 headers
+            if let Some(headers) = input.get("headers").and_then(Value::as_object) {
+                for (k, v) in headers {
+                    if let Some(s) = v.as_str() {
+                        req = req.header(k, s);
+                    }
+                }
+            }
+
+            let resp = req.send().await.map_err(|e| format!("http.get error: {}", e))?;
+            let json = resp.json::<Value>().await.map_err(|e| format!("invalid JSON: {}", e))?;
+
+            Ok(json)
+        }
+
+        "http.post" => {
+            let url = input.get("url").and_then(Value::as_str).ok_or("missing url")?;
+            let body = input.get("body").cloned().unwrap_or_else(|| Value::Object(Default::default()));
+
+            let client = reqwest::Client::new();
+            let resp = client
+                .post(url)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| format!("http.post error: {}", e))?;
+
+            let json = resp.json::<Value>().await.map_err(|e| format!("invalid JSON: {}", e))?;
+            Ok(json)
+        }
+
+        other => {
+            let mut out = input.clone();
+            out["_ran"] = Value::String(format!("tool::{other}"));
+            Ok(out)
+        }
+    }
 }

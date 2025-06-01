@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     // 配置
     let cfg = WorkerCfg {
         worker_id: "worker-1".into(),
-        server: "http://127.0.0.1:3030".into(),
+        server: "http://127.0.0.1:3000".into(),
     };
 
     // 启动工作循环
