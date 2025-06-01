@@ -31,6 +31,13 @@ use utoipa_swagger_ui::SwaggerUi;
         routes::execution::list,
         routes::execution::get_one,
         routes::worker::poll_task,
+        routes::activity_task::list_tasks,
+        routes::activity_task::get_task,
+        routes::activity_task::get_tasks_by_run_id,
+        routes::activity_task::start_task,
+        routes::activity_task::complete_task,
+        routes::activity_task::fail_task,
+        routes::activity_task::heartbeat_task,
     ),
     components(
         schemas(
@@ -40,12 +47,18 @@ use utoipa_swagger_ui::SwaggerUi;
             dto::execution::ExecDto,
             dto::worker::PollRequest,
             dto::worker::PollResponse,
+            dto::activity_task::ListQuery,
+            dto::activity_task::ActivityTaskDto,
+            dto::activity_task::CompleteRequest,
+            dto::activity_task::FailRequest,
+            dto::activity_task::HeartbeatRequest,
         )
     ),
     tags(
         (name = "templates", description = "工作流模板管理"),
         (name = "executions", description = "工作流执行管理"),
         (name = "worker", description = "Worker 任务管理"),
+        (name = "activity_tasks", description = "活动任务管理"),
     )
 )]
 struct ApiDoc;

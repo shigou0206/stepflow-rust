@@ -1,36 +1,28 @@
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use stepflow_storage::PersistenceManager;
-use stepflow_sqlite::models::activity_task::{ActivityTask, UpdateActivityTask};
-use crate::dto::activity_task::*;
-use crate::error::{AppResult, AppError};
-use crate::app_state::AppState;
-use std::sync::Arc;
+use crate::{
+    dto::activity_task::*,
+    error::{AppResult, AppError},
+    service::ActivityTaskService,
+};
 use serde_json::Value;
-
-#[async_trait]
-pub trait ActivityTaskService: Clone + Send + Sync + 'static {
-    async fn get_task(&self, task_token: &str) -> AppResult<ActivityTaskDto>;
-    async fn get_tasks_by_run_id(&self, run_id: &str) -> AppResult<Vec<ActivityTaskDto>>;
-    async fn list_tasks(&self, limit: i64, offset: i64) -> AppResult<Vec<ActivityTaskDto>>;
-    async fn start_task(&self, task_token: &str) -> AppResult<ActivityTaskDto>;
-    async fn complete_task(&self, task_token: &str, result: Value) -> AppResult<ActivityTaskDto>;
-    async fn fail_task(&self, task_token: &str, reason: String, details: Option<String>) -> AppResult<ActivityTaskDto>;
-    async fn heartbeat_task(&self, task_token: &str, details: Option<String>) -> AppResult<ActivityTaskDto>;
-}
+use stepflow_sqlite::models::activity_task::{ActivityTask, UpdateActivityTask};
+use chrono::{DateTime, Utc};
 
 #[derive(Clone)]
-pub struct ActivityTaskSvc {
-    persist: Arc<dyn PersistenceManager>,
+pub struct ActivityTaskSqlxSvc {
+    pm: std::sync::Arc<dyn PersistenceManager>,
 }
 
-impl ActivityTaskSvc {
-    pub fn new(persist: Arc<dyn PersistenceManager>) -> Self {
-        Self { persist }
+impl ActivityTaskSqlxSvc {
+    pub fn new(pm: std::sync::Arc<dyn PersistenceManager>) -> Self {
+        Self { pm }
     }
+}
 
-    fn to_dto(task: ActivityTask) -> ActivityTaskDto {
-        ActivityTaskDto {
+impl From<ActivityTask> for ActivityTaskDto {
+    fn from(task: ActivityTask) -> Self {
+        Self {
             task_token: task.task_token,
             run_id: task.run_id,
             activity_type: task.activity_type,
@@ -42,113 +34,140 @@ impl ActivityTaskSvc {
             attempt: task.attempt,
             max_attempts: task.max_attempts,
             scheduled_at: DateTime::from_utc(task.scheduled_at, Utc),
-            started_at: task.started_at.map(|t| DateTime::from_utc(t, Utc)),
-            completed_at: task.completed_at.map(|t| DateTime::from_utc(t, Utc)),
-            heartbeat_at: task.heartbeat_at.map(|t| DateTime::from_utc(t, Utc)),
+            started_at: task.started_at.map(|dt| DateTime::from_utc(dt, Utc)),
+            completed_at: task.completed_at.map(|dt| DateTime::from_utc(dt, Utc)),
+            heartbeat_at: task.heartbeat_at.map(|dt| DateTime::from_utc(dt, Utc)),
         }
     }
 }
 
 #[async_trait]
-impl ActivityTaskService for ActivityTaskSvc {
-    /// 获取单个任务
-    async fn get_task(&self, task_token: &str) -> AppResult<ActivityTaskDto> {
-        let task = self.persist.get_task(task_token).await?
-            .ok_or(AppError::NotFound)?;
-        Ok(Self::to_dto(task))
-    }
-
-    /// 获取工作流实例的所有任务
-    async fn get_tasks_by_run_id(&self, run_id: &str) -> AppResult<Vec<ActivityTaskDto>> {
-        let tasks = self.persist.find_tasks_by_status("running", 100, 0).await?;
-        let tasks = tasks.into_iter()
-            .filter(|t| t.run_id == run_id)
-            .collect::<Vec<_>>();
-        Ok(tasks.into_iter().map(Self::to_dto).collect())
-    }
-
-    /// 分页获取任务列表
+impl ActivityTaskService for ActivityTaskSqlxSvc {
     async fn list_tasks(&self, limit: i64, offset: i64) -> AppResult<Vec<ActivityTaskDto>> {
-        let tasks = self.persist.find_tasks_by_status("", limit, offset).await?;
-        Ok(tasks.into_iter().map(Self::to_dto).collect())
+        let tasks = self.pm.find_tasks_by_status("SCHEDULED", limit, offset).await
+            .map_err(AppError::Db)?;
+        Ok(tasks.into_iter().map(|task| task.into()).collect())
     }
 
-    /// 开始执行任务
+    async fn get_task(&self, task_token: &str) -> AppResult<ActivityTaskDto> {
+        let task = self.pm.get_task(task_token).await
+            .map_err(AppError::Db)?
+            .ok_or(AppError::NotFound)?;
+        Ok(task.into())
+    }
+
+    async fn get_tasks_by_run_id(&self, run_id: &str) -> AppResult<Vec<ActivityTaskDto>> {
+        let tasks = self.pm.find_tasks_by_status("RUNNING", 100, 0).await
+            .map_err(AppError::Db)?
+            .into_iter()
+            .filter(|task| task.run_id == run_id)
+            .collect::<Vec<_>>();
+        Ok(tasks.into_iter().map(|task| task.into()).collect())
+    }
+
     async fn start_task(&self, task_token: &str) -> AppResult<ActivityTaskDto> {
-        let task = self.persist.get_task(task_token).await?
+        let task = self.pm.get_task(task_token).await
+            .map_err(AppError::Db)?
             .ok_or(AppError::NotFound)?;
-
-        if task.status != "scheduled" {
-            return Err(AppError::BadRequest("Task cannot be started".into()));
+        
+        if task.status != "SCHEDULED" {
+            return Err(AppError::BadRequest(format!(
+                "Activity task {} is not in scheduled state: {}",
+                task_token, task.status
+            )));
         }
 
         let changes = UpdateActivityTask {
-            status: Some("running".to_string()),
-            started_at: Some(Utc::now().naive_utc()),
-            attempt: Some(task.attempt + 1),
+            status: Some("RUNNING".to_string()),
+            started_at: Some(chrono::Utc::now().naive_utc()),
             ..Default::default()
         };
+        self.pm.update_task(task_token, &changes).await
+            .map_err(AppError::Db)?;
 
-        self.persist.update_task(task_token, &changes).await?;
-        self.get_task(task_token).await
+        let task = self.pm.get_task(task_token).await
+            .map_err(AppError::Db)?
+            .ok_or(AppError::NotFound)?;
+        Ok(task.into())
     }
 
-    /// 完成任务
     async fn complete_task(&self, task_token: &str, result: Value) -> AppResult<ActivityTaskDto> {
-        let task = self.persist.get_task(task_token).await?
+        let task = self.pm.get_task(task_token).await
+            .map_err(AppError::Db)?
             .ok_or(AppError::NotFound)?;
-
-        if task.status != "running" {
-            return Err(AppError::BadRequest("Task is not running".into()));
+        
+        if task.status != "RUNNING" {
+            return Err(AppError::BadRequest(format!(
+                "Activity task {} is not in running state: {}",
+                task_token, task.status
+            )));
         }
 
         let changes = UpdateActivityTask {
-            status: Some("completed".to_string()),
+            status: Some("COMPLETED".to_string()),
             result: Some(result.to_string()),
-            completed_at: Some(Utc::now().naive_utc()),
+            completed_at: Some(chrono::Utc::now().naive_utc()),
             ..Default::default()
         };
+        self.pm.update_task(task_token, &changes).await
+            .map_err(AppError::Db)?;
 
-        self.persist.update_task(task_token, &changes).await?;
-        self.get_task(task_token).await
+        let task = self.pm.get_task(task_token).await
+            .map_err(AppError::Db)?
+            .ok_or(AppError::NotFound)?;
+        Ok(task.into())
     }
 
-    /// 标记任务失败
-    async fn fail_task(&self, task_token: &str, reason: String, details: Option<String>) -> AppResult<ActivityTaskDto> {
-        let task = self.persist.get_task(task_token).await?
+    async fn fail_task(&self, task_token: &str, req: FailRequest) -> AppResult<ActivityTaskDto> {
+        let task = self.pm.get_task(task_token).await
+            .map_err(AppError::Db)?
             .ok_or(AppError::NotFound)?;
-
-        if task.status != "running" {
-            return Err(AppError::BadRequest("Task is not running".into()));
+        
+        if task.status != "RUNNING" {
+            return Err(AppError::BadRequest(format!(
+                "Activity task {} is not in running state: {}",
+                task_token, task.status
+            )));
         }
 
         let changes = UpdateActivityTask {
-            status: Some("failed".to_string()),
-            error: Some(reason),
-            error_details: details,
-            completed_at: Some(Utc::now().naive_utc()),
+            status: Some("FAILED".to_string()),
+            error: Some(req.reason),
+            error_details: req.details,
+            completed_at: Some(chrono::Utc::now().naive_utc()),
             ..Default::default()
         };
+        self.pm.update_task(task_token, &changes).await
+            .map_err(AppError::Db)?;
 
-        self.persist.update_task(task_token, &changes).await?;
-        self.get_task(task_token).await
+        let task = self.pm.get_task(task_token).await
+            .map_err(AppError::Db)?
+            .ok_or(AppError::NotFound)?;
+        Ok(task.into())
     }
 
-    /// 更新任务心跳
-    async fn heartbeat_task(&self, task_token: &str, details: Option<String>) -> AppResult<ActivityTaskDto> {
-        let task = self.persist.get_task(task_token).await?
+    async fn heartbeat_task(&self, task_token: &str, req: HeartbeatRequest) -> AppResult<ActivityTaskDto> {
+        let task = self.pm.get_task(task_token).await
+            .map_err(AppError::Db)?
             .ok_or(AppError::NotFound)?;
-
-        if task.status != "running" {
-            return Err(AppError::BadRequest("Task is not running".into()));
+        
+        if task.status != "RUNNING" {
+            return Err(AppError::BadRequest(format!(
+                "Activity task {} is not in running state: {}",
+                task_token, task.status
+            )));
         }
 
         let changes = UpdateActivityTask {
-            heartbeat_at: Some(Utc::now().naive_utc()),
+            heartbeat_at: Some(chrono::Utc::now().naive_utc()),
             ..Default::default()
         };
+        self.pm.update_task(task_token, &changes).await
+            .map_err(AppError::Db)?;
 
-        self.persist.update_task(task_token, &changes).await?;
-        self.get_task(task_token).await
+        let task = self.pm.get_task(task_token).await
+            .map_err(AppError::Db)?
+            .ok_or(AppError::NotFound)?;
+        Ok(task.into())
     }
-} 
+}

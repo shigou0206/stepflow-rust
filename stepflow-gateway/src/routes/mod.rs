@@ -2,6 +2,7 @@ use axum::{Router, routing::get};
 pub mod template;
 pub mod execution;
 pub mod worker;
+pub mod activity_task;
 use crate::{
     app_state::AppState, 
     service::{
