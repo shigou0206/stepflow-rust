@@ -24,6 +24,11 @@ pub struct PollResponse {
     pub input: Option<Value>,
 }
 
+#[derive(Debug)]
+pub struct JsonError(String);
+
+impl warp::reject::Reject for JsonError {}
+
 /// poll_route 接口：
 ///   - 先把 `engines` 拷贝到闭包里
 ///   - 每次收到 POST /poll 时，从所有引擎的 MemoryQueue 中尝试 pop 一条任务
@@ -31,31 +36,51 @@ pub struct PollResponse {
 ///   - 如果所有引擎都空，返回 `has_task: false`
 pub fn poll_route(
     engines: Arc<Mutex<HashMap<String, WorkflowEngine<MemoryStore, MemoryQueue>>>>,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    warp::path("poll")
+) -> warp::filters::BoxedFilter<(impl warp::Reply,)> {
+    use log::{debug, error, info};
+    use warp::Filter;
+    
+    info!("👋 注册 /poll 路由");
+    
+    let json_body = warp::body::json::<PollRequest>();
+    let engines = warp::any().map(move || {
+        info!("🔄 克隆 engines 引用");
+        engines.clone()
+    });
+    
+    warp::path!("poll")
         .and(warp::post())
-        .and(warp::body::json())
-        // 把 engines Arc<Mutex<...>> 传进去
-        .and(warp::any().map(move || engines.clone()))
+        .and(json_body)
+        .and(engines)
         .and_then(handle_poll)
+        .boxed()
 }
 
-async fn handle_poll(
-    _req: PollRequest,
+pub async fn handle_poll(
+    req: PollRequest,
     engines: Arc<Mutex<HashMap<String, WorkflowEngine<MemoryStore, MemoryQueue>>>>,
 ) -> Result<impl Reply, Rejection> {
-    println!("📥 /poll 被调用");
+    use log::{debug, error, info};
+    
+    info!("📥 收到 poll 请求: worker_id = {}", req.worker_id);
+
     // 1. 锁住所有引擎
     let mut map = engines.lock().await;
+    info!("🔒 获取引擎锁, 当前活跃引擎数: {}", map.len());
 
     // 2. 遍历所有 run_id 对应的 WorkflowEngine，尝试从它的 MemoryQueue pop 一条任务
-    for (_run_id, engine) in map.iter_mut() {
+    for (run_id, engine) in map.iter_mut() {
+        info!("🔍 检查引擎 {}", run_id);
         // 直接访问 engine.queue 内部的 VecDeque< (String, String) >
         let mut guard = engine.queue.0.lock().await;
+        info!("  - 队列长度: {}", guard.len());
+        
         if let Some((r, state_name)) = guard.pop_front() {
             // 找到一条任务：r 应该等于 run_id（因为 push 时是同一个 run_id），但我们仍然按 r 发回
             // input 就是引擎此时的 context.clone()
             let input = engine.context.clone();
+            info!("✅ 找到任务: {} @ {}", r, state_name);
+            info!("  - context: {:?}", input);
             let resp = PollResponse {
                 has_task: true,
                 run_id: Some(r),
@@ -64,10 +89,11 @@ async fn handle_poll(
             };
             return Ok(warp::reply::json(&resp));
         }
-        // 否则继续下一个引擎
+        info!("  - 队列为空，继续检查下一个引擎");
     }
 
     // 3. 如果所有队列都空，就告诉 Worker 暂时没有任务
+    info!("📭 所有引擎队列都为空");
     let resp = PollResponse {
         has_task: false,
         run_id: None,

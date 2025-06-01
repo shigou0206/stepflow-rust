@@ -30,7 +30,7 @@ async fn main() {
     // 在 Worker 里也打开一个简单的日志系统
     env_logger::init();
     let client = Client::new();
-    let server_base = "http://127.0.0.1:3030";
+    let server_base = "http://127.0.0.1:3031";
     let worker_id = "worker-001";
 
     info!("Worker 启动, server_base = {}, worker_id = {}", server_base, worker_id);
