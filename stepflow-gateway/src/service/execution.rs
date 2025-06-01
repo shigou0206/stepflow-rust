@@ -1,17 +1,14 @@
 // gateway/src/service/execution_sqlx.rs
 use async_trait::async_trait;
-use stepflow_storage::PersistenceManager;
 use stepflow_sqlite::models::workflow_execution::WorkflowExecution;
 use stepflow_engine::engine::{WorkflowEngine, WorkflowMode,
     memory_stub::{MemoryStore, MemoryQueue}};
 use crate::dto::execution::*;
 use crate::error::{AppResult, AppError};
 use crate::app_state::AppState;
-use std::{sync::Arc, collections::HashMap};
-use tokio::sync::Mutex;
+use std::sync::Arc;
 use serde_json::Value;
 use anyhow::Context;
-use stepflow_hook::{EngineEventDispatcher, EngineEventHandler, impls::log_hook::LogHook};
 
 #[derive(Clone)]
 pub struct ExecutionSqlxSvc {
