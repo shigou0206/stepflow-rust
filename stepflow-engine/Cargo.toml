@@ -9,7 +9,6 @@ stepflow-storage = { path = "../stepflow-storage" }
 stepflow-sqlite = { path = "../stepflow-sqlite" }
 stepflow-mapping = { path = "../stepflow-mapping" }
 stepflow-hook = { path = "../stepflow-hook" }
-stepflow-server = { path = "../stepflow-server" }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
@@ -35,10 +34,10 @@ anyhow = "1.0"
 once_cell = "1.17"
 
 
-[[bin]]
-name = "engine-server"
-path = "src/server.rs"
+# [[bin]]
+# name = "engine-server"
+# path = "src/server.rs"
 
-[[bin]]
-name = "worker"
-path = "src/worker.rs"
+# [[bin]]
+# name = "worker"
+# path = "src/worker.rs"

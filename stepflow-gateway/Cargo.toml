@@ -1,0 +1,33 @@
+[package]
+name = "stepflow-gateway"
+version = "0.1.0"
+edition = "2024"
+default-run = "stepflow-gateway" 
+
+[dependencies]
+axum            = { version = "0.7", features = ["ws"] }
+tokio           = { version = "1", features=["macros","rt-multi-thread"] }
+tower           = "0.4"
+tower-http      = { version ="0.5", features=["trace","cors","compression-gzip"] }
+tracing         = "0.1"
+tracing-subscriber = { version="0.3", features=["env-filter","fmt"] }
+serde           = { version="1", features=["derive"] }
+serde_json      = "1.0"
+http            = "1.1"
+utoipa          = { version = "4.2.0", features = ["axum_extras", "chrono"] }
+utoipa-swagger-ui = { version = "6.0.0", features = ["axum"] }
+
+# 引用 workspace 内已有库 —— 用 `path =` 即可
+stepflow-dsl     = { path = "../stepflow-dsl" }
+stepflow-engine  = { path = "../stepflow-engine" }
+stepflow-storage = { path = "../stepflow-storage" }
+stepflow-sqlite  = { path = "../stepflow-sqlite" }
+stepflow-hook    = { path = "../stepflow-hook" }
+
+sqlx = { version="0.7", features=["sqlite","runtime-tokio-rustls"] }
+thiserror = "1.0"
+anyhow    = "1.0"
+async-trait = "0.1.88"
+chrono = { version = "0.4.41", features = ["serde"] }
+uuid = { version = "1.17.0", features = ["v4"] }
+reqwest = { version = "0.12.18", features = ["json"] }

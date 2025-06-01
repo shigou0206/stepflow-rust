@@ -1,0 +1,104 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT \n            state_id as \"state_id!\",\n            run_id as \"run_id!\",\n            shard_id as \"shard_id!\",\n            state_name as \"state_name!\",\n            state_type as \"state_type!\",\n            status as \"status!\",\n            input, output, error, error_details,\n            started_at, completed_at,\n            created_at as \"created_at!\",\n            updated_at as \"updated_at!\",\n            version as \"version!\"\n        FROM workflow_states WHERE run_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "state_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "run_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "shard_id!",
+        "ordinal": 2,
+        "type_info": "Int64"
+      },
+      {
+        "name": "state_name!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "state_type!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "input",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "output",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "error",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_details",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "started_at",
+        "ordinal": 10,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "completed_at",
+        "ordinal": 11,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 12,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!",
+        "ordinal": 13,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "version!",
+        "ordinal": 14,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5ddbc72e21bc6ca0d8a87e39115f372124b27eb714c6a39a39950e6cbd6b0207"
+}

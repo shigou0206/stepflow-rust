@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO timers (\n            timer_id, run_id, shard_id, fire_at, status, version, state_name\n        ) VALUES (?, ?, ?, ?, ?, ?, ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "046bbcb5b0af9f7951e7e09d68b0430a447ae507759c4a6cff1744086b52c9ea"
+}
