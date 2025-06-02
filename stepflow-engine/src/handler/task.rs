@@ -7,8 +7,15 @@
 use serde_json::Value;
 use sqlx::{Sqlite, Transaction};
 use stepflow_dsl::state::task::TaskState;
-
 use crate::engine::{TaskQueue, TaskStore, WorkflowMode};
+use stepflow_hook::EngineEventDispatcher;
+use stepflow_storage::PersistenceManager;
+use std::sync::Arc;
+use crate::tools;
+use async_trait::async_trait;
+use tracing::debug;
+use super::{StateHandler, StateExecutionContext, StateExecutionResult};
+
 
 // -----------------------------------------------------------------------------
 // Public API
@@ -22,95 +29,120 @@ use crate::engine::{TaskQueue, TaskStore, WorkflowMode};
 ///     3. 返回"原始输入"给 Engine，让 Engine 暂停流程等待外部 Worker 回报。
 pub async fn handle_task<S, Q>(
     mode: WorkflowMode,
-    run_id: &str,         // <--- 新增：来自 Engine 的唯一 run_id
+    run_id: &str,
     state_name: &str,
     state: &TaskState,
     input: &Value,
     store: &S,
     queue: &Q,
     tx: &mut Transaction<'_, Sqlite>,
+    event_dispatcher: Arc<EngineEventDispatcher>,
+    persistence: Arc<dyn PersistenceManager>,
 ) -> Result<Value, String>
 where
     S: TaskStore,
     Q: TaskQueue,
 {
-    match mode {
-        // ───────────────────────────── Inline ────────────────────────────
-        WorkflowMode::Inline => {
-            // 真正执行业务资源 / 插件
-            let output = run_tool_inline(&state.resource, input).await?;
-            Ok(output) // 返回业务结果，Engine 负责后续的 Output-Mapping
+    let _ = tx;
+    let ctx = StateExecutionContext::new(
+        run_id,
+        state_name,
+        mode,
+        &event_dispatcher,
+        &persistence,
+    );
+
+    let handler = TaskHandler::new(store, queue, state);
+    let result = handler.execute(&ctx, input).await?;
+    
+    Ok(result.output)
+}
+
+pub struct TaskHandler<'a, S: TaskStore, Q: TaskQueue> {
+    store: &'a S,
+    queue: &'a Q,
+    state: &'a TaskState,
+}
+
+impl<'a, S: TaskStore, Q: TaskQueue> TaskHandler<'a, S, Q> {
+    pub fn new(
+        store: &'a S,
+        queue: &'a Q,
+        state: &'a TaskState,
+    ) -> Self {
+        Self {
+            store,
+            queue,
+            state,
         }
+    }
 
-        // ──────────────────────────── Deferred ───────────────────────────
-        WorkflowMode::Deferred => {
-            // 1️⃣ 在任务表落一条待执行记录；run_id 由 Engine 传入
-            store
-                .insert_task(
-                    tx,
-                    run_id,          // 由 Engine 传入的 run_id
-                    state_name,
-                    &state.resource,
-                    input,
-                )
-                .await
-                .map_err(|e| e.to_string())?;
+    async fn handle_inline(&self, input: &Value) -> Result<Value, String> {
+        debug!("Executing task inline with resource: {}", self.state.resource);
+        tools::run_tool(&self.state.resource, input).await
+    }
 
-            // 2️⃣ 推入队列，交给外部 Worker，注意也要把 run_id 一起传
-            queue.push(tx, run_id, state_name).await
-                .map_err(|e| e.to_string())?;
+    async fn handle_deferred(
+        &self,
+        ctx: &StateExecutionContext<'_>,
+        input: &Value,
+    ) -> Result<Value, String> {
+        debug!("Creating deferred task for resource: {}", self.state.resource);
 
-            // 3️⃣ 返回原始输入；Engine 看到 next_state 为空就会"挂起"流程
-            Ok(input.clone())
-        }
+        // 获取事务作为参数
+        let mut tx = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap()
+            .begin()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 1. 在任务表落一条待执行记录
+        self.store
+            .insert_task(
+                &mut tx,
+                ctx.run_id,
+                ctx.state_name,
+                &self.state.resource,
+                input,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 2. 推入队列，交给外部 Worker
+        self.queue
+            .push(&mut tx, ctx.run_id, ctx.state_name)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 提交事务
+        tx.commit()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 3. 返回原始输入，Engine 会"挂起"流程
+        Ok(input.clone())
     }
 }
 
-/// Mocked inline executor (示例)
-async fn run_tool_inline(resource: &str, input: &Value) -> Result<Value, String> {
-    match resource {
-        "http.get" => {
-            // 支持参数: { "url": "...", "headers": {...} }
-            let url = input.get("url").and_then(Value::as_str).ok_or("missing url")?;
+#[async_trait(?Send)]
+impl<'a, S: TaskStore, Q: TaskQueue> StateHandler for TaskHandler<'a, S, Q> {
+    async fn handle(
+        &self,
+        ctx: &StateExecutionContext<'_>,
+        input: &Value,
+    ) -> Result<StateExecutionResult, String> {
+        let output = match ctx.mode {
+            WorkflowMode::Inline => self.handle_inline(input).await?,
+            WorkflowMode::Deferred => self.handle_deferred(ctx, input).await?,
+        };
 
-            let client = reqwest::Client::new();
-            let mut req = client.get(url);
+        Ok(StateExecutionResult {
+            output,
+            next_state: self.state.base.next.clone(),
+            should_continue: true,
+        })
+    }
 
-            // 可选支持 headers
-            if let Some(headers) = input.get("headers").and_then(Value::as_object) {
-                for (k, v) in headers {
-                    if let Some(s) = v.as_str() {
-                        req = req.header(k, s);
-                    }
-                }
-            }
-
-            let resp = req.send().await.map_err(|e| format!("http.get error: {}", e))?;
-            let json = resp.json::<Value>().await.map_err(|e| format!("invalid JSON: {}", e))?;
-
-            Ok(json)
-        }
-
-        "http.post" => {
-            let url = input.get("url").and_then(Value::as_str).ok_or("missing url")?;
-            let body = input.get("body").cloned().unwrap_or_else(|| Value::Object(Default::default()));
-
-            let client = reqwest::Client::new();
-            let resp = client
-                .post(url)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| format!("http.post error: {}", e))?;
-
-            let json = resp.json::<Value>().await.map_err(|e| format!("invalid JSON: {}", e))?;
-            Ok(json)
-        }
-
-        other => {
-            let mut out = input.clone();
-            out["_ran"] = Value::String(format!("tool::{other}"));
-            Ok(out)
-        }
+    fn state_type(&self) -> &'static str {
+        "task"
     }
 }

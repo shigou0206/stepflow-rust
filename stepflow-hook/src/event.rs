@@ -1,4 +1,6 @@
 use serde_json::Value;
+use chrono::NaiveDateTime;
+use stepflow_engine::engine::WorkflowMode;
 
 #[derive(Debug, Clone)]
 pub enum EngineEvent {
@@ -28,5 +30,32 @@ pub enum EngineEvent {
         run_id: String,
         state_name: String,
         context: Value,
+    },
+    WaitStart {
+        run_id: String,
+        state_name: String,
+        mode: WorkflowMode,
+    },
+    WaitComplete {
+        run_id: String,
+        state_name: String,
+        mode: WorkflowMode,
+    },
+    WaitError {
+        run_id: String,
+        state_name: String,
+        error: String,
+    },
+    TimerCreated {
+        run_id: String,
+        state_name: String,
+        timer_id: String,
+        fire_at: NaiveDateTime,
+    },
+    TimerError {
+        run_id: String,
+        state_name: String,
+        timer_id: String,
+        error: String,
     },
 }

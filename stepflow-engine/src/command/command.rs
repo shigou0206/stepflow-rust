@@ -34,3 +34,16 @@ pub enum Command {
         cause: Option<String>,
     },
 }
+
+impl Command {
+    pub fn state_name(&self) -> &str {
+        match self {
+            Command::ExecuteTask { state_name, .. } |
+            Command::Wait { state_name, .. } |
+            Command::Pass { state_name, .. } |
+            Command::Choice { state_name, .. } |
+            Command::Succeed { state_name, .. } |
+            Command::Fail { state_name, .. } => state_name
+        }
+    }
+}

@@ -1,21 +1,18 @@
-pub mod task;
-pub mod wait;
-pub mod pass;
-pub mod choice;
-pub mod succeed;
-pub mod fail;
+mod context;
+mod traits;
+mod task;
+mod choice;
+mod pass;
+mod fail;
+mod wait;
+mod succeed;
 
-use serde_json::Value;
-
-#[derive(Debug, Clone)]
-pub struct HandlerOutcome {
-    pub should_continue: bool,
-    pub updated_context: Value,
-}
+pub use context::{StateExecutionContext, StateExecutionResult};
+pub use traits::StateHandler;
 
 pub use task::handle_task;
-pub use wait::handle_wait;
-pub use pass::handle_pass;
 pub use choice::handle_choice;
-pub use succeed::handle_succeed;
+pub use pass::handle_pass;
 pub use fail::handle_fail;
+pub use wait::handle_wait;
+pub use succeed::handle_succeed;
