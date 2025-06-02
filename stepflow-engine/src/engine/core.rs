@@ -10,7 +10,7 @@ use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use crate::command::step_once;
 
 use super::{
-    types::{WorkflowMode, StepOutcome},
+    types::{WorkflowMode, StepOutcome, StateExecutionResult},
     traits::{TaskStore, TaskQueue},
     dispatch::dispatch_command,
 };
@@ -60,19 +60,43 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         }
     }
 
-    pub async fn run_inline(mut self) -> Result<Value, String> {
-        if self.mode != WorkflowMode::Inline {
-            return Err("run_inline called on Deferred engine".into());
-        }
-        
-        self.event_dispatcher.dispatch(EngineEvent::WorkflowStarted { 
-            run_id: self.run_id.clone() 
-        }).await;
+    pub async fn run_inline(&mut self) -> Result<Value, String> {
+        let result = self.run_state().await?;
+        Ok(result)
+    }
 
-        while !self.finished {
-            self.advance_once().await?;
+    pub async fn advance_until_blocked(&mut self) -> Result<StateExecutionResult, String> {
+        let result = self.run_state().await?;
+        Ok(StateExecutionResult::new(result))
+    }
+
+    async fn run_state(&mut self) -> Result<Value, String> {
+        if self.mode == WorkflowMode::Inline {
+            self.event_dispatcher.dispatch(EngineEvent::WorkflowStarted { 
+                run_id: self.run_id.clone() 
+            }).await;
         }
-        Ok(self.context)
+
+        loop {
+            if self.finished {
+                debug!("[Engine] Workflow finished, breaking loop");
+                break;
+            }
+
+            // Check deferred task status first
+            if self.check_deferred_task_status().await? {
+                break;
+            }
+
+            let step_result = self.advance_once().await?;
+
+            if !step_result.should_continue || self.is_deferred_task() {
+                debug!("[Engine] Stopping at state: {}", self.current_state);
+                break;
+            }
+        }
+
+        Ok(self.context.clone())
     }
 
     async fn check_deferred_task_status(&mut self) -> Result<bool, String> {
@@ -131,32 +155,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             tx.commit().await.map_err(|e| e.to_string())?;
             Ok(false)
         }
-    }
-
-    pub async fn advance_until_blocked(&mut self) -> Result<(), String> {
-        debug!("[Engine] advance_until_blocked called for run_id: {}", self.run_id);
-        
-        // 检查延迟任务状态
-        if self.check_deferred_task_status().await? {
-            return Ok(());
-        }
-
-        loop {
-            if self.finished {
-                debug!("[Engine] Workflow finished, breaking loop");
-                break;
-            }
-
-            let step_result = self.advance_once().await?;
-
-            if !step_result.should_continue || self.is_deferred_task() {
-                debug!("[Engine] Stopping at state: {} (should_continue: {})", 
-                       self.current_state, step_result.should_continue);
-                break;
-            }
-        }
-
-        Ok(())
     }
 
     pub async fn advance_once(&mut self) -> Result<StepOutcome, String> {

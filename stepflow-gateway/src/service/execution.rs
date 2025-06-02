@@ -2,7 +2,8 @@
 use async_trait::async_trait;
 use stepflow_sqlite::models::workflow_execution::WorkflowExecution;
 use stepflow_engine::engine::{WorkflowEngine, WorkflowMode,
-    memory_stub::{MemoryStore, MemoryQueue}};
+    memory::MemoryQueue,
+    persistent::PersistentStore as MemoryStore};
 use crate::dto::execution::*;
 use crate::error::{AppResult, AppError};
 use crate::app_state::AppState;
@@ -58,6 +59,7 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             MemoryQueue::new(),
             self.state.pool.clone(),
             self.state.event_dispatcher.clone(),
+            self.state.persist.clone(),
         );
 
         // ③ Inline 直接跑完；Deferred 放入 Map

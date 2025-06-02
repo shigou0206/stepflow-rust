@@ -10,4 +10,15 @@ pub enum WorkflowMode {
 pub struct StepOutcome {
     pub should_continue: bool,
     pub updated_context: Value,
+}
+
+#[derive(Debug)]
+pub struct StateExecutionResult {
+    pub value: Value,
+}
+
+impl StateExecutionResult {
+    pub fn new(value: Value) -> Self {
+        Self { value }
+    }
 } 

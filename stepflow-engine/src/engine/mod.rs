@@ -2,8 +2,8 @@ mod core;
 mod types;
 mod traits;
 mod dispatch;
-mod persistent;
-mod memory;
+pub mod persistent;
+pub mod memory;
 
 pub use core::WorkflowEngine;
 pub use types::WorkflowMode;
