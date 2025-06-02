@@ -64,7 +64,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
     /// 从数据库恢复工作流引擎状态
     pub async fn restore(
         run_id: String,
-        dsl: WorkflowDSL,
         store: S,
         queue: Q,
         pool: SqlitePool,
@@ -78,7 +77,20 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Execution {} not found", run_id))?;
 
-        // 2. 解析上下文数据
+        // 2. 从模板加载 DSL
+        let template_id = execution.template_id
+            .ok_or_else(|| "Template ID not found in execution record".to_string())?;
+            
+        let template = persistence
+            .get_template(&template_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Template {} not found", template_id))?;
+
+        let dsl: WorkflowDSL = serde_json::from_str(&template.dsl_definition)
+            .map_err(|e| format!("Failed to parse DSL from template: {}", e))?;
+
+        // 3. 解析上下文数据
         let context = if let Some(ctx_str) = execution.context_snapshot {
             serde_json::from_str(&ctx_str)
                 .map_err(|e| format!("Failed to parse context: {}", e))?
@@ -89,27 +101,21 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
                 execution.status,
                 execution.mode
             );
-            // 记录事件
-            event_dispatcher.dispatch(EngineEvent::NodeFailed {
-                run_id: run_id.clone(),
-                state_name: "restore".to_string(),
-                error: format!("Missing context_snapshot for workflow {}", run_id),
-            }).await;
             Value::Object(Default::default())
         };
 
-        // 3. 确定当前状态
+        // 4. 确定当前状态
         let current_state = execution.current_state_name
             .unwrap_or_else(|| dsl.start_at.clone());
 
-        // 4. 解析执行模式
+        // 5. 解析执行模式
         let mode = match execution.mode.as_str() {
             "INLINE" => WorkflowMode::Inline,
             "DEFERRED" => WorkflowMode::Deferred,
             _ => return Err(format!("Invalid mode: {}", execution.mode)),
         };
 
-        // 5. 确定工作流状态
+        // 6. 确定工作流状态
         let finished = match execution.status.as_str() {
             // 终态
             "COMPLETED" | "FAILED" | "TERMINATED" => true,
