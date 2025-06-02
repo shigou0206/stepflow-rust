@@ -60,6 +60,63 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         }
     }
 
+    /// 从数据库恢复工作流引擎状态
+    pub async fn restore(
+        run_id: String,
+        dsl: WorkflowDSL,
+        store: S,
+        queue: Q,
+        pool: SqlitePool,
+        event_dispatcher: Arc<EngineEventDispatcher>,
+        persistence: Arc<dyn PersistenceManager>,
+    ) -> Result<Self, String> {
+        // 1. 从 DB 加载执行记录
+        let execution = persistence
+            .get_execution(&run_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Execution {} not found", run_id))?;
+
+        // 2. 解析上下文数据
+        let context = if let Some(ctx_str) = execution.context_snapshot {
+            serde_json::from_str(&ctx_str)
+                .map_err(|e| format!("Failed to parse context: {}", e))?
+        } else {
+            Value::Object(Default::default())
+        };
+
+        // 3. 确定当前状态
+        let current_state = execution.current_state_name
+            .unwrap_or_else(|| dsl.start_at.clone());
+
+        // 4. 解析执行模式
+        let mode = match execution.mode.as_str() {
+            "INLINE" => WorkflowMode::Inline,
+            "DEFERRED" => WorkflowMode::Deferred,
+            _ => return Err(format!("Invalid mode: {}", execution.mode)),
+        };
+
+        // 5. 确定是否已完成
+        let finished = matches!(execution.status.as_str(), "COMPLETED" | "FAILED");
+
+        Ok(Self {
+            run_id,
+            current_state,
+            dsl,
+            context,
+            mode,
+            store,
+            queue,
+            pool,
+            event_dispatcher,
+            persistence,
+            finished,
+            updated_at: execution.close_time
+                .unwrap_or_else(|| execution.start_time)
+                .and_utc(),
+        })
+    }
+
     pub async fn run_inline(&mut self) -> Result<Value, String> {
         let result = self.run_state().await?;
         Ok(result)
@@ -67,7 +124,11 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
 
     pub async fn advance_until_blocked(&mut self) -> Result<StateExecutionResult, String> {
         let result = self.run_state().await?;
-        Ok(StateExecutionResult::new(result))
+        Ok(StateExecutionResult {
+            output: result,
+            next_state: Some(self.current_state.clone()),
+            should_continue: !self.finished,
+        })
     }
 
     async fn run_state(&mut self) -> Result<Value, String> {

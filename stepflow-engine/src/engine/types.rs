@@ -12,13 +12,5 @@ pub struct StepOutcome {
     pub updated_context: Value,
 }
 
-#[derive(Debug)]
-pub struct StateExecutionResult {
-    pub value: Value,
-}
-
-impl StateExecutionResult {
-    pub fn new(value: Value) -> Self {
-        Self { value }
-    }
-} 
+// Re-export StateExecutionResult from handler
+pub use crate::handler::context::StateExecutionResult; 
