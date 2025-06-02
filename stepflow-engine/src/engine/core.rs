@@ -1,11 +1,12 @@
 use chrono::{DateTime, Utc};
-use log::debug;
+use log::{debug, warn};
 use serde_json::Value;
 use sqlx::{SqlitePool, Acquire};
 use stepflow_dsl::{State, WorkflowDSL};
 use std::sync::Arc;
 use stepflow_storage::PersistenceManager;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
+use stepflow_sqlite::models::workflow_execution::UpdateWorkflowExecution;
 
 use crate::command::step_once;
 
@@ -82,6 +83,18 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             serde_json::from_str(&ctx_str)
                 .map_err(|e| format!("Failed to parse context: {}", e))?
         } else {
+            warn!(
+                "[Engine] Missing context_snapshot for workflow {} (status: {}, mode: {}), using empty object as default",
+                run_id,
+                execution.status,
+                execution.mode
+            );
+            // 记录事件
+            event_dispatcher.dispatch(EngineEvent::NodeFailed {
+                run_id: run_id.clone(),
+                state_name: "restore".to_string(),
+                error: format!("Missing context_snapshot for workflow {}", run_id),
+            }).await;
             Value::Object(Default::default())
         };
 
@@ -96,8 +109,17 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             _ => return Err(format!("Invalid mode: {}", execution.mode)),
         };
 
-        // 5. 确定是否已完成
-        let finished = matches!(execution.status.as_str(), "COMPLETED" | "FAILED");
+        // 5. 确定工作流状态
+        let finished = match execution.status.as_str() {
+            // 终态
+            "COMPLETED" | "FAILED" | "TERMINATED" => true,
+            // 中间态
+            "RUNNING" | "PENDING" => false,
+            // 暂停态 - 需要手动恢复
+            "PAUSED" | "SUSPENDED" => true,
+            // 其他状态视为异常
+            status => return Err(format!("Invalid workflow status: {}", status)),
+        };
 
         Ok(Self {
             run_id,
@@ -115,6 +137,40 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
                 .unwrap_or_else(|| execution.start_time)
                 .and_utc(),
         })
+    }
+
+    /// 恢复暂停的工作流
+    pub async fn resume(&mut self) -> Result<(), String> {
+        // 检查当前状态
+        let execution = self.persistence
+            .get_execution(&self.run_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Execution {} not found", self.run_id))?;
+
+        match execution.status.as_str() {
+            "PAUSED" | "SUSPENDED" => {
+                self.finished = false;
+                Ok(())
+            }
+            status => Err(format!("Cannot resume workflow in {} status", status)),
+        }
+    }
+
+    /// 暂停工作流
+    pub async fn pause(&mut self) -> Result<(), String> {
+        // 更新数据库状态
+        let update = UpdateWorkflowExecution {
+            status: Some("PAUSED".to_string()),
+            ..Default::default()
+        };
+        
+        self.persistence.update_execution(&self.run_id, &update)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        self.finished = true;
+        Ok(())
     }
 
     pub async fn run_inline(&mut self) -> Result<Value, String> {
