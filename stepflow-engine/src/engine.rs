@@ -5,7 +5,6 @@
 
 use chrono::{DateTime, Utc};
 use log::debug;
-use tracing::info;
 use serde_json::Value;
 use sqlx::{Sqlite, Transaction, SqlitePool, Acquire};
 use stepflow_dsl::{state::base::BaseState, State, WorkflowDSL};
