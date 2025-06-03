@@ -12,8 +12,8 @@ pub async fn ws_handler(
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
-async fn handle_socket(mut socket: WebSocket, state: axum::extract::State<AppState>) {
-    let (tx, mut rx) = broadcast::channel(100);
+async fn handle_socket(mut socket: WebSocket, _state: axum::extract::State<AppState>) {
+    let (_tx, mut rx) = broadcast::channel(100);
 
     // 发送初始状态
     if let Err(e) = socket.send(Message::Text("Connected to StepFlow WebSocket".into())).await {

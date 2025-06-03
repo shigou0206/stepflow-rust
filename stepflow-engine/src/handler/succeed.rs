@@ -29,7 +29,7 @@ impl SucceedHandler {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<'a> StateHandler for SucceedHandler {
     async fn handle(
         &self,

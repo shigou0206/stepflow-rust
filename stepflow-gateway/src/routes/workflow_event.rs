@@ -7,9 +7,8 @@ use crate::{
     app_state::AppState,
     dto::workflow_event::*,
     error::AppResult,
-    service::{WorkflowEventSvc, WorkflowEventService},
+    service::WorkflowEventSvc,
 };
-use utoipa::ToSchema;
 
 pub fn router(svc: WorkflowEventSvc) -> Router<AppState> {
     Router::new()

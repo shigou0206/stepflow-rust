@@ -30,7 +30,7 @@ impl<'a> FailHandler<'a> {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<'a> StateHandler for FailHandler<'a> {
     async fn handle(
         &self,

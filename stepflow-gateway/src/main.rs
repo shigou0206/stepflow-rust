@@ -1,6 +1,5 @@
 mod app_state;
 mod error;
-mod middleware;
 mod dto;
 mod service;
 mod routes;
@@ -10,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 use app_state::AppState;
 use stepflow_storage::PersistenceManagerImpl;
 use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
+use stepflow_engine::match_service::MemoryMatchService;
 use tower_http::{
     trace::TraceLayer,
     cors::CorsLayer,
@@ -85,12 +85,14 @@ async fn main() -> anyhow::Result<()> {
     let pool = sqlx::SqlitePool::connect_lazy("sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db")?;
     let persist = std::sync::Arc::new(PersistenceManagerImpl::new(pool.clone()));
     let event_dispatcher = std::sync::Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
+    let match_service = MemoryMatchService::new();
 
     let state = AppState { 
         pool, 
         persist, 
         engines: Default::default(),
         event_dispatcher,
+        match_service,
     };
 
     // -------- router -------

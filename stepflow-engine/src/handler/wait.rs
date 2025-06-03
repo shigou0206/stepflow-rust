@@ -117,7 +117,7 @@ impl<'a> WaitHandler<'a> {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<'a> StateHandler for WaitHandler<'a> {
     async fn handle(
         &self,

@@ -7,7 +7,6 @@ use crate::{
 };
 use serde_json::Value;
 use stepflow_sqlite::models::activity_task::{ActivityTask, UpdateActivityTask};
-use chrono::{DateTime, Utc};
 
 #[derive(Clone)]
 pub struct ActivityTaskSqlxSvc {
@@ -33,10 +32,10 @@ impl From<ActivityTask> for ActivityTaskDto {
             error_details: task.error_details,
             attempt: task.attempt,
             max_attempts: task.max_attempts,
-            scheduled_at: DateTime::from_utc(task.scheduled_at, Utc),
-            started_at: task.started_at.map(|dt| DateTime::from_utc(dt, Utc)),
-            completed_at: task.completed_at.map(|dt| DateTime::from_utc(dt, Utc)),
-            heartbeat_at: task.heartbeat_at.map(|dt| DateTime::from_utc(dt, Utc)),
+            scheduled_at: task.scheduled_at.and_utc(),
+            started_at: task.started_at.map(|dt| dt.and_utc()),
+            completed_at: task.completed_at.map(|dt| dt.and_utc()),
+            heartbeat_at: task.heartbeat_at.map(|dt| dt.and_utc()),
         }
     }
 }
@@ -146,7 +145,7 @@ impl ActivityTaskService for ActivityTaskSqlxSvc {
         Ok(task.into())
     }
 
-    async fn heartbeat_task(&self, task_token: &str, req: HeartbeatRequest) -> AppResult<ActivityTaskDto> {
+    async fn heartbeat_task(&self, task_token: &str, _req: HeartbeatRequest) -> AppResult<ActivityTaskDto> {
         let task = self.pm.get_task(task_token).await
             .map_err(AppError::Db)?
             .ok_or(AppError::NotFound)?;

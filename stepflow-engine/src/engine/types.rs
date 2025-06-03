@@ -10,7 +10,7 @@ pub enum WorkflowMode {
 pub struct StepOutcome {
     pub should_continue: bool,
     pub updated_context: Value,
-}
+} 
 
 // Re-export StateExecutionResult from handler
 pub use crate::handler::context::StateExecutionResult; 

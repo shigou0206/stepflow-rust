@@ -8,6 +8,8 @@ pub mod engine;
 pub mod logic;
 pub mod mapping;
 pub mod tools;
+pub mod match_service;
+
 pub use command::{Command, CommandResult, step_once};
 pub use engine::{WorkflowEngine, WorkflowMode, TaskStore, TaskQueue};
 pub use engine::memory::MemoryQueue;

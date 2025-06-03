@@ -5,10 +5,10 @@ use axum::{
 };
 use crate::{
     dto::worker::{PollRequest, PollResponse, UpdateRequest},
-    error::AppResult,
+    error::{AppResult, AppError},
     app_state::AppState,
 };
-use stepflow_engine::engine::WorkflowMode;
+use std::time::Duration;
 
 /// Worker 轮询任务
 #[utoipa::path(
@@ -26,33 +26,46 @@ pub async fn poll_task(
     State(state): State<AppState>,
     Json(req): Json<PollRequest>,
 ) -> AppResult<Json<PollResponse>> {
-    let engines = state.engines.lock().await;
+    const DEFAULT_QUEUE_NAME: &str = "default_task_queue";
+    const POLL_TIMEOUT_SECONDS: u64 = 30;
 
-    println!("📡 [/poll] Worker 请求任务: worker_id = {}", req.worker_id);
-    println!("🧠 当前内存中引擎数量: {}", engines.len());
+    println!(
+        "📡 [/poll] Worker '{}' polling queue '{}' with timeout {}s",
+        req.worker_id,
+        DEFAULT_QUEUE_NAME,
+        POLL_TIMEOUT_SECONDS
+    );
 
-    for (run_id, engine) in engines.iter() {
-        println!("🔍 检查引擎: {}, 当前状态: {}, 模式: {:?}", run_id, engine.current_state, engine.mode);
-
-        if engine.mode == WorkflowMode::Deferred {
-            println!("✅ 分配任务: run_id = {}, state = {}", run_id, engine.current_state);
-
-            return Ok(Json(PollResponse {
+    match state
+        .match_service
+        .poll_task(
+            DEFAULT_QUEUE_NAME, 
+            &req.worker_id, 
+            Duration::from_secs(POLL_TIMEOUT_SECONDS)
+        )
+        .await
+    {
+        Some(task) => {
+            println!("✅ Task found for worker '{}': run_id: {}, state: {}", 
+                req.worker_id, task.run_id, task.state_name);
+            Ok(Json(PollResponse {
                 has_task: true,
-                run_id: Some(run_id.clone()),
-                state_name: Some(engine.current_state.clone()),
-                input: Some(engine.context.clone()),
-            }));
+                run_id: Some(task.run_id),
+                state_name: Some(task.state_name),
+                input: task.input,
+            }))
+        }
+        None => {
+            println!("❌ No task available for worker '{}' in queue '{}' within timeout", 
+                req.worker_id, DEFAULT_QUEUE_NAME);
+            Ok(Json(PollResponse {
+                has_task: false,
+                run_id: None,
+                state_name: None,
+                input: None,
+            }))
         }
     }
-
-    println!("❌ 当前无可执行任务（Deferred）");
-    Ok(Json(PollResponse {
-        has_task: false,
-        run_id: None,
-        state_name: None,
-        input: None,
-    }))
 }
 
 /// Worker 路由
@@ -69,38 +82,57 @@ pub fn router() -> Router<AppState> {
     request_body = UpdateRequest,
     responses(
         (status = 200, description = "成功更新任务状态"),
-        (status = 400, description = "请求参数错误"),
-        (status = 500, description = "服务器内部错误")
+        (status = 404, description = "未找到对应工作流实例"),
+        (status = 500, description = "服务器内部错误或引擎推进失败")
     ),
     tag = "worker"
 )]
+#[axum::debug_handler]
 pub async fn update(
     State(state): State<AppState>,
     Json(req): Json<UpdateRequest>,
 ) -> AppResult<()> {
-    println!("📥 [/update] 收到状态上报: run_id = {}, state_name = {}, status = {}",
-        req.run_id, req.state_name, req.status);
+    tracing::info!(
+        run_id = %req.run_id, 
+        state_name = %req.state_name, 
+        status = %req.status, 
+        "📥 [/update] Received task status update from worker."
+    );
     
     let mut engines = state.engines.lock().await;
-    println!("🧠 当前引擎数量: {}", engines.len());
+    tracing::debug!("🧠 Current engine count: {}", engines.len());
 
     if let Some(engine) = engines.get_mut(&req.run_id) {
-        println!("✅ 找到引擎: 当前状态 = {}", engine.current_state);
+        tracing::info!(
+            run_id = %req.run_id, 
+            current_engine_state = %engine.current_state, 
+            "✅ Engine found."
+        );
 
         engine.context = req.result.clone();
-        println!("📦 更新上下文: {:?}", engine.context);
+        tracing::debug!(run_id = %req.run_id, context = ?engine.context, "📦 Engine context updated.");
 
         match engine.advance_until_blocked().await {
-            Ok(_) => println!("🎯 引擎推进完成（或已阻塞/完成）"),
-            Err(e) => println!("❌ 引擎推进失败: {}", e),
+            Ok(_) => {
+                tracing::info!(run_id = %req.run_id, "🎯 Engine advanced successfully (or already blocked/finished).");
+            }
+            Err(e) => {
+                tracing::error!(run_id = %req.run_id, error = %e, "❌ Engine advancement failed.");
+                return Err(AppError::Anyhow(anyhow::anyhow!(
+                    "Engine advancement failed for run_id {}: {}", req.run_id, e
+                )));
+            }
         }
 
         if engine.finished {
-            println!("✅ 工作流已完成，准备移除引擎 {}", req.run_id);
+            tracing::info!(run_id = %req.run_id, "🏁 Workflow finished. Removing engine from memory.");
             engines.remove(&req.run_id);
+        } else {
+            tracing::info!(run_id = %req.run_id, current_engine_state = %engine.current_state, "🔄 Workflow not yet finished, remains in memory.");
         }
     } else {
-        println!("❌ 没有找到对应引擎: run_id = {}", req.run_id);
+        tracing::warn!(run_id = %req.run_id, "❌ Engine not found for task update.");
+        return Err(AppError::NotFound);
     }
 
     Ok(())

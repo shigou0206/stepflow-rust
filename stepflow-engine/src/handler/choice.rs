@@ -57,7 +57,7 @@ impl<'a> ChoiceHandler<'a> {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<'a> StateHandler for ChoiceHandler<'a> {
     async fn handle(
         &self,

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use stepflow_storage::PersistenceManager;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_sqlite::models::workflow_execution::UpdateWorkflowExecution;
+use crate::match_service::MatchService;
 
 use crate::command::step_once;
 
@@ -28,6 +29,7 @@ pub struct WorkflowEngine<S: TaskStore, Q: TaskQueue> {
     pub pool: SqlitePool,
     pub event_dispatcher: Arc<EngineEventDispatcher>,
     pub persistence: Arc<dyn PersistenceManager>,
+    pub match_service: Arc<dyn MatchService>,
 
     pub finished: bool,
     pub updated_at: DateTime<Utc>,
@@ -44,6 +46,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         pool: SqlitePool,
         event_dispatcher: Arc<EngineEventDispatcher>,
         persistence: Arc<dyn PersistenceManager>,
+        match_service: Arc<dyn MatchService>,
     ) -> Self {
         Self {
             run_id,
@@ -56,6 +59,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             pool,
             event_dispatcher,
             persistence,
+            match_service,
             finished: false,
             updated_at: Utc::now(),
         }
@@ -69,6 +73,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         pool: SqlitePool,
         event_dispatcher: Arc<EngineEventDispatcher>,
         persistence: Arc<dyn PersistenceManager>,
+        match_service: Arc<dyn MatchService>,
     ) -> Result<Self, String> {
         // 1. 从 DB 加载执行记录
         let execution = persistence
@@ -138,6 +143,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             pool,
             event_dispatcher,
             persistence,
+            match_service,
             finished,
             updated_at: execution.close_time
                 .unwrap_or_else(|| execution.start_time)
@@ -195,9 +201,9 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
 
     async fn run_state(&mut self) -> Result<Value, String> {
         if self.mode == WorkflowMode::Inline {
-            self.event_dispatcher.dispatch(EngineEvent::WorkflowStarted { 
-                run_id: self.run_id.clone() 
-            }).await;
+        self.event_dispatcher.dispatch(EngineEvent::WorkflowStarted { 
+            run_id: self.run_id.clone() 
+        }).await;
         }
 
         loop {
@@ -312,7 +318,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             &self.run_id,
             self.mode,
             &self.store,
-            &self.queue,
+            self.match_service.clone(),
             &mut tx,
             self.event_dispatcher.clone(),
             self.persistence.clone(),

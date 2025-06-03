@@ -3,8 +3,8 @@ use serde_json::Value;
 use super::context::{StateExecutionContext, StateExecutionResult};
 
 /// 统一的状态处理器接口
-#[async_trait(?Send)]
-pub trait StateHandler {
+#[async_trait]
+pub trait StateHandler: Send + Sync {
     /// 处理状态逻辑
     async fn handle(
         &self,

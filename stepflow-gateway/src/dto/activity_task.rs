@@ -74,5 +74,5 @@ pub struct FailRequest {
 #[serde(rename_all = "camelCase")]
 pub struct HeartbeatRequest {
     /// 心跳详情
-    pub details: Option<String>,
+    pub _details: Option<String>,
 } 

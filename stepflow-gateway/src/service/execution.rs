@@ -60,6 +60,7 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             self.state.pool.clone(),
             self.state.event_dispatcher.clone(),
             self.state.persist.clone(),
+            self.state.match_service.clone(),
         );
 
         // ③ Inline 直接跑完；Deferred 放入 Map
@@ -127,8 +128,8 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             mode:   row.mode,
             status: row.status,
             result: row.result.as_ref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
-            started_at: chrono::DateTime::from_utc(row.start_time, chrono::Utc),
-            finished_at: Option::map(row.close_time, |t| chrono::DateTime::from_utc(t, chrono::Utc)),
+            started_at: row.start_time.and_utc(),
+            finished_at: Option::map(row.close_time, |t| t.and_utc()),
         })
     }
 
@@ -139,8 +140,8 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             mode:   r.mode,
             status: r.status,
             result: r.result.as_ref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
-            started_at: chrono::DateTime::from_utc(r.start_time, chrono::Utc),
-            finished_at: Option::map(r.close_time, |t| chrono::DateTime::from_utc(t, chrono::Utc)),
+            started_at: r.start_time.and_utc(),
+            finished_at: Option::map(r.close_time, |t| t.and_utc()),
         }).collect::<Vec<_>>())
     }
 }

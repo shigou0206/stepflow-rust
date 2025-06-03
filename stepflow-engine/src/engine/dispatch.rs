@@ -7,11 +7,12 @@ use crate::{
     command::Command,
     handler,
     mapping::MappingPipeline,
+    match_service::MatchService,
 };
 
 use super::{
     types::{WorkflowMode, StepOutcome},
-    traits::{TaskStore, TaskQueue},
+    traits::{TaskStore},
 };
 
 use std::sync::Arc;
@@ -74,10 +75,6 @@ impl<'a> EventContext<'a> {
             error: error.to_string(),
         }).await;
     }
-
-    async fn dispatch(&self, event: EngineEvent) {
-        self.dispatcher.dispatch(event).await;
-    }
 }
 
 trait StateTransition {
@@ -88,7 +85,7 @@ trait StateTransition {
         run_id: &str,
         mode: WorkflowMode,
         store: &impl TaskStore,
-        queue: &impl TaskQueue,
+        match_service: Arc<dyn MatchService>,
         tx: &mut Transaction<'_, Sqlite>,
         event_dispatcher: &Arc<EngineEventDispatcher>,
         persistence: &Arc<dyn PersistenceManager>,
@@ -103,7 +100,7 @@ impl StateTransition for State {
         run_id: &str,
         mode: WorkflowMode,
         store: &impl TaskStore,
-        queue: &impl TaskQueue,
+        match_service: Arc<dyn MatchService>,
         tx: &mut Transaction<'_, Sqlite>,
         event_dispatcher: &Arc<EngineEventDispatcher>,
         persistence: &Arc<dyn PersistenceManager>,
@@ -120,14 +117,14 @@ impl StateTransition for State {
                     t,
                     input,
                     store,
-                    queue,
+                    match_service,
                     tx,
                     event_dispatcher.clone(),
                     persistence.clone(),
                 ).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
-                        Ok((result, t.base.next.clone()))
+                Ok((result, t.base.next.clone()))
                     }
                     Err(e) => {
                         evt_ctx.fail(&e).await;
@@ -139,7 +136,7 @@ impl StateTransition for State {
                 match handler::handle_wait(state_name, w, input, mode, run_id, persistence, event_dispatcher).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
-                        Ok((result, w.base.next.clone()))
+                Ok((result, w.base.next.clone()))
                     }
                     Err(e) => {
                         evt_ctx.fail(&e).await;
@@ -151,7 +148,7 @@ impl StateTransition for State {
                 match handler::handle_pass(state_name, p, input, run_id, event_dispatcher, persistence).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
-                        Ok((result, p.base.next.clone()))
+                Ok((result, p.base.next.clone()))
                     }
                     Err(e) => {
                         evt_ctx.fail(&e).await;
@@ -163,7 +160,7 @@ impl StateTransition for State {
                 match handler::handle_choice(state_name, c, input, run_id, event_dispatcher, persistence).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
-                        Ok((result, None))
+                Ok((result, None))
                     }
                     Err(e) => {
                         evt_ctx.fail(&e).await;
@@ -175,8 +172,8 @@ impl StateTransition for State {
                 match handler::handle_succeed(state_name, input, run_id, event_dispatcher, persistence).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
-                        Ok((result, None))
-                    }
+                Ok((result, None))
+            }
                     Err(e) => {
                         evt_ctx.fail(&e).await;
                         Err(DispatchError::StateError(e))
@@ -195,7 +192,7 @@ impl StateTransition for State {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, None))
-                    }
+            }
                     Err(e) => {
                         evt_ctx.fail(&e).await;
                         Err(DispatchError::StateError(e))
@@ -213,14 +210,14 @@ impl StateTransition for State {
     }
 }
 
-pub(crate) async fn dispatch_command<S: TaskStore, Q: TaskQueue>(
+pub(crate) async fn dispatch_command<S: TaskStore>(
     cmd: &Command,
     state_enum: &State,
     context: &Value,
     run_id: &str,
     mode: WorkflowMode,
     store: &S,
-    queue: &Q,
+    match_service: Arc<dyn MatchService>,
     tx: &mut Transaction<'_, Sqlite>,
     event_dispatcher: Arc<EngineEventDispatcher>,
     persistence: Arc<dyn PersistenceManager>,
@@ -259,7 +256,7 @@ pub(crate) async fn dispatch_command<S: TaskStore, Q: TaskQueue>(
             run_id,
             mode,
             store,
-            queue,
+            match_service,
             tx,
             &event_dispatcher,
             &persistence,

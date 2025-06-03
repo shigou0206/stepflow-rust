@@ -33,7 +33,7 @@ impl TemplateSqlxSvc {
                 id: row.template_id,
                 name: row.name,
                 dsl: body.dsl,
-                created_at: chrono::DateTime::from_utc(row.created_at, chrono::Utc),
+                created_at: row.created_at.and_utc(),
             })
         } else {
             // 若不存在可决定返回 404 或新增，这里选择 404
@@ -54,7 +54,7 @@ impl TemplateSqlxSvc {
                 id: row.template_id,
                 name: row.name,
                 dsl: serde_json::from_str(&row.dsl_definition).unwrap_or_default(),
-                created_at: chrono::DateTime::from_utc(row.created_at, chrono::Utc),
+                created_at: row.created_at.and_utc(),
             })
         }
     }
@@ -78,7 +78,7 @@ impl crate::service::TemplateService for TemplateSqlxSvc {
             id: row.template_id,
             name: row.name,
             dsl: serde_json::from_str(&row.dsl_definition).unwrap_or_default(),
-            created_at: chrono::DateTime::from_utc(row.created_at, chrono::Utc),
+            created_at: row.created_at.and_utc(),
         })
     }
 
@@ -88,7 +88,7 @@ impl crate::service::TemplateService for TemplateSqlxSvc {
             id: r.template_id,
             name: r.name,
             dsl: serde_json::from_str(&r.dsl_definition).unwrap_or_default(),
-            created_at: chrono::DateTime::from_utc(r.created_at, chrono::Utc),
+            created_at: r.created_at.and_utc(),
         }).collect())
     }
 

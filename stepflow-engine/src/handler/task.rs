@@ -7,43 +7,34 @@
 use serde_json::Value;
 use sqlx::{Sqlite, Transaction};
 use stepflow_dsl::state::task::TaskState;
-use crate::engine::{TaskQueue, TaskStore, WorkflowMode};
+use crate::engine::{TaskStore, WorkflowMode};
+use crate::match_service::{MatchService, Task as MatchServiceTask};
 use stepflow_hook::EngineEventDispatcher;
 use stepflow_storage::PersistenceManager;
 use std::sync::Arc;
 use crate::tools;
 use async_trait::async_trait;
-use tracing::debug;
+use tracing::{debug, warn};
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 
 
 // -----------------------------------------------------------------------------
 // Public API
 // -----------------------------------------------------------------------------
-/// 执行 TaskState：根据 `mode` 决定是 **Inline** 立即执行工具，还是 **Deferred**
-///
-/// - Inline: 直接调用 `run_tool_inline`，并把工具返回的结果当成 `Value` 返回给 Engine。
-/// - Deferred:
-///     1. 向 `store` 写一条待办记录，`run_id` 由上层 Engine 传入，
-///     2. 向 `queue` 推入一个任务，同样把 `run_id` 一并传给队列，
-///     3. 返回"原始输入"给 Engine，让 Engine 暂停流程等待外部 Worker 回报。
-pub async fn handle_task<S, Q>(
+/// Executes TaskState: decides between Inline execution or Deferred dispatch via MatchService.
+pub async fn handle_task(
     mode: WorkflowMode,
     run_id: &str,
     state_name: &str,
     state: &TaskState,
     input: &Value,
-    store: &S,
-    queue: &Q,
-    tx: &mut Transaction<'_, Sqlite>,
+    _store: &impl TaskStore, // Keep a generic TaskStore reference if other parts of handle_task use it, or remove if not.
+    match_service: Arc<dyn MatchService>,
+    _tx: &mut Transaction<'_, Sqlite>,
     event_dispatcher: Arc<EngineEventDispatcher>,
     persistence: Arc<dyn PersistenceManager>,
 ) -> Result<Value, String>
-where
-    S: TaskStore,
-    Q: TaskQueue,
 {
-    let _ = tx;
     let ctx = StateExecutionContext::new(
         run_id,
         state_name,
@@ -52,27 +43,25 @@ where
         &persistence,
     );
 
-    let handler = TaskHandler::new(store, queue, state);
+    let handler = TaskHandler::new(match_service, state);
     let result = handler.execute(&ctx, input).await?;
     
     Ok(result.output)
 }
 
-pub struct TaskHandler<'a, S: TaskStore, Q: TaskQueue> {
-    store: &'a S,
-    queue: &'a Q,
+pub struct TaskHandler<'a> { // Removed generic <S: TaskStore>
+    match_service: Arc<dyn MatchService>,
     state: &'a TaskState,
+    // _marker: std::marker::PhantomData<S>, // Removed PhantomData
 }
 
-impl<'a, S: TaskStore, Q: TaskQueue> TaskHandler<'a, S, Q> {
+impl<'a> TaskHandler<'a> { // Removed generic <S: TaskStore>
     pub fn new(
-        store: &'a S,
-        queue: &'a Q,
+        match_service: Arc<dyn MatchService>,
         state: &'a TaskState,
     ) -> Self {
         Self {
-            store,
-            queue,
+            match_service,
             state,
         }
     }
@@ -87,44 +76,54 @@ impl<'a, S: TaskStore, Q: TaskQueue> TaskHandler<'a, S, Q> {
         ctx: &StateExecutionContext<'_>,
         input: &Value,
     ) -> Result<Value, String> {
-        debug!("Creating deferred task for resource: {}", self.state.resource);
+        debug!("Creating deferred task for resource: {} via MatchService", self.state.resource);
 
-        // 获取事务作为参数
-        let mut tx = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap()
-            .begin()
+        // TODO: Define how priority and timeout_seconds are sourced from TaskState's DSL definition.
+        //       Currently attempting to parse from execution_config, defaulting to None.
+        let mut priority = None;
+        let mut timeout_seconds = None;
+
+        if let Some(config) = &self.state.execution_config {
+            if let Some(p_val) = config.get("priority") {
+                if let Some(p) = p_val.as_u64().and_then(|v| u8::try_from(v).ok()) {
+                    priority = Some(p);
+                } else {
+                    warn!("Could not parse 'priority' from execution_config for task: {}", ctx.state_name);
+                }
+            }
+            if let Some(t_val) = config.get("timeout_seconds") {
+                if let Some(t) = t_val.as_i64() {
+                    timeout_seconds = Some(t);
+                } else {
+                    warn!("Could not parse 'timeout_seconds' from execution_config for task: {}", ctx.state_name);
+                }
+            }
+        }
+
+        let service_task = MatchServiceTask {
+            run_id: ctx.run_id.to_string(),
+            state_name: ctx.state_name.to_string(),
+            input: Some(input.clone()),
+            task_type: self.state.resource.clone(),
+            task_token: None,
+            priority, // Sourced from execution_config or None
+            attempt: Some(0),
+            max_attempts: None, // TODO: Source from TaskState if defined (e.g., execution_config or direct field)
+            timeout_seconds, // Sourced from execution_config or None
+            scheduled_at: None,
+        };
+        
+        self.match_service
+            .enqueue_task(&self.state.resource, service_task)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("Failed to enqueue task via MatchService: {}", e))?;
 
-        // 1. 在任务表落一条待执行记录
-        self.store
-            .insert_task(
-                &mut tx,
-                ctx.run_id,
-                ctx.state_name,
-                &self.state.resource,
-                input,
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-        // 2. 推入队列，交给外部 Worker
-        self.queue
-            .push(&mut tx, ctx.run_id, ctx.state_name)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        // 提交事务
-        tx.commit()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        // 3. 返回原始输入，Engine 会"挂起"流程
         Ok(input.clone())
     }
 }
 
-#[async_trait(?Send)]
-impl<'a, S: TaskStore, Q: TaskQueue> StateHandler for TaskHandler<'a, S, Q> {
+#[async_trait]
+impl<'a> StateHandler for TaskHandler<'a> {
     async fn handle(
         &self,
         ctx: &StateExecutionContext<'_>,

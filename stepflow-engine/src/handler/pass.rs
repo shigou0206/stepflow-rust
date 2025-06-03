@@ -67,7 +67,7 @@ impl<'a> PassHandler<'a> {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<'a> StateHandler for PassHandler<'a> {
     async fn handle(
         &self,
