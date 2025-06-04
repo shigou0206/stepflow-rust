@@ -9,7 +9,7 @@ use stepflow_dsl::{
     state::choice::ChoiceState,
 };
 use std::sync::Arc;
-use stepflow_storage::PersistenceManager;
+use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::EngineEventDispatcher;
 
 use crate::logic::choice_eval::eval_choice_logic;

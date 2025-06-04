@@ -28,14 +28,14 @@ pub struct ActivityTask {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct UpdateActivityTask {
     pub state_name: Option<String>,
-    pub input: Option<String>,
-    pub result: Option<String>,
+    pub input: Option<Option<String>>,
+    pub result: Option<Option<String>>,
     pub status: Option<String>,
-    pub error: Option<String>,
-    pub error_details: Option<String>,
+    pub error: Option<Option<String>>,
+    pub error_details: Option<Option<String>>,
     pub attempt: Option<i64>,
-    pub heartbeat_at: Option<NaiveDateTime>,
-    pub started_at: Option<NaiveDateTime>,
-    pub completed_at: Option<NaiveDateTime>,
+    pub heartbeat_at: Option<Option<NaiveDateTime>>,
+    pub started_at: Option<Option<NaiveDateTime>>,
+    pub completed_at: Option<Option<NaiveDateTime>>,
     pub version: Option<i64>,
 }

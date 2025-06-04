@@ -40,3 +40,17 @@ impl Default for WorkflowEvent {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct UpdateWorkflowEvent {
+    pub event_type: Option<String>,
+    pub state_id: Option<Option<String>>,
+    pub state_type: Option<Option<String>>,
+    pub trace_id: Option<Option<String>>,
+    pub parent_event_id: Option<Option<i64>>,
+    pub context_version: Option<Option<i64>>,
+    pub attributes: Option<Option<String>>,
+    pub attr_version: Option<i64>,
+    pub timestamp: Option<NaiveDateTime>,
+    pub archived: Option<bool>,
+}
+

@@ -11,7 +11,7 @@ use crate::engine::WorkflowMode;
 use async_trait::async_trait;
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 use serde_json::json;
-
+use stepflow_storage::persistence_manager::PersistenceManager;
 const MAX_INLINE_WAIT_SECONDS: u64 = 300; // 5分钟
 
 #[derive(Error, Debug)]
@@ -58,11 +58,14 @@ impl<'a> WaitHandler<'a> {
         let timer = Timer {
             timer_id: Uuid::new_v4().to_string(),
             run_id: ctx.run_id.to_string(),
-            state_name: ctx.state_name.to_string(),
+            state_name: Some(ctx.state_name.to_string()),
             fire_at: trigger_at,
             shard_id: 0,  // 默认分片
             version: 1,   // 初始版本
             status: "pending".to_string(),
+            payload: None,
+            created_at: now,
+            updated_at: now,
         };
 
         // 分发定时器创建事件
@@ -145,7 +148,7 @@ pub async fn handle_wait(
     input: &Value,
     mode: WorkflowMode,
     run_id: &str,
-    persistence: &std::sync::Arc<dyn stepflow_storage::PersistenceManager>,
+    persistence: &std::sync::Arc<dyn PersistenceManager>,
     event_dispatcher: &std::sync::Arc<stepflow_hook::EngineEventDispatcher>,
 ) -> Result<Value, String> {
     let ctx = StateExecutionContext::new(

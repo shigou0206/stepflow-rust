@@ -4,7 +4,7 @@ use tracing::{debug, info};
 use stepflow_dsl::state::succeed::SucceedState;
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 use std::sync::Arc;
-use stepflow_storage::PersistenceManager;
+use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::EngineEventDispatcher;
 
 /// Succeed handler - 工作流成功结束处理器

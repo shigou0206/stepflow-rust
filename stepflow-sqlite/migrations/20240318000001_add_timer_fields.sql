@@ -1,0 +1,4 @@
+-- Add new columns to timers table
+ALTER TABLE timers ADD COLUMN payload TEXT;
+ALTER TABLE timers ADD COLUMN created_at DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00';
+ALTER TABLE timers ADD COLUMN updated_at DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00'; 

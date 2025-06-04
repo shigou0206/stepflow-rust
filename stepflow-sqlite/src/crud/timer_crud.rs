@@ -9,8 +9,8 @@ where
     sqlx::query!(
         r#"
         INSERT INTO timers (
-            timer_id, run_id, shard_id, fire_at, status, version, state_name
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            timer_id, run_id, shard_id, fire_at, status, version, state_name, payload, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         timer.timer_id,
         timer.run_id,
@@ -18,7 +18,10 @@ where
         timer.fire_at,
         timer.status,
         timer.version,
-        timer.state_name
+        timer.state_name,
+        timer.payload,
+        timer.created_at,
+        timer.updated_at
     )
     .execute(executor)
     .await?;
@@ -38,7 +41,10 @@ where
                fire_at as "fire_at!",
                status as "status!",
                version as "version!",
-               state_name as "state_name!"
+               state_name,
+               payload,
+               created_at as "created_at!",
+               updated_at as "updated_at!"
         FROM timers WHERE timer_id = ?
         "#,
         timer_id
@@ -70,6 +76,7 @@ where
     set_field!(status);
     set_field!(version);
     set_field!(state_name);
+    set_field!(payload);
 
     if !has_fields {
         return Ok(());
@@ -107,7 +114,10 @@ where
                fire_at as "fire_at!",
                status as "status!",
                version as "version!",
-               state_name as "state_name!"
+               state_name,
+               payload,
+               created_at as "created_at!",
+               updated_at as "updated_at!"
         FROM timers 
         WHERE fire_at <= ? 
         ORDER BY fire_at ASC

@@ -10,7 +10,7 @@ use tracing::{error, debug};
 use stepflow_dsl::state::fail::FailState;
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 use std::sync::Arc;
-use stepflow_storage::PersistenceManager;
+use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::EngineEventDispatcher;
 
 pub struct FailHandler<'a> {

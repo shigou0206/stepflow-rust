@@ -15,7 +15,7 @@ pub struct WorkflowTemplate {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct UpdateWorkflowTemplate {
     pub name: Option<String>,
-    pub description: Option<String>,
+    pub description: Option<Option<String>>,
     pub dsl_definition: Option<String>,
     pub version: Option<i64>,
 }

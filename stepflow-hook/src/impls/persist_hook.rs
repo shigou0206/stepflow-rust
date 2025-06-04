@@ -1,22 +1,32 @@
 use crate::{EngineEvent, EngineEventHandler};
-use stepflow_sqlite::models::workflow_execution::WorkflowExecution;
-use stepflow_sqlite::models::workflow_state::WorkflowState;
-use stepflow_sqlite::models::workflow_event::WorkflowEvent;
-use stepflow_storage::PersistenceManager;
+use stepflow_storage::traits::{WorkflowStorage, StateStorage, EventStorage};
+use stepflow_storage::entities::{
+    workflow_execution::{StoredWorkflowExecution, UpdateStoredWorkflowExecution},
+    workflow_state::{StoredWorkflowState, UpdateStoredWorkflowState},
+    workflow_event::StoredWorkflowEvent,
+};
 use chrono::Utc;
 use std::sync::Arc;
+use serde_json::{Value, json};
+use stepflow_storage::error::StorageError;
 
 pub struct PersistHook {
-    persistence: Arc<dyn PersistenceManager>,
+    workflow: Arc<dyn WorkflowStorage>,
+    state: Arc<dyn StateStorage>,
+    event: Arc<dyn EventStorage>,
 }
 
 impl PersistHook {
-    pub fn new(persistence: Arc<dyn PersistenceManager>) -> Arc<Self> {
-        Arc::new(Self { persistence })
+    pub fn new(
+        workflow: Arc<dyn WorkflowStorage>,
+        state: Arc<dyn StateStorage>,
+        event: Arc<dyn EventStorage>,
+    ) -> Arc<Self> {
+        Arc::new(Self { workflow, state, event })
     }
 
     async fn record_event(&self, run_id: &str, event_type: &str, message: &str) {
-        let evt = WorkflowEvent {
+        let evt = StoredWorkflowEvent {
             id: 0,
             run_id: run_id.to_string(),
             shard_id: 1,
@@ -32,7 +42,7 @@ impl PersistHook {
             timestamp: Utc::now().naive_utc(),
             archived: false,
         };
-        let _ = self.persistence.create_event(&evt).await;
+        let _ = self.event.create_event(&evt).await;
     }
 }
 
@@ -41,66 +51,114 @@ impl EngineEventHandler for PersistHook {
     async fn handle_event(&self, event: EngineEvent) {
         match event {
             EngineEvent::WorkflowStarted { run_id } => {
-                let exec = WorkflowExecution {
+                let exec = StoredWorkflowExecution {
                     run_id: run_id.clone(),
-                    status: "running".into(),
+                    workflow_id: Some(format!("wf_{}", run_id)),
+                    shard_id: 1,
+                    template_id: None,
+                    mode: "default".to_string(),
+                    current_state_name: None,
+                    workflow_type: "default".to_string(),
+                    status: "running".to_string(),
+                    input: None,
+                    input_version: 1,
+                    result: None,
+                    result_version: 1,
                     start_time: Utc::now().naive_utc(),
-                    ..Default::default()
+                    close_time: None,
+                    current_event_id: 0,
+                    memo: None,
+                    search_attrs: None,
+                    context_snapshot: None,
+                    version: 1,
                 };
-                let _ = self.persistence.create_execution(&exec).await;
+                let _ = self.workflow.create_execution(&exec).await;
             }
 
             EngineEvent::NodeEnter { run_id, state_name, input } => {
-                let state = WorkflowState {
+                let state = StoredWorkflowState {
                     state_id: format!("{run_id}:{state_name}"),
                     run_id: run_id.clone(),
+                    shard_id: 1,
                     state_name: state_name.clone(),
-                    input: Some(input.to_string()),
-                    status: "started".into(),
+                    state_type: "default".to_string(),
+                    input: Some(json!(input)),
+                    status: "started".to_string(),
                     started_at: Some(Utc::now().naive_utc()),
-                    ..Default::default()
+                    output: None,
+                    completed_at: None,
+                    error: None,
+                    error_details: None,
+                    created_at: Utc::now().naive_utc(),
+                    updated_at: Utc::now().naive_utc(),
+                    version: 1,
                 };
-                let _ = self.persistence.create_state(&state).await;
+                let _ = self.state.create_state(&state).await;
                 self.record_event(&run_id, "NodeEnter", &format!("Entered state: {}", state_name)).await;
             }
 
             EngineEvent::NodeSuccess { run_id, state_name, output } => {
                 let state_id = format!("{run_id}:{state_name}");
-                let update = stepflow_sqlite::models::workflow_state::UpdateWorkflowState {
-                    status: Some("succeeded".into()),
-                    output: Some(output.to_string()),
-                    completed_at: Some(Utc::now().naive_utc()),
-                    ..Default::default()
+                let update = UpdateStoredWorkflowState {
+                    state_name: None,
+                    state_type: None,
+                    input: None,
+                    status: Some("succeeded".to_string()),
+                    output: Some(Some(json!(output))),
+                    completed_at: Some(Some(Utc::now().naive_utc())),
+                    error: None,
+                    error_details: None,
+                    started_at: None,
+                    version: None,
                 };
-                let _ = self.persistence.update_state(&state_id, &update).await;
+                let _ = self.state.update_state(&state_id, &update).await;
             }
 
             EngineEvent::NodeFailed { run_id, state_name, error } => {
                 let state_id = format!("{run_id}:{state_name}");
-                let update = stepflow_sqlite::models::workflow_state::UpdateWorkflowState {
-                    status: Some("failed".into()),
-                    error: Some(error),
-                    completed_at: Some(Utc::now().naive_utc()),
-                    ..Default::default()
+                let update = UpdateStoredWorkflowState {
+                    state_name: None,
+                    state_type: None,
+                    input: None,
+                    status: Some("failed".to_string()),
+                    output: None,
+                    completed_at: Some(Some(Utc::now().naive_utc())),
+                    error: Some(Some(error)),
+                    error_details: None,
+                    started_at: None,
+                    version: None,
                 };
-                let _ = self.persistence.update_state(&state_id, &update).await;
+                let _ = self.state.update_state(&state_id, &update).await;
             }
 
             EngineEvent::WorkflowFinished { run_id, result } => {
-                let update = stepflow_sqlite::models::workflow_execution::UpdateWorkflowExecution {
-                    status: Some("completed".into()),
-                    result: Some(result.to_string()),
-                    close_time: Some(Utc::now().naive_utc()),
-                    ..Default::default()
+                let update = UpdateStoredWorkflowExecution {
+                    workflow_id: None,
+                    shard_id: None,
+                    template_id: None,
+                    mode: None,
+                    current_state_name: None,
+                    workflow_type: None,
+                    status: Some("completed".to_string()),
+                    input: None,
+                    input_version: None,
+                    result: Some(Some(json!(result))),
+                    result_version: None,
+                    start_time: None,
+                    close_time: Some(Some(Utc::now().naive_utc())),
+                    current_event_id: None,
+                    memo: None,
+                    search_attrs: None,
+                    context_snapshot: None,
+                    version: None,
                 };
-                let _ = self.persistence.update_execution(&run_id, &update).await;
+                let _ = self.workflow.update_execution(&run_id, &update).await;
             }
 
             _ => {}
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -109,210 +167,70 @@ mod tests {
     use chrono::NaiveDateTime;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
-
-    use stepflow_sqlite::models::{
-        activity_task::*, queue_task::*, timer::*, workflow_execution::*,
-        workflow_state::*, workflow_template::*, workflow_visibility::*,
+    use stepflow_storage::traits::{WorkflowStorage, StateStorage, EventStorage};
+    use stepflow_storage::entities::{
+        workflow_execution::{StoredWorkflowExecution, UpdateStoredWorkflowExecution},
+        workflow_state::{StoredWorkflowState, UpdateStoredWorkflowState},
+        workflow_event::StoredWorkflowEvent,
     };
-    use stepflow_storage::PersistenceManager;
+    use stepflow_storage::error::StorageError;
 
     #[derive(Default)]
-    struct MockPersistenceManager {
-        pub created_states: Arc<Mutex<Vec<WorkflowState>>>,
-        pub created_events: Arc<Mutex<Vec<WorkflowEvent>>>,
+    struct MockPersistence {
+        pub created_states: Arc<Mutex<Vec<StoredWorkflowState>>>,
+        pub created_events: Arc<Mutex<Vec<StoredWorkflowEvent>>>,
+        pub created_executions: Arc<Mutex<Vec<StoredWorkflowExecution>>>,
+        pub updated_states: Arc<Mutex<Vec<(String, UpdateStoredWorkflowState)>>>,
+        pub updated_executions: Arc<Mutex<Vec<(String, UpdateStoredWorkflowExecution)>>>,
     }
 
     #[async_trait]
-    impl PersistenceManager for MockPersistenceManager {
-        async fn create_state(&self, state: &WorkflowState) -> Result<(), sqlx::Error> {
+    impl StateStorage for MockPersistence {
+        async fn create_state(&self, state: &StoredWorkflowState) -> Result<(), StorageError> {
             self.created_states.lock().unwrap().push(state.clone());
             Ok(())
         }
-
-        async fn create_event(&self, event: &WorkflowEvent) -> Result<i64, sqlx::Error> {
+        async fn get_state(&self, _: &str) -> Result<Option<StoredWorkflowState>, StorageError> { Ok(None) }
+        async fn find_states_by_run_id(&self, _: &str, _: i64, _: i64) -> Result<Vec<StoredWorkflowState>, StorageError> { Ok(vec![]) }
+        async fn update_state(&self, state_id: &str, update: &UpdateStoredWorkflowState) -> Result<(), StorageError> {
+            self.updated_states.lock().unwrap().push((state_id.to_string(), update.clone()));
+            Ok(())
+        }
+        async fn delete_state(&self, _: &str) -> Result<(), StorageError> { Ok(()) }
+    }
+    #[async_trait]
+    impl EventStorage for MockPersistence {
+        async fn create_event(&self, event: &StoredWorkflowEvent) -> Result<i64, StorageError> {
             self.created_events.lock().unwrap().push(event.clone());
             Ok(1)
         }
-
-        async fn get_event(&self, _: i64) -> Result<Option<WorkflowEvent>, sqlx::Error> {
-            Ok(None)
-        }
-
-        async fn find_events_by_run_id(&self, _: &str, _: i64, _: i64) -> Result<Vec<WorkflowEvent>, sqlx::Error> {
-            Ok(vec![])
-        }
-
-        async fn archive_event(&self, _: i64) -> Result<(), sqlx::Error> {
+        async fn get_event(&self, _: i64) -> Result<Option<StoredWorkflowEvent>, StorageError> { Ok(None) }
+        async fn find_events_by_run_id(&self, _: &str, _: i64, _: i64) -> Result<Vec<StoredWorkflowEvent>, StorageError> { Ok(vec![]) }
+        async fn update_event(&self, _: i64, _: &stepflow_storage::entities::workflow_event::UpdateStoredWorkflowEvent) -> Result<(), StorageError> { Ok(()) }
+        async fn archive_event(&self, _: i64) -> Result<(), StorageError> { Ok(()) }
+        async fn delete_event(&self, _: i64) -> Result<(), StorageError> { Ok(()) }
+        async fn delete_events_by_run_id(&self, _: &str) -> Result<u64, StorageError> { Ok(0) }
+    }
+    #[async_trait]
+    impl WorkflowStorage for MockPersistence {
+        async fn create_execution(&self, exec: &StoredWorkflowExecution) -> Result<(), StorageError> {
+            self.created_executions.lock().unwrap().push(exec.clone());
             Ok(())
         }
-
-        async fn delete_event(&self, _: i64) -> Result<(), sqlx::Error> {
+        async fn get_execution(&self, _: &str) -> Result<Option<StoredWorkflowExecution>, StorageError> { Ok(None) }
+        async fn find_executions(&self, _: i64, _: i64) -> Result<Vec<StoredWorkflowExecution>, StorageError> { Ok(vec![]) }
+        async fn find_executions_by_status(&self, _: &str, _: i64, _: i64) -> Result<Vec<StoredWorkflowExecution>, StorageError> { Ok(vec![]) }
+        async fn update_execution(&self, run_id: &str, update: &UpdateStoredWorkflowExecution) -> Result<(), StorageError> {
+            self.updated_executions.lock().unwrap().push((run_id.to_string(), update.clone()));
             Ok(())
         }
-
-        async fn delete_events_by_run_id(&self, _: &str) -> Result<u64, sqlx::Error> {
-            Ok(0)
-        }
-
-        // 剩下接口用空实现填充即可
-        async fn create_execution(&self, _: &WorkflowExecution) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-
-        async fn get_execution(&self, _: &str) -> Result<Option<WorkflowExecution>, sqlx::Error> {
-            Ok(None)
-        }
-
-        async fn find_executions(&self, _: i64, _: i64) -> Result<Vec<WorkflowExecution>, sqlx::Error> {
-            Ok(vec![])
-        }
-
-        async fn find_executions_by_status(
-            &self,
-            _: &str,
-            _: i64,
-            _: i64,
-        ) -> Result<Vec<WorkflowExecution>, sqlx::Error> {
-            Ok(vec![])
-        }
-
-        async fn update_execution(
-            &self,
-            _: &str,
-            _: &UpdateWorkflowExecution,
-        ) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-
-        async fn delete_execution(&self, _: &str) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-
-        async fn get_state(&self, _: &str) -> Result<Option<WorkflowState>, sqlx::Error> {
-            Ok(None)
-        }
-
-        async fn find_states_by_run_id(
-            &self,
-            _: &str,
-            _: i64,
-            _: i64,
-        ) -> Result<Vec<WorkflowState>, sqlx::Error> {
-            Ok(vec![])
-        }
-
-        async fn update_state(&self, _: &str, _: &UpdateWorkflowState) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-
-        async fn delete_state(&self, _: &str) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-
-        // 其他接口全部空实现
-        async fn create_task(&self, _: &ActivityTask) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn get_task(&self, _: &str) -> Result<Option<ActivityTask>, sqlx::Error> {
-            Ok(None)
-        }
-        async fn find_tasks_by_status(&self, _: &str, _: i64, _: i64) -> Result<Vec<ActivityTask>, sqlx::Error> {
-            Ok(vec![])
-        }
-        async fn update_task(&self, _: &str, _: &UpdateActivityTask) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn delete_task(&self, _: &str) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-
-        async fn create_timer(&self, _: &Timer) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn get_timer(&self, _: &str) -> Result<Option<Timer>, sqlx::Error> {
-            Ok(None)
-        }
-        async fn update_timer(&self, _: &str, _: &UpdateTimer) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn delete_timer(&self, _: &str) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn find_timers_before(
-            &self,
-            _: NaiveDateTime,
-            _: i64,
-        ) -> Result<Vec<Timer>, sqlx::Error> {
-            Ok(vec![])
-        }
-
-        async fn create_template(&self, _: &WorkflowTemplate) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn get_template(&self, _: &str) -> Result<Option<WorkflowTemplate>, sqlx::Error> {
-            Ok(None)
-        }
-        async fn find_templates(&self, _: i64, _: i64) -> Result<Vec<WorkflowTemplate>, sqlx::Error> {
-            Ok(vec![])
-        }
-        async fn update_template(&self, _: &str, _: &UpdateWorkflowTemplate) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn delete_template(&self, _: &str) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-
-        async fn create_visibility(&self, _: &WorkflowVisibility) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn get_visibility(&self, _: &str) -> Result<Option<WorkflowVisibility>, sqlx::Error> {
-            Ok(None)
-        }
-        async fn find_visibilities_by_status(
-            &self,
-            _: &str,
-            _: i64,
-            _: i64,
-        ) -> Result<Vec<WorkflowVisibility>, sqlx::Error> {
-            Ok(vec![])
-        }
-        async fn update_visibility(
-            &self,
-            _: &str,
-            _: &UpdateWorkflowVisibility,
-        ) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn delete_visibility(&self, _: &str) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-
-        async fn create_queue_task(&self, _: &QueueTask) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn get_queue_task(&self, _: &str) -> Result<Option<QueueTask>, sqlx::Error> {
-            Ok(None)
-        }
-        async fn update_queue_task(&self, _: &str, _: &UpdateQueueTask) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn delete_queue_task(&self, _: &str) -> Result<(), sqlx::Error> {
-            Ok(())
-        }
-        async fn find_queue_tasks_by_status(
-            &self,
-            _: &str,
-            _: i64,
-            _: i64,
-        ) -> Result<Vec<QueueTask>, sqlx::Error> {
-            Ok(vec![])
-        }
+        async fn delete_execution(&self, _: &str) -> Result<(), StorageError> { Ok(()) }
     }
 
     #[tokio::test]
     async fn test_node_enter_creates_state_and_event() {
-        let mock = Arc::new(MockPersistenceManager::default());
-        let hook = PersistHook::new(mock.clone());
+        let mock = Arc::new(MockPersistence::default());
+        let hook = PersistHook::new(mock.clone(), mock.clone(), mock.clone());
 
         let run_id = "test_run";
         let state_name = "MyState";
@@ -329,7 +247,7 @@ mod tests {
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].run_id, run_id);
         assert_eq!(states[0].state_name, state_name);
-        assert_eq!(states[0].input.as_deref(), Some(input.to_string().as_str()));
+        assert_eq!(states[0].input, Some(input));
 
         // 验证事件被写入
         let events = mock.created_events.lock().unwrap();

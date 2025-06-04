@@ -2960,11 +2960,13 @@ name = "stepflow-sqlite"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "once_cell",
  "serde",
  "serde_json",
  "sqlx",
+ "stepflow-storage",
  "tokio",
  "uuid",
 ]
@@ -2980,7 +2982,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
- "stepflow-sqlite",
+ "thiserror 1.0.69",
  "tokio",
 ]
 

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::fmt;
 use thiserror::Error;
 use uuid::Uuid;
-use stepflow_storage::PersistenceManager;
+use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_sqlite::models::queue_task::{QueueTask, UpdateQueueTask};
 
 use super::traits::TaskStore;
@@ -190,7 +190,7 @@ impl TaskStore for PersistentStore {
         let changes = match new_status {
             TaskStatus::Completed => UpdateQueueTask {
                 status: Some(new_status.as_str().to_string()),
-                completed_at: Some(now),
+                completed_at: Some(Some(now)),
                 updated_at: Some(now),
                 ..Default::default()
             },
@@ -200,9 +200,9 @@ impl TaskStore for PersistentStore {
                     UpdateQueueTask {
                         status: Some(TaskStatus::Failed.as_str().to_string()),
                         attempts: Some(attempts),
-                        failed_at: Some(now),
-                        error_message: Some(result.to_string()),
-                        updated_at: Some(now),
+                        failed_at: Some(Some(now)),
+                        error_message: Some(Some(result.to_string())),
+                        updated_at: Some(Some(now)),
                         ..Default::default()
                     }
                 } else {
@@ -210,10 +210,10 @@ impl TaskStore for PersistentStore {
                     UpdateQueueTask {
                         status: Some(TaskStatus::Retrying.as_str().to_string()),
                         attempts: Some(attempts),
-                        error_message: Some(result.to_string()),
-                        last_error_at: Some(now),
-                        next_retry_at: Some(next_retry),
-                        updated_at: Some(now),
+                        error_message: Some(Some(result.to_string())),
+                        last_error_at: Some(Some(now)),
+                        next_retry_at: Some(Some(next_retry)),
+                        updated_at: Some(Some(now)),
                         ..Default::default()
                     }
                 }

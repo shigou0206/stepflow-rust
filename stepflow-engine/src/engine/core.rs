@@ -4,7 +4,7 @@ use serde_json::Value;
 use sqlx::{SqlitePool, Acquire};
 use stepflow_dsl::{State, WorkflowDSL};
 use std::sync::Arc;
-use stepflow_storage::PersistenceManager;
+use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_sqlite::models::workflow_execution::UpdateWorkflowExecution;
 use crate::match_service::MatchService;

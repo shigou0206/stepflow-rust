@@ -1,6 +1,6 @@
 use chrono::Utc;
 use sqlx::{Executor, Result, Sqlite};
-use crate::models::workflow_event::WorkflowEvent;
+use crate::models::workflow_event::{WorkflowEvent, UpdateWorkflowEvent};
 
 // 创建新事件记录，返回生成的自增ID
 pub async fn create_event<'e, E>(executor: E, event: &WorkflowEvent) -> Result<i64>
@@ -140,4 +140,66 @@ where
         .await?;
 
     Ok(result.rows_affected())
+}
+
+pub async fn update_event<'e, E>(
+    executor: E,
+    id: i64,
+    changes: &UpdateWorkflowEvent,
+) -> Result<(), sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    let mut query = sqlx::QueryBuilder::new("UPDATE workflow_events SET ");
+    let mut has_fields = false;
+
+    macro_rules! set_field {
+        ($field:ident) => {
+            if let Some(val) = &changes.$field {
+                if has_fields {
+                    query.push(", ");
+                }
+                query.push(stringify!($field)).push(" = ").push_bind(val);
+                has_fields = true;
+            }
+        };
+    }
+
+    macro_rules! set_optional_field {
+        ($field:ident) => {
+            if let Some(opt_val) = &changes.$field {
+                if has_fields {
+                    query.push(", ");
+                }
+                match opt_val {
+                    Some(val) => {
+                        query.push(stringify!($field)).push(" = ").push_bind(val);
+                    }
+                    None => {
+                        query.push(stringify!($field)).push(" = NULL");
+                    }
+                }
+                has_fields = true;
+            }
+        };
+    }
+
+    set_field!(event_type);
+    set_optional_field!(state_id);
+    set_optional_field!(state_type);
+    set_optional_field!(trace_id);
+    set_optional_field!(parent_event_id);
+    set_optional_field!(context_version);
+    set_optional_field!(attributes);
+    set_field!(attr_version);
+    set_field!(timestamp);
+    set_field!(archived);
+
+    if !has_fields {
+        return Ok(());
+    }
+
+    query.push(" WHERE id = ").push_bind(id);
+    query.build().execute(executor).await?;
+    Ok(())
 }

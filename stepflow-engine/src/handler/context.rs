@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use chrono::Utc;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
-use stepflow_storage::PersistenceManager;
+use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_sqlite::models::workflow_state::{WorkflowState, UpdateWorkflowState};
 use crate::engine::WorkflowMode;
 
@@ -67,8 +67,8 @@ impl<'a> StateExecutionContext<'a> {
     pub async fn update_success_state(&self, output: &Value) -> Result<(), String> {
         let update = UpdateWorkflowState {
             status: Some("succeeded".to_string()),
-            output: Some(output.to_string()),
-            completed_at: Some(Utc::now().naive_utc()),
+            output: Some(Some(output.to_string())),
+            completed_at: Some(Some(Utc::now().naive_utc())),
             version: Some(2),
             ..Default::default()
         };
@@ -82,8 +82,8 @@ impl<'a> StateExecutionContext<'a> {
     pub async fn update_failure_state(&self, error: &str) -> Result<(), String> {
         let update = UpdateWorkflowState {
             status: Some("failed".to_string()),
-            error: Some(error.to_string()),
-            completed_at: Some(Utc::now().naive_utc()),
+            error: Some(Some(error.to_string())),
+            completed_at: Some(Some(Utc::now().naive_utc())),
             version: Some(2),
             ..Default::default()
         };

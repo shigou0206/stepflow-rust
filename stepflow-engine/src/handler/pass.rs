@@ -6,7 +6,7 @@ use stepflow_dsl::state::pass::PassState;
 use stepflow_hook::EngineEventDispatcher;
 use std::sync::Arc;
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
-use stepflow_storage::PersistenceManager;
+use stepflow_storage::persistence_manager::PersistenceManager;
 
 #[derive(Error, Debug)]
 pub enum PassError {

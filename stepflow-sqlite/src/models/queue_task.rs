@@ -27,15 +27,16 @@ pub struct QueueTask {
     pub updated_at: NaiveDateTime,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct UpdateQueueTask {
     pub status: Option<String>,
+    pub task_payload: Option<Option<String>>,
     pub attempts: Option<i64>,
-    pub error_message: Option<String>,
-    pub last_error_at: Option<NaiveDateTime>,
-    pub next_retry_at: Option<NaiveDateTime>,
-    pub processing_at: Option<NaiveDateTime>,
-    pub completed_at: Option<NaiveDateTime>,
-    pub failed_at: Option<NaiveDateTime>,
+    pub error_message: Option<Option<String>>,
+    pub last_error_at: Option<Option<NaiveDateTime>>,
+    pub next_retry_at: Option<Option<NaiveDateTime>>,
+    pub processing_at: Option<Option<NaiveDateTime>>,
+    pub completed_at: Option<Option<NaiveDateTime>>,
+    pub failed_at: Option<Option<NaiveDateTime>>,
     pub updated_at: Option<NaiveDateTime>,
 }

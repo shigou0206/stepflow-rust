@@ -10,7 +10,7 @@ use stepflow_dsl::state::task::TaskState;
 use crate::engine::{TaskStore, WorkflowMode};
 use crate::match_service::{MatchService, Task as MatchServiceTask};
 use stepflow_hook::EngineEventDispatcher;
-use stepflow_storage::PersistenceManager;
+use stepflow_storage::persistence_manager::PersistenceManager;
 use std::sync::Arc;
 use crate::tools;
 use async_trait::async_trait;
