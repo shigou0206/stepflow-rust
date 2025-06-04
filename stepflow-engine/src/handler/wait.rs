@@ -6,12 +6,12 @@ use thiserror::Error;
 use chrono::Utc;
 use uuid::Uuid;
 use stepflow_dsl::state::wait::WaitState;
-use stepflow_sqlite::models::timer::Timer;
 use crate::engine::WorkflowMode;
 use async_trait::async_trait;
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 use serde_json::json;
 use stepflow_storage::persistence_manager::PersistenceManager;
+use stepflow_storage::entities::timer::StoredTimer;
 const MAX_INLINE_WAIT_SECONDS: u64 = 300; // 5分钟
 
 #[derive(Error, Debug)]
@@ -55,7 +55,7 @@ impl<'a> WaitHandler<'a> {
         let now = Utc::now().naive_utc();
         let trigger_at = now + chrono::Duration::seconds(secs as i64);
         
-        let timer = Timer {
+        let timer = StoredTimer {
             timer_id: Uuid::new_v4().to_string(),
             run_id: ctx.run_id.to_string(),
             state_name: Some(ctx.state_name.to_string()),

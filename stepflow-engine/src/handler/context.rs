@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_storage::persistence_manager::PersistenceManager;
-use stepflow_sqlite::models::workflow_state::{WorkflowState, UpdateWorkflowState};
+use stepflow_storage::entities::workflow_state::{StoredWorkflowState, UpdateStoredWorkflowState};
 use crate::engine::WorkflowMode;
 
 /// 统一的状态执行结果
@@ -41,13 +41,13 @@ impl<'a> StateExecutionContext<'a> {
     }
 
     pub async fn create_state_record(&self, input: &Value) -> Result<(), String> {
-        let state = WorkflowState {
+        let state = StoredWorkflowState {
             state_id: format!("{}:{}", self.run_id, self.state_name),
             run_id: self.run_id.to_string(),
             state_name: self.state_name.to_string(),
             state_type: "state".to_string(),
             status: "started".to_string(),
-            input: Some(input.to_string()),
+            input: Some(input.clone()),
             output: None,
             error: None,
             error_details: None,
@@ -65,9 +65,9 @@ impl<'a> StateExecutionContext<'a> {
     }
 
     pub async fn update_success_state(&self, output: &Value) -> Result<(), String> {
-        let update = UpdateWorkflowState {
+        let update = UpdateStoredWorkflowState {
             status: Some("succeeded".to_string()),
-            output: Some(Some(output.to_string())),
+            output: Some(Some(output.clone())),
             completed_at: Some(Some(Utc::now().naive_utc())),
             version: Some(2),
             ..Default::default()
@@ -80,7 +80,7 @@ impl<'a> StateExecutionContext<'a> {
     }
 
     pub async fn update_failure_state(&self, error: &str) -> Result<(), String> {
-        let update = UpdateWorkflowState {
+        let update = UpdateStoredWorkflowState {
             status: Some("failed".to_string()),
             error: Some(Some(error.to_string())),
             completed_at: Some(Some(Utc::now().naive_utc())),

@@ -6,7 +6,7 @@ use stepflow_dsl::{State, WorkflowDSL};
 use std::sync::Arc;
 use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
-use stepflow_sqlite::models::workflow_execution::UpdateWorkflowExecution;
+use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 use crate::match_service::MatchService;
 
 use crate::command::step_once;
@@ -96,9 +96,8 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             .map_err(|e| format!("Failed to parse DSL from template: {}", e))?;
 
         // 3. 解析上下文数据
-        let context = if let Some(ctx_str) = execution.context_snapshot {
-            serde_json::from_str(&ctx_str)
-                .map_err(|e| format!("Failed to parse context: {}", e))?
+        let context = if let Some(ctx) = execution.context_snapshot {
+            ctx
         } else {
             warn!(
                 "[Engine] Missing context_snapshot for workflow {} (status: {}, mode: {}), using empty object as default",
@@ -172,7 +171,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
     /// 暂停工作流
     pub async fn pause(&mut self) -> Result<(), String> {
         // 更新数据库状态
-        let update = UpdateWorkflowExecution {
+        let update = UpdateStoredWorkflowExecution {
             status: Some("PAUSED".to_string()),
             ..Default::default()
         };
@@ -247,9 +246,7 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             match task.status.as_str() {
                 "completed" => {
                     if let Some(payload) = task.task_payload {
-                        let result: Value = serde_json::from_str(&payload)
-                            .map_err(|e| format!("Failed to parse task result: {}", e))?;
-                        
+                        let result = payload;
                         self.context = result.clone();
                         
                         self.dispatch_event(EngineEvent::NodeSuccess {

@@ -7,7 +7,7 @@ mod routes;
 use axum::Router;
 use tracing_subscriber::EnvFilter;
 use app_state::AppState;
-use stepflow_storage::PersistenceManagerImpl;
+use stepflow_sqlite::SqliteStorageManager;
 use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 use stepflow_engine::match_service::MemoryMatchService;
 use tower_http::{
@@ -83,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
 
     // -------- infra (stub) --
     let pool = sqlx::SqlitePool::connect_lazy("sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db")?;
-    let persist = std::sync::Arc::new(PersistenceManagerImpl::new(pool.clone()));
+    let persist = std::sync::Arc::new(SqliteStorageManager::new(pool.clone()));
     let event_dispatcher = std::sync::Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
     let match_service = MemoryMatchService::new();
 

@@ -7,8 +7,7 @@ use stepflow_storage::entities::{
 };
 use chrono::Utc;
 use std::sync::Arc;
-use serde_json::{Value, json};
-use stepflow_storage::error::StorageError;
+use serde_json::json;
 
 pub struct PersistHook {
     workflow: Arc<dyn WorkflowStorage>,
@@ -164,7 +163,6 @@ impl EngineEventHandler for PersistHook {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use chrono::NaiveDateTime;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
     use stepflow_storage::traits::{WorkflowStorage, StateStorage, EventStorage};

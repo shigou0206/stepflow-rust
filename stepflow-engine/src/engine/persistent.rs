@@ -6,7 +6,7 @@ use std::fmt;
 use thiserror::Error;
 use uuid::Uuid;
 use stepflow_storage::persistence_manager::PersistenceManager;
-use stepflow_sqlite::models::queue_task::{QueueTask, UpdateQueueTask};
+use stepflow_storage::entities::queue_task::{StoredQueueTask, UpdateStoredQueueTask};
 
 use super::traits::TaskStore;
 
@@ -105,7 +105,7 @@ impl PersistentStore {
         Self { persistence, retry_policy }
     }
 
-    async fn find_task(&self, run_id: &str, state_name: &str) -> Result<QueueTask, StoreError> {
+    async fn find_task(&self, run_id: &str, state_name: &str) -> Result<StoredQueueTask, StoreError> {
         let tasks = self.persistence
             .find_queue_tasks_by_status("pending", 1, 0)
             .await
@@ -138,11 +138,11 @@ impl TaskStore for PersistentStore {
         input: &Value,
     ) -> Result<(), String> {
         let now = Utc::now().naive_utc();
-        let task = QueueTask {
+        let task = StoredQueueTask {
             task_id: Uuid::new_v4().to_string(),
             run_id: run_id.to_string(),
             state_name: state_name.to_string(),
-            task_payload: Some(input.to_string()),
+            task_payload: Some(input.clone()),
             status: TaskStatus::Pending.as_str().to_string(),
             attempts: 0,
             max_attempts: self.retry_policy.max_attempts,
@@ -188,39 +188,35 @@ impl TaskStore for PersistentStore {
         }
 
         let changes = match new_status {
-            TaskStatus::Completed => UpdateQueueTask {
+            TaskStatus::Completed => UpdateStoredQueueTask {
                 status: Some(new_status.as_str().to_string()),
                 completed_at: Some(Some(now)),
-                updated_at: Some(now),
                 ..Default::default()
             },
             TaskStatus::Failed => {
                 let attempts = task.attempts + 1;
                 if attempts >= self.retry_policy.max_attempts {
-                    UpdateQueueTask {
+                    UpdateStoredQueueTask {
                         status: Some(TaskStatus::Failed.as_str().to_string()),
                         attempts: Some(attempts),
                         failed_at: Some(Some(now)),
                         error_message: Some(Some(result.to_string())),
-                        updated_at: Some(Some(now)),
                         ..Default::default()
                     }
                 } else {
                     let next_retry = self.calculate_next_retry(attempts, now);
-                    UpdateQueueTask {
+                    UpdateStoredQueueTask {
                         status: Some(TaskStatus::Retrying.as_str().to_string()),
                         attempts: Some(attempts),
                         error_message: Some(Some(result.to_string())),
                         last_error_at: Some(Some(now)),
                         next_retry_at: Some(Some(next_retry)),
-                        updated_at: Some(Some(now)),
                         ..Default::default()
                     }
                 }
             },
-            _ => UpdateQueueTask {
+            _ => UpdateStoredQueueTask {
                 status: Some(new_status.as_str().to_string()),
-                updated_at: Some(now),
                 ..Default::default()
             }
         };

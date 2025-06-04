@@ -1,9 +1,10 @@
 use async_trait::async_trait;
-use stepflow_storage::PersistenceManager;
-use stepflow_sqlite::models::workflow_template::{WorkflowTemplate, UpdateWorkflowTemplate};
+use stepflow_storage::persistence_manager::PersistenceManager;
+use stepflow_storage::error::StorageError;
+use stepflow_storage::entities::workflow_template::{StoredWorkflowTemplate, UpdateStoredWorkflowTemplate};
 use crate::dto::template::*;
 use crate::error::{AppResult, AppError};
-use anyhow::Context;
+use anyhow::{Context, Error};
 
 #[derive(Clone)]
 pub struct TemplateSqlxSvc {
@@ -19,7 +20,7 @@ impl TemplateSqlxSvc {
         is_create: bool,
     ) -> AppResult<TemplateDto> {
         if is_create {
-            let row = WorkflowTemplate {
+            let row = StoredWorkflowTemplate {
                 template_id: id.to_string(),
                 name: body.name.clone(),
                 description: None,
@@ -28,7 +29,8 @@ impl TemplateSqlxSvc {
                 created_at: chrono::Utc::now().naive_utc(),
                 updated_at: chrono::Utc::now().naive_utc(),
             };
-            self.pm.create_template(&row).await?;
+            self.pm.create_template(&row).await
+                .map_err(|e: StorageError| Error::new(e))?;
             Ok(TemplateDto {
                 id: row.template_id,
                 name: row.name,
@@ -37,19 +39,22 @@ impl TemplateSqlxSvc {
             })
         } else {
             // 若不存在可决定返回 404 或新增，这里选择 404
-            if self.pm.get_template(id).await?.is_none() {
+            if self.pm.get_template(id).await
+                .map_err(|e: StorageError| Error::new(e))?.is_none() {
                 return Err(AppError::NotFound);
             }
-            let changes = UpdateWorkflowTemplate {
+            let changes = UpdateStoredWorkflowTemplate {
                 name: Some(body.name),
                 description: None,
                 dsl_definition: Some(serde_json::to_string(&body.dsl).context("序列化 DSL 失败")?),
                 version: Some(1),
             };
-            self.pm.update_template(id, &changes).await?;
+            self.pm.update_template(id, &changes).await
+                .map_err(|e: StorageError| Error::new(e))?;
             
             // 重新获取更新后的数据
-            let row = self.pm.get_template(id).await?.unwrap();
+            let row = self.pm.get_template(id).await
+                .map_err(|e: StorageError| Error::new(e))?.unwrap();
             Ok(TemplateDto {
                 id: row.template_id,
                 name: row.name,
@@ -72,7 +77,8 @@ impl crate::service::TemplateService for TemplateSqlxSvc {
     }
 
     async fn get(&self, id:&str) -> AppResult<TemplateDto> {
-        let row = self.pm.get_template(id).await?
+        let row = self.pm.get_template(id).await
+            .map_err(|e: StorageError| Error::new(e))?
             .ok_or(AppError::NotFound)?;
         Ok(TemplateDto {
             id: row.template_id,
@@ -83,7 +89,8 @@ impl crate::service::TemplateService for TemplateSqlxSvc {
     }
 
     async fn list(&self) -> AppResult<Vec<TemplateDto>> {
-        let rows = self.pm.find_templates(100, 0).await?;
+        let rows = self.pm.find_templates(100, 0).await
+            .map_err(|e: StorageError| Error::new(e))?;
         Ok(rows.into_iter().map(|r| TemplateDto {
             id: r.template_id,
             name: r.name,
@@ -93,7 +100,8 @@ impl crate::service::TemplateService for TemplateSqlxSvc {
     }
 
     async fn delete(&self, id:&str) -> AppResult<()> {
-        self.pm.delete_template(id).await?;
+        self.pm.delete_template(id).await
+            .map_err(|e: StorageError| Error::new(e))?;
         Ok(())
     }
 }

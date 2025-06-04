@@ -1,11 +1,13 @@
 use chrono::Utc;
 use std::sync::Arc;
-use stepflow_storage::PersistenceManager;
-use stepflow_sqlite::models::workflow_event::WorkflowEvent;
+use stepflow_storage::persistence_manager::PersistenceManager;
+use stepflow_storage::error::StorageError;
+use stepflow_storage::entities::workflow_event::StoredWorkflowEvent;
 use crate::{
     dto::workflow_event::{WorkflowEventDto, RecordEventRequest},
     error::{AppResult, AppError},
 };
+use anyhow::Error;
 
 #[derive(Clone)]
 pub struct WorkflowEventSqlxSvc {
@@ -18,8 +20,8 @@ impl WorkflowEventSqlxSvc {
     }
 }
 
-impl From<WorkflowEvent> for WorkflowEventDto {
-    fn from(event: WorkflowEvent) -> Self {
+impl From<StoredWorkflowEvent> for WorkflowEventDto {
+    fn from(event: StoredWorkflowEvent) -> Self {
         Self {
             id: event.id,
             run_id: event.run_id,
@@ -42,24 +44,24 @@ impl From<WorkflowEvent> for WorkflowEventDto {
 impl WorkflowEventSqlxSvc {
     pub async fn list_events(&self, limit: i64, offset: i64) -> AppResult<Vec<WorkflowEventDto>> {
         let events = self.pm.find_events_by_run_id("", limit, offset).await
-            .map_err(AppError::Db)?;
+            .map_err(|e: StorageError| Error::new(e))?;
         Ok(events.into_iter().map(Into::into).collect())
     }
 
     pub async fn get_event(&self, id: i64) -> AppResult<Option<WorkflowEventDto>> {
         let event = self.pm.get_event(id).await
-            .map_err(AppError::Db)?;
+            .map_err(|e: StorageError| Error::new(e))?;
         Ok(event.map(Into::into))
     }
 
     pub async fn list_events_for_run(&self, run_id: &str, limit: i64, offset: i64) -> AppResult<Vec<WorkflowEventDto>> {
         let events = self.pm.find_events_by_run_id(run_id, limit, offset).await
-            .map_err(AppError::Db)?;
+            .map_err(|e: StorageError| Error::new(e))?;
         Ok(events.into_iter().map(Into::into).collect())
     }
 
     pub async fn record_event(&self, req: RecordEventRequest) -> AppResult<WorkflowEventDto> {
-        let event = WorkflowEvent {
+        let event = StoredWorkflowEvent {
             id: 0,
             run_id: req.run_id,
             shard_id: req.shard_id,
@@ -77,26 +79,26 @@ impl WorkflowEventSqlxSvc {
         };
 
         let id = self.pm.create_event(&event).await
-            .map_err(AppError::Db)?;
+            .map_err(|e: StorageError| Error::new(e))?;
 
         let event = self.pm.get_event(id).await
-            .map_err(AppError::Db)?
+            .map_err(|e: StorageError| Error::new(e))?
             .ok_or(AppError::NotFound)?;
         Ok(event.into())
     }
 
     pub async fn archive_event(&self, id: i64) -> AppResult<Option<WorkflowEventDto>> {
         self.pm.archive_event(id).await
-            .map_err(AppError::Db)?;
+            .map_err(|e: StorageError| Error::new(e))?;
 
         let event = self.pm.get_event(id).await
-            .map_err(AppError::Db)?;
+            .map_err(|e: StorageError| Error::new(e))?;
         Ok(event.map(Into::into))
     }
 
     pub async fn delete_event(&self, id: i64) -> AppResult<()> {
         self.pm.delete_event(id).await
-            .map_err(AppError::Db)?;
+            .map_err(|e: StorageError| Error::new(e))?;
         Ok(())
     }
 } 

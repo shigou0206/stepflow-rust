@@ -1,6 +1,7 @@
 // gateway/src/service/execution_sqlx.rs
 use async_trait::async_trait;
-use stepflow_sqlite::models::workflow_execution::WorkflowExecution;
+use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
+use stepflow_storage::error::StorageError;
 use stepflow_engine::engine::{WorkflowEngine, WorkflowMode,
     memory::MemoryQueue,
     persistent::PersistentStore as MemoryStore};
@@ -9,7 +10,7 @@ use crate::error::{AppResult, AppError};
 use crate::app_state::AppState;
 use std::sync::Arc;
 use serde_json::Value;
-use anyhow::Context;
+use anyhow::{Context, Error};
 
 #[derive(Clone)]
 pub struct ExecutionSqlxSvc {
@@ -33,7 +34,8 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
     async fn start(&self, req: ExecStart) -> AppResult<ExecDto> {
         // ① 准备 DSL
         let dsl_val = if let Some(tpl_id) = &req.template_id {
-            let tpl = self.state.persist.get_template(tpl_id).await?
+            let tpl = self.state.persist.get_template(tpl_id).await
+                .map_err(|e: StorageError| Error::new(e))?
                 .ok_or(AppError::NotFound)?;
             serde_json::from_str::<Value>(&tpl.dsl_definition)
                 .context("解析模板 DSL 失败")?
@@ -87,7 +89,7 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
         };
 
         // ④ 落库
-        let row = WorkflowExecution {
+        let row = StoredWorkflowExecution {
             run_id: run_id.clone(),
             workflow_id: Some(format!("wf-{}", run_id)),  // 生成一个默认的 workflow_id
             shard_id: 0,
@@ -96,9 +98,9 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             current_state_name: Some("initial".to_string()),
             status: status.clone(),
             workflow_type: "default".into(),
-            input: Some(serde_json::to_string(&req.init_ctx.unwrap_or_default()).unwrap_or_default()),
+            input: Some(req.init_ctx.unwrap_or_default()),
             input_version: 1,
-            result: result.as_ref().map(|v| v.to_string()),
+            result: result.clone(),
             result_version: 1,
             start_time: chrono::Utc::now().naive_utc(),
             close_time: finished_at.map(|t| t.naive_utc()),
@@ -108,7 +110,8 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             context_snapshot: None,
             version: 1,
         };
-        self.state.persist.create_execution(&row).await?;
+        self.state.persist.create_execution(&row).await
+            .map_err(|e: StorageError| Error::new(e))?;
 
         Ok(ExecDto {
             run_id, 
@@ -121,25 +124,27 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
     }
 
     async fn get(&self, id:&str) -> AppResult<ExecDto> {
-        let row = self.state.persist.get_execution(id).await?
+        let row = self.state.persist.get_execution(id).await
+            .map_err(|e: StorageError| Error::new(e))?
             .ok_or(AppError::NotFound)?;
         Ok(ExecDto {
             run_id: row.run_id,
             mode:   row.mode,
             status: row.status,
-            result: row.result.as_ref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+            result: row.result,
             started_at: row.start_time.and_utc(),
             finished_at: Option::map(row.close_time, |t| t.and_utc()),
         })
     }
 
     async fn list(&self, limit:i64, offset:i64) -> AppResult<Vec<ExecDto>> {
-        let rows = self.state.persist.find_executions(limit, offset).await?;
+        let rows = self.state.persist.find_executions(limit, offset).await
+            .map_err(|e: StorageError| Error::new(e))?;
         Ok(rows.into_iter().map(|r| ExecDto {
             run_id: r.run_id,
             mode:   r.mode,
             status: r.status,
-            result: r.result.as_ref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+            result: r.result,
             started_at: r.start_time.and_utc(),
             finished_at: Option::map(r.close_time, |t| t.and_utc()),
         }).collect::<Vec<_>>())
