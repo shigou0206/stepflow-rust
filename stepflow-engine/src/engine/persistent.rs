@@ -1,4 +1,4 @@
-use chrono::{NaiveDateTime, Utc};
+use chrono::Utc;       
 use serde_json::Value;
 use std::sync::Arc;
 use std::fmt;
@@ -100,7 +100,7 @@ impl TaskStore for PersistentStore {
         persistence: &Arc<dyn PersistenceManager>,
         run_id: &str,
         state_name: &str,
-        resource: &str,
+        _resource: &str, 
         input: &Value,
     ) -> Result<(), String> {
         let now = Utc::now().naive_utc();
