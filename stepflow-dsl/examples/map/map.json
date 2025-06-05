@@ -2,12 +2,12 @@
   "startAt": "MapItems",
   "states": {
     "MapItems": {
-      "type": "Map",
+      "type": "map",
       "itemsPath": "$.list",
       "iterator": {
         "startAt": "Echo",
         "states": {
-          "Echo": { "type": "Task", "resource": "echo", "end": true }
+          "Echo": { "type": "task", "resource": "echo", "end": true }
         }
       },
       "end": true

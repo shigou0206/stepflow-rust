@@ -2,7 +2,7 @@
   "startAt": "MyTask",
   "states": {
     "MyTask": {
-      "type": "Task",
+      "type": "task",
       "resource": "echo",
       "end": true
     }

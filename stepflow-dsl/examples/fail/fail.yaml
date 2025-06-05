@@ -1,6 +1,6 @@
-StartAt: FailNow
-States:
+startAt: FailNow
+states:
   FailNow:
-    Type: Fail
-    Error: SomeError
-    Cause: Something went wrong
+    type: fail
+    error: SomeError
+    cause: Something went wrong

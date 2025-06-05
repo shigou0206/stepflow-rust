@@ -2,7 +2,7 @@
   "startAt": "Choose",
   "states": {
     "Choose": {
-      "type": "Choice",
+      "type": "choice",
       "choices": [
         {
           "condition": {
@@ -15,7 +15,7 @@
       ],
       "default": "Fail"
     },
-    "Pass": { "type": "Succeed" },
-    "Fail": { "type": "Fail" }
+    "Pass": { "type": "succeed" },
+    "Fail": { "type": "fail" }
   }
 }

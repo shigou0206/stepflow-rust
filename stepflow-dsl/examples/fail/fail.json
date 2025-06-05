@@ -2,7 +2,7 @@
   "startAt": "FailNow",
   "states": {
     "FailNow": {
-      "type": "Fail",
+      "type": "fail",
       "error": "SomeError",
       "cause": "Something went wrong"
     }

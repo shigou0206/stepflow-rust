@@ -1,15 +1,15 @@
-StartAt: Choose
-States:
+startAt: Choose
+states:
   Choose:
-    Type: Choice
-    Choices:
-      - Condition:
-          Variable: $.value
-          Operator: GreaterThan
-          Value: 10
-        Next: Pass
-    Default: Fail
+    type: choice
+    choices:
+      - condition:
+          variable: $.value
+          operator: GreaterThan
+          value: 10
+        next: Pass
+    default: Fail
   Pass:
-    Type: Succeed
+    type: succeed
   Fail:
-    Type: Fail
+    type: fail

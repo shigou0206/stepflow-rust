@@ -4,7 +4,7 @@
   "startAt": "PrepareTask",
   "states": {
     "PrepareTask": {
-      "type": "Task",
+      "type": "task",
       "resource": "log.input",
       "inputMapping": {
         "preserve": "none",
@@ -22,7 +22,7 @@
       "next": "DecidePath"
     },
     "DecidePath": {
-      "type": "Choice",
+      "type": "choice",
       "choices": [
         {
           "condition": {
@@ -36,29 +36,29 @@
       "default": "FailState"
     },
     "MapLoop": {
-      "type": "Map",
+      "type": "map",
       "itemsPath": "$.items",
       "iterator": {
         "startAt": "PassEach",
         "states": {
           "PassEach": {
-            "type": "Pass",
+            "type": "pass",
             "resultPath": "$.result",
             "next": "SucceedInMap"
           },
-          "SucceedInMap": { "type": "Succeed" }
+          "SucceedInMap": { "type": "succeed" }
         }
       },
       "next": "ParallelBranch"
     },
     "ParallelBranch": {
-      "type": "Parallel",
+      "type": "parallel",
       "branches": [
         {
           "startAt": "ParallelOne",
           "states": {
             "ParallelOne": {
-              "type": "Task",
+              "type": "task",
               "resource": "log.parallel.1",
               "end": true
             }
@@ -68,7 +68,7 @@
           "startAt": "ParallelTwo",
           "states": {
             "ParallelTwo": {
-              "type": "Task",
+              "type": "task",
               "resource": "log.parallel.2",
               "end": true
             }
@@ -78,10 +78,10 @@
       "next": "SuccessFinal"
     },
     "SuccessFinal": {
-      "type": "Succeed"
+      "type": "succeed"
     },
     "FailState": {
-      "type": "Fail",
+      "type": "fail",
       "error": "ValueTooLow",
       "cause": "The sum was less than or equal to 3"
     }

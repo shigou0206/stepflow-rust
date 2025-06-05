@@ -1,6 +1,6 @@
-StartAt: MyTask
-States:
+startAt: MyTask
+states:
   MyTask:
-    Type: Task
-    Resource: echo
-    End: true
+    type: task
+    resource: echo
+    end: true

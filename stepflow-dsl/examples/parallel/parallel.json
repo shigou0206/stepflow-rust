@@ -2,18 +2,18 @@
   "startAt": "RunParallel",
   "states": {
     "RunParallel": {
-      "type": "Parallel",
+      "type": "parallel",
       "branches": [
         {
           "startAt": "A",
           "states": {
-            "A": { "type": "Task", "resource": "worker-a", "end": true }
+            "A": { "type": "task", "resource": "worker-a", "end": true }
           }
         },
         {
           "startAt": "B",
           "states": {
-            "B": { "type": "Task", "resource": "worker-b", "end": true }
+            "B": { "type": "task", "resource": "worker-b", "end": true }
           }
         }
       ],

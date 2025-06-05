@@ -1,15 +1,15 @@
 {
-    "StartAt": "Task1",
-    "States": {
+    "startAt": "Task1",
+    "states": {
       "Task1": {
-        "Type": "Task",
-        "Resource": "echo",
-        "Next": "Pass1"
+        "type": "Task",
+        "resource": "echo",
+        "next": "Pass1"
       },
       "Pass1": {
-        "Type": "Pass",
-        "Result": { "msg": "done" },
-        "End": true
+        "type": "Pass",
+        "result": { "msg": "done" },
+        "end": true
       }
     }
   }
