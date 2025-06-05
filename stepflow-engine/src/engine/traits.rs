@@ -1,11 +1,12 @@
 use serde_json::Value;
-use sqlx::{Sqlite, Transaction};
+use stepflow_storage::persistence_manager::PersistenceManager;
+use std::sync::Arc;
 
 #[async_trait::async_trait]
 pub trait TaskStore: Send + Sync {
     async fn insert_task(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        persistence: &Arc<dyn PersistenceManager>,
         run_id: &str,
         state_name: &str,
         resource: &str,
@@ -14,7 +15,7 @@ pub trait TaskStore: Send + Sync {
 
     async fn update_task_status(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        persistence: &Arc<dyn PersistenceManager>,
         run_id: &str,
         state_name: &str,
         status: &str,
@@ -26,13 +27,13 @@ pub trait TaskStore: Send + Sync {
 pub trait TaskQueue: Send + Sync {
     async fn push(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        persistence: &Arc<dyn PersistenceManager>,
         run_id: &str,
         state_name: &str,
     ) -> Result<(), String>;
 
     async fn pop(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        persistence: &Arc<dyn PersistenceManager>,
     ) -> Result<Option<(String, String)>, String>;
 } 

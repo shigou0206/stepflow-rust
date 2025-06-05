@@ -1,7 +1,9 @@
-use std::collections::VecDeque;
 use chrono::{DateTime, Utc, Duration as ChronoDuration};
-use sqlx::{Sqlite, Transaction};
 use tokio::sync::Mutex;
+use std::sync::Arc;
+use stepflow_storage::persistence_manager::PersistenceManager;
+use std::collections::VecDeque;
+use async_trait::async_trait;
 
 use super::traits::TaskQueue;
 
@@ -120,23 +122,27 @@ impl MemoryQueue {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl TaskQueue for MemoryQueue {
-    async fn push(&self, _tx: &mut Transaction<'_, Sqlite>, run_id: &str, state_name: &str) -> Result<(), String> {
-        let task = QueueTask::new(run_id.to_owned(), state_name.to_owned());
-
-        let mut queue = self.tasks.lock().await;
-        if queue.len() >= self.capacity {
-            return Err("Queue capacity exceeded".to_string());
+    async fn push(
+        &self,
+        _persistence: &Arc<dyn PersistenceManager>,
+        run_id: &str,
+        state_name: &str,
+    ) -> Result<(), String> {
+        let mut tasks = self.tasks.lock().await;
+        if tasks.len() >= self.capacity {
+            return Err("Queue is full".to_string());
         }
-        
-        queue.push_back(task);
+        tasks.push_back(QueueTask::new(run_id.to_string(), state_name.to_string()));
         Ok(())
     }
 
-    async fn pop(&self, _tx: &mut Transaction<'_, Sqlite>) -> Result<Option<(String, String)>, String> {
-        Ok(self.tasks.lock().await
-            .pop_front()
-            .map(|task| (task.run_id, task.state_name)))
+    async fn pop(
+        &self,
+        _persistence: &Arc<dyn PersistenceManager>,
+    ) -> Result<Option<(String, String)>, String> {
+        let mut tasks = self.tasks.lock().await;
+        Ok(tasks.pop_front().map(|task| (task.run_id, task.state_name)))
     }
 } 

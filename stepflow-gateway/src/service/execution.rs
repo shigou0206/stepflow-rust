@@ -59,7 +59,6 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             // 使用 MemoryStore/Queue；后续可换 SqlStore/Queue
             MemoryStore::new(self.state.persist.clone()),
             MemoryQueue::new(),
-            self.state.pool.clone(),
             self.state.event_dispatcher.clone(),
             self.state.persist.clone(),
             self.state.match_service.clone(),

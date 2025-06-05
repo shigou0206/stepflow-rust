@@ -1,13 +1,13 @@
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
 use serde_json::Value;
-use sqlx::{SqlitePool, Acquire};
 use stepflow_dsl::{State, WorkflowDSL};
 use std::sync::Arc;
 use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 use crate::match_service::MatchService;
+use crate::mapping::MappingPipeline;
 
 use crate::command::step_once;
 
@@ -26,7 +26,6 @@ pub struct WorkflowEngine<S: TaskStore, Q: TaskQueue> {
     pub mode: WorkflowMode,
     pub store: S,
     pub queue: Q,
-    pub pool: SqlitePool,
     pub event_dispatcher: Arc<EngineEventDispatcher>,
     pub persistence: Arc<dyn PersistenceManager>,
     pub match_service: Arc<dyn MatchService>,
@@ -43,7 +42,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         mode: WorkflowMode,
         store: S,
         queue: Q,
-        pool: SqlitePool,
         event_dispatcher: Arc<EngineEventDispatcher>,
         persistence: Arc<dyn PersistenceManager>,
         match_service: Arc<dyn MatchService>,
@@ -56,7 +54,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             mode,
             store,
             queue,
-            pool,
             event_dispatcher,
             persistence,
             match_service,
@@ -70,7 +67,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
         run_id: String,
         store: S,
         queue: Q,
-        pool: SqlitePool,
         event_dispatcher: Arc<EngineEventDispatcher>,
         persistence: Arc<dyn PersistenceManager>,
         match_service: Arc<dyn MatchService>,
@@ -139,7 +135,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             mode,
             store,
             queue,
-            pool,
             event_dispatcher,
             persistence,
             match_service,
@@ -232,58 +227,110 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             return Ok(false);
         }
 
-        let mut conn = self.pool.acquire().await.map_err(|e| e.to_string())?;
-        let tx = conn.begin().await.map_err(|e| e.to_string())?;
-        
-        let tasks = self.persistence.as_ref()
-            .find_queue_tasks_by_status("pending", 100, 0)
+        // 开始事务
+        self.persistence.begin_transaction()
             .await
             .map_err(|e| e.to_string())?;
         
-        if let Some(task) = tasks.into_iter()
-            .find(|t| t.run_id == self.run_id && t.state_name == self.current_state) 
+        let result = match self.persistence.as_ref()
+            .find_queue_tasks_by_status("pending", 100, 0)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|t| t.run_id == self.run_id && t.state_name == self.current_state)
         {
-            match task.status.as_str() {
-                "completed" => {
-                    if let Some(payload) = task.task_payload {
-                        let result = payload;
-                        self.context = result.clone();
+            Some(task) => {
+                match task.status.as_str() {
+                    "completed" => {
+                        if let Some(payload) = task.task_payload {
+                            // 获取当前状态的 output mapping
+                            let state = self.current_state_type();
+                            let base = match state {
+                                State::Task(s) => &s.base,
+                                _ => return Err("Expected Task state".to_string()),
+                            };
+
+                            let pipeline = MappingPipeline {
+                                input_mapping: base.input_mapping.as_ref(),
+                                output_mapping: base.output_mapping.as_ref(),
+                            };
+
+                            // 应用 output mapping
+                            let new_ctx = pipeline
+                                .apply_output(&payload, &self.context)
+                                .map_err(|e| e.to_string())?;
+                            
+                            self.context = new_ctx;
+                            
+                            // 更新执行记录
+                            let update = UpdateStoredWorkflowExecution {
+                                context_snapshot: Some(Some(self.context.clone())),
+                                ..Default::default()
+                            };
+                            
+                            self.persistence.update_execution(&self.run_id, &update)
+                                .await
+                                .map_err(|e| e.to_string())?;
+                            
+                            self.dispatch_event(EngineEvent::NodeSuccess {
+                                run_id: self.run_id.clone(),
+                                state_name: self.current_state.clone(),
+                                output: payload,
+                            }).await;
+                        }
+                        Ok(true)
+                    }
+                    "failed" => {
+                        let error = task.error_message.unwrap_or_else(|| "Task failed".to_string());
                         
-                        self.dispatch_event(EngineEvent::NodeSuccess {
+                        // 更新执行记录
+                        let update = UpdateStoredWorkflowExecution {
+                            status: Some("FAILED".to_string()),
+                            close_time: Some(Some(Utc::now().naive_utc())),
+                            ..Default::default()
+                        };
+                        
+                        self.persistence.update_execution(&self.run_id, &update)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        
+                        self.dispatch_event(EngineEvent::NodeFailed {
                             run_id: self.run_id.clone(),
                             state_name: self.current_state.clone(),
-                            output: result,
+                            error: error.clone(),
                         }).await;
+                        
+                        Err(error)
                     }
-                    tx.commit().await.map_err(|e| e.to_string())?;
-                    Ok(true)
-                }
-                "failed" => {
-                    let error = task.error_message.unwrap_or_else(|| "Task failed".to_string());
-                    
-                    self.dispatch_event(EngineEvent::NodeFailed {
-                        run_id: self.run_id.clone(),
-                        state_name: self.current_state.clone(),
-                        error: error.clone(),
-                    }).await;
-                    
-                    tx.commit().await.map_err(|e| e.to_string())?;
-                    Err(error)
-                }
-                _ => {
-                    debug!("[Engine] Task {} is still in progress (status: {})", 
-                           task.task_id, task.status);
-                    tx.commit().await.map_err(|e| e.to_string())?;
-                    Ok(true)
+                    _ => {
+                        debug!("[Engine] Task {} is still in progress (status: {})", 
+                               task.task_id, task.status);
+                        Ok(true)
+                    }
                 }
             }
-        } else {
-            tx.commit().await.map_err(|e| e.to_string())?;
-            Ok(false)
+            None => Ok(false)
+        };
+
+        match result {
+            Ok(r) => {
+                // 提交事务
+                self.persistence.commit()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(r)
+            }
+            Err(e) => {
+                // 回滚事务
+                if let Err(rollback_err) = self.persistence.rollback().await {
+                    warn!("Failed to rollback transaction: {}", rollback_err);
+                }
+                Err(e)
+            }
         }
     }
 
-    pub async fn advance_once(&mut self) -> Result<StepOutcome, String> {
+    async fn advance_once(&mut self) -> Result<StepOutcome, String> {
         if self.finished {
             return Ok(StepOutcome {
                 should_continue: false,
@@ -305,10 +352,12 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             self.current_state
         );
 
-        let mut conn = self.pool.acquire().await.map_err(|e| e.to_string())?;
-        let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+        // 开始事务
+        self.persistence.begin_transaction()
+            .await
+            .map_err(|e| e.to_string())?;
 
-        let (outcome, next_state_opt) = dispatch_command(
+        let result = match dispatch_command(
             &cmd,
             self.current_state_type(),
             &self.context,
@@ -316,32 +365,65 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             self.mode,
             &self.store,
             self.match_service.clone(),
-            &mut tx,
+            &self.persistence,
             self.event_dispatcher.clone(),
             self.persistence.clone(),
-        ).await?;
+        ).await {
+            Ok((outcome, next_state_opt)) => {
+                // 更新上下文和时间戳
+                self.context = outcome.updated_context.clone();
+                self.updated_at = Utc::now();
 
-        tx.commit().await.map_err(|e| e.to_string())?;
+                // 准备数据库更新
+                let mut update = UpdateStoredWorkflowExecution {
+                    context_snapshot: Some(Some(self.context.clone())),
+                    ..Default::default()
+                };
 
-        self.context = outcome.updated_context.clone();
-        self.updated_at = Utc::now();
+                if outcome.should_continue {
+                    let next_state = next_state_opt.ok_or_else(|| {
+                        format!(
+                            "State '{}' wants to continue but returned no next_state",
+                            self.current_state
+                        )
+                    })?;
+                    
+                    // 更新当前状态
+                    self.current_state = next_state.clone();
+                    update.current_state_name = Some(Some(next_state));
+                } else {
+                    self.finished = true;
+                    update.status = Some("COMPLETED".to_string());
+                    update.close_time = Some(Some(self.updated_at.naive_utc()));
+                    
+                    self.dispatch_event(EngineEvent::WorkflowFinished {
+                        run_id: self.run_id.clone(),
+                        result: self.context.clone(),
+                    }).await;
+                }
 
-        if outcome.should_continue {
-            self.current_state = next_state_opt.ok_or_else(|| {
-                format!(
-                    "State '{}' wants to continue but returned no next_state",
-                    self.current_state
-                )
-            })?;
-        } else {
-            self.finished = true;
-            self.dispatch_event(EngineEvent::WorkflowFinished {
-                run_id: self.run_id.clone(),
-                result: self.context.clone(),
-            }).await;
-        }
+                // 更新执行记录
+                self.persistence.update_execution(&self.run_id, &update)
+                    .await
+                    .map_err(|e| e.to_string())?;
 
-        Ok(outcome)
+                Ok(outcome)
+            }
+            Err(e) => {
+                // 回滚事务
+                if let Err(rollback_err) = self.persistence.rollback().await {
+                    warn!("Failed to rollback transaction: {}", rollback_err);
+                }
+                Err(e)
+            }
+        }?;
+
+        // 提交事务
+        self.persistence.commit()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(result)
     }
 
     // 辅助方法：事件分发

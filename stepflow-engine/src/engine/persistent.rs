@@ -1,12 +1,12 @@
-use chrono::{NaiveDateTime, Utc, Duration};
+use chrono::{NaiveDateTime, Utc};
 use serde_json::Value;
-use sqlx::{Sqlite, Transaction};
 use std::sync::Arc;
 use std::fmt;
 use thiserror::Error;
 use uuid::Uuid;
 use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_storage::entities::queue_task::{StoredQueueTask, UpdateStoredQueueTask};
+use async_trait::async_trait;
 
 use super::traits::TaskStore;
 
@@ -70,71 +70,37 @@ impl TaskStatus {
     }
 }
 
-pub struct RetryPolicy {
-    pub max_attempts: i64,
-    pub base_delay: i64,    // 基础延迟（秒）
-    pub max_delay: i64,     // 最大延迟（秒）
-    pub multiplier: f64,    // 延迟增长倍数
-}
-
-impl Default for RetryPolicy {
-    fn default() -> Self {
-        Self {
-            max_attempts: 3,
-            base_delay: 5,
-            max_delay: 30,
-            multiplier: 2.0,
-        }
-    }
-}
-
 pub struct PersistentStore {
     persistence: Arc<dyn PersistenceManager>,
-    retry_policy: RetryPolicy,
 }
 
 impl PersistentStore {
     pub fn new(persistence: Arc<dyn PersistenceManager>) -> Self {
-        Self { 
-            persistence,
-            retry_policy: RetryPolicy::default(),
-        }
+        Self { persistence }
     }
 
-    pub fn with_retry_policy(persistence: Arc<dyn PersistenceManager>, retry_policy: RetryPolicy) -> Self {
-        Self { persistence, retry_policy }
-    }
-
-    async fn find_task(&self, run_id: &str, state_name: &str) -> Result<StoredQueueTask, StoreError> {
-        let tasks = self.persistence
-            .find_queue_tasks_by_status("pending", 1, 0)
+    pub async fn find_task(&self, run_id: &str, state_name: &str) -> Result<StoredQueueTask, StoreError> {
+        let tasks = self.persistence.find_queue_tasks_by_status("", 1, 0)
             .await
             .map_err(|e| StoreError::StorageError(e.to_string()))?;
-        
+
         tasks.into_iter()
             .find(|t| t.run_id == run_id && t.state_name == state_name)
-            .ok_or_else(|| StoreError::TaskNotFound { 
-                run_id: run_id.to_string(), 
-                state_name: state_name.to_string() 
+            .ok_or_else(|| StoreError::TaskNotFound {
+                run_id: run_id.to_string(),
+                state_name: state_name.to_string(),
             })
-    }
-
-    fn calculate_next_retry(&self, attempts: i64, now: NaiveDateTime) -> NaiveDateTime {
-        let delay = (self.retry_policy.base_delay as f64 * 
-            self.retry_policy.multiplier.powi(attempts as i32)) as i64;
-        let delay = delay.min(self.retry_policy.max_delay);
-        now + Duration::seconds(delay)
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl TaskStore for PersistentStore {
     async fn insert_task(
         &self,
-        _tx: &mut Transaction<'_, Sqlite>,
+        persistence: &Arc<dyn PersistenceManager>,
         run_id: &str,
         state_name: &str,
-        _resource: &str,
+        resource: &str,
         input: &Value,
     ) -> Result<(), String> {
         let now = Utc::now().naive_utc();
@@ -145,7 +111,7 @@ impl TaskStore for PersistentStore {
             task_payload: Some(input.clone()),
             status: TaskStatus::Pending.as_str().to_string(),
             attempts: 0,
-            max_attempts: self.retry_policy.max_attempts,
+            max_attempts: 3, // 默认最多重试3次
             error_message: None,
             last_error_at: None,
             next_retry_at: None,
@@ -157,14 +123,14 @@ impl TaskStore for PersistentStore {
             updated_at: now,
         };
 
-        self.persistence.create_queue_task(&task)
+        persistence.create_queue_task(&task)
             .await
             .map_err(|e| e.to_string())
     }
 
     async fn update_task_status(
         &self,
-        _tx: &mut Transaction<'_, Sqlite>,
+        persistence: &Arc<dyn PersistenceManager>,
         run_id: &str,
         state_name: &str,
         status: &str,
@@ -187,41 +153,42 @@ impl TaskStore for PersistentStore {
             }.to_string());
         }
 
-        let changes = match new_status {
-            TaskStatus::Completed => UpdateStoredQueueTask {
-                status: Some(new_status.as_str().to_string()),
-                completed_at: Some(Some(now)),
-                ..Default::default()
-            },
-            TaskStatus::Failed => {
-                let attempts = task.attempts + 1;
-                if attempts >= self.retry_policy.max_attempts {
-                    UpdateStoredQueueTask {
-                        status: Some(TaskStatus::Failed.as_str().to_string()),
-                        attempts: Some(attempts),
-                        failed_at: Some(Some(now)),
-                        error_message: Some(Some(result.to_string())),
-                        ..Default::default()
-                    }
-                } else {
-                    let next_retry = self.calculate_next_retry(attempts, now);
-                    UpdateStoredQueueTask {
-                        status: Some(TaskStatus::Retrying.as_str().to_string()),
-                        attempts: Some(attempts),
-                        error_message: Some(Some(result.to_string())),
-                        last_error_at: Some(Some(now)),
-                        next_retry_at: Some(Some(next_retry)),
-                        ..Default::default()
-                    }
-                }
-            },
-            _ => UpdateStoredQueueTask {
-                status: Some(new_status.as_str().to_string()),
-                ..Default::default()
-            }
+        let mut changes = UpdateStoredQueueTask {
+            status: Some(status.to_string()),
+            task_payload: Some(Some(result.clone())),
+            attempts: None,
+            error_message: None,
+            last_error_at: None,
+            next_retry_at: None,
+            processing_at: None,
+            completed_at: None,
+            failed_at: None,
         };
 
-        self.persistence.update_queue_task(&task.task_id, &changes)
+        match new_status {
+            TaskStatus::Completed => {
+                changes.completed_at = Some(Some(now));
+            }
+            TaskStatus::Failed => {
+                let attempts = task.attempts + 1;
+                changes.attempts = Some(attempts);
+                changes.failed_at = Some(Some(now));
+                changes.error_message = Some(Some(result.to_string()));
+            }
+            TaskStatus::Processing => {
+                changes.processing_at = Some(Some(now));
+            }
+            TaskStatus::Retrying => {
+                let attempts = task.attempts + 1;
+                changes.attempts = Some(attempts);
+                changes.error_message = Some(Some(result.to_string()));
+                changes.last_error_at = Some(Some(now));
+                changes.next_retry_at = Some(Some(now + chrono::Duration::seconds(30))); // 30秒后重试
+            }
+            _ => {}
+        }
+
+        persistence.update_queue_task(&task.task_id, &changes)
             .await
             .map_err(|e| e.to_string())
     }

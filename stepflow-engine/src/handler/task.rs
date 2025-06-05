@@ -5,14 +5,12 @@
 //!                  由 Engine 暂停工作流等待外部 Worker 回报
 
 use serde_json::Value;
-use sqlx::{Sqlite, Transaction};
 use stepflow_dsl::state::task::TaskState;
-use crate::engine::{TaskStore, WorkflowMode};
-use crate::match_service::{MatchService, Task as MatchServiceTask};
 use stepflow_hook::EngineEventDispatcher;
 use stepflow_storage::persistence_manager::PersistenceManager;
+use crate::engine::{TaskStore, WorkflowMode};
+use crate::match_service::{MatchService, Task as MatchServiceTask};
 use std::sync::Arc;
-use crate::tools;
 use async_trait::async_trait;
 use tracing::{debug, warn};
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
@@ -22,31 +20,40 @@ use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 // Public API
 // -----------------------------------------------------------------------------
 /// Executes TaskState: decides between Inline execution or Deferred dispatch via MatchService.
-pub async fn handle_task(
+pub async fn handle_task<S: TaskStore>(
     mode: WorkflowMode,
     run_id: &str,
     state_name: &str,
     state: &TaskState,
     input: &Value,
-    _store: &impl TaskStore, // Keep a generic TaskStore reference if other parts of handle_task use it, or remove if not.
+    store: &S,
     match_service: Arc<dyn MatchService>,
-    _tx: &mut Transaction<'_, Sqlite>,
+    persistence: &Arc<dyn PersistenceManager>,
     event_dispatcher: Arc<EngineEventDispatcher>,
-    persistence: Arc<dyn PersistenceManager>,
-) -> Result<Value, String>
-{
-    let ctx = StateExecutionContext::new(
+    persistence_for_handlers: Arc<dyn PersistenceManager>,
+) -> Result<Value, String> {
+    // 创建任务记录
+    store.insert_task(
+        persistence,
         run_id,
         state_name,
-        mode,
-        &event_dispatcher,
-        &persistence,
-    );
+        &state.resource,
+        input,
+    ).await?;
 
-    let handler = TaskHandler::new(match_service, state);
-    let result = handler.execute(&ctx, input).await?;
-    
-    Ok(result.output)
+    // 如果是 inline 模式，等待任务完成
+    if mode == WorkflowMode::Inline {
+        // 等待任务完成
+        match_service.wait_for_completion(
+            run_id,
+            state_name,
+            input,
+            persistence_for_handlers,
+        ).await
+    } else {
+        // deferred 模式，直接返回输入
+        Ok(input.clone())
+    }
 }
 
 pub struct TaskHandler<'a> { // Removed generic <S: TaskStore>
@@ -68,7 +75,7 @@ impl<'a> TaskHandler<'a> { // Removed generic <S: TaskStore>
 
     async fn handle_inline(&self, input: &Value) -> Result<Value, String> {
         debug!("Executing task inline with resource: {}", self.state.resource);
-        tools::run_tool(&self.state.resource, input).await
+        crate::tools::run_tool(&self.state.resource, input).await
     }
 
     async fn handle_deferred(
@@ -106,10 +113,10 @@ impl<'a> TaskHandler<'a> { // Removed generic <S: TaskStore>
             input: Some(input.clone()),
             task_type: self.state.resource.clone(),
             task_token: None,
-            priority, // Sourced from execution_config or None
+            priority,
             attempt: Some(0),
-            max_attempts: None, // TODO: Source from TaskState if defined (e.g., execution_config or direct field)
-            timeout_seconds, // Sourced from execution_config or None
+            max_attempts: Some(3), // 默认最多重试3次
+            timeout_seconds,
             scheduled_at: None,
         };
         

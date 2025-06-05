@@ -3,6 +3,8 @@ use std::time::Duration;
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use chrono::NaiveDateTime;
+use std::sync::Arc;
+use stepflow_storage::persistence_manager::PersistenceManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
@@ -69,4 +71,11 @@ impl Task {
 pub trait MatchService: Send + Sync {
     async fn poll_task(&self, queue: &str, worker_id: &str, timeout: Duration) -> Option<Task>;
     async fn enqueue_task(&self, queue: &str, task: Task) -> Result<(), String>;
+    async fn wait_for_completion(
+        &self,
+        run_id: &str,
+        state_name: &str,
+        input: &Value,
+        persistence: Arc<dyn PersistenceManager>,
+    ) -> Result<Value, String>;
 } 
