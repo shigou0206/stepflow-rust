@@ -1,23 +1,23 @@
 {
-  "StartAt": "RunParallel",
-  "States": {
+  "startAt": "RunParallel",
+  "states": {
     "RunParallel": {
-      "Type": "Parallel",
-      "Branches": [
+      "type": "Parallel",
+      "branches": [
         {
-          "StartAt": "A",
-          "States": {
-            "A": { "Type": "Task", "Resource": "worker-a", "End": true }
+          "startAt": "A",
+          "states": {
+            "A": { "type": "Task", "resource": "worker-a", "end": true }
           }
         },
         {
-          "StartAt": "B",
-          "States": {
-            "B": { "Type": "Task", "Resource": "worker-b", "End": true }
+          "startAt": "B",
+          "states": {
+            "B": { "type": "Task", "resource": "worker-b", "end": true }
           }
         }
       ],
-      "End": true
+      "end": true
     }
   }
 }

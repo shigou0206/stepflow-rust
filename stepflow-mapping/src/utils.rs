@@ -64,3 +64,57 @@ pub fn merge_value(out: &mut Map<String, Value>, key: &str, val: Value, strat: M
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Map};
+    use crate::model::rule::MergeStrategy;
+
+    #[test]
+    fn test_insert_nested_simple() {
+        let mut obj = Map::new();
+        insert_nested(&mut obj, "a.b.c", json!(1));
+        assert_eq!(obj["a"]["b"]["c"], 1);
+    }
+
+    #[test]
+    fn test_merge_value_overwrite() {
+        let mut obj = Map::new();
+        merge_value(&mut obj, "foo", json!(1), MergeStrategy::Overwrite);
+        merge_value(&mut obj, "foo", json!(2), MergeStrategy::Overwrite);
+        assert_eq!(obj["foo"], 2);
+    }
+
+    #[test]
+    fn test_merge_value_ignore() {
+        let mut obj = Map::new();
+        merge_value(&mut obj, "foo", json!(1), MergeStrategy::Ignore);
+        merge_value(&mut obj, "foo", json!(2), MergeStrategy::Ignore);
+        assert_eq!(obj["foo"], 1);
+    }
+
+    #[test]
+    fn test_merge_value_append() {
+        let mut obj = Map::new();
+        merge_value(&mut obj, "arr", json!(1), MergeStrategy::Append);
+        merge_value(&mut obj, "arr", json!(2), MergeStrategy::Append);
+        assert_eq!(obj["arr"], json!([1, 2]));
+    }
+
+    #[test]
+    fn test_merge_value_merge_object() {
+        let mut obj = Map::new();
+        merge_value(&mut obj, "obj", json!({"a": 1}), MergeStrategy::Merge);
+        merge_value(&mut obj, "obj", json!({"b": 2}), MergeStrategy::Merge);
+        assert_eq!(obj["obj"], json!({"a": 1, "b": 2}));
+    }
+
+    #[test]
+    fn test_merge_value_merge_non_object() {
+        let mut obj = Map::new();
+        merge_value(&mut obj, "obj", json!({"a": 1}), MergeStrategy::Merge);
+        merge_value(&mut obj, "obj", json!(42), MergeStrategy::Merge);
+        assert_eq!(obj["obj"], 42);
+    }
+}

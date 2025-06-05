@@ -80,3 +80,101 @@ impl MappingEngine {
         Ok(Value::Object(ctx.output))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{MappingDSL, MappingRule, MappingType, PreserveFields};
+    use serde_json::json;
+
+    #[test]
+    fn test_apply_constant_rule() {
+        let dsl = MappingDSL {
+            namespace: Some("test".to_string()),
+            version: Some("1.0".to_string()),
+            description: None,
+            preserve: PreserveFields::None,
+            debug: false,
+            mappings: vec![
+                MappingRule {
+                    key: "foo".to_string(),
+                    mapping_type: MappingType::Constant,
+                    value: Some(json!(42)),
+                    source: None,
+                    transform: None,
+                    template: None,
+                    sub_mappings: None,
+                    merge_strategy: Default::default(),
+                    condition: None,
+                    depends_on: None,
+                    comment: None,
+                    lang: None,
+                    expected_type: None,
+                    schema: None,
+                }
+            ],
+        };
+        let input = json!({"bar": 1});
+        let result = MappingEngine::apply(dsl, &input).unwrap();
+        assert_eq!(result["foo"], 42);
+        assert!(result.get("bar").is_none());
+    }
+
+    #[test]
+    fn test_apply_preserve_all() {
+        let dsl = MappingDSL {
+            preserve: PreserveFields::All,
+            mappings: vec![],
+            ..Default::default()
+        };
+        let input = json!({"a": 1, "b": 2});
+        let result = MappingEngine::apply(dsl, &input).unwrap();
+        assert_eq!(result["a"], 1);
+        assert_eq!(result["b"], 2);
+    }
+
+    #[test]
+    fn test_apply_merge_strategy_append() {
+        let dsl = MappingDSL {
+            preserve: PreserveFields::None,
+            mappings: vec![
+                MappingRule {
+                    key: "arr".to_string(),
+                    mapping_type: MappingType::Constant,
+                    value: Some(json!(1)),
+                    merge_strategy: crate::model::rule::MergeStrategy::Append,
+                    source: None,
+                    transform: None,
+                    template: None,
+                    sub_mappings: None,
+                    condition: None,
+                    depends_on: None,
+                    comment: None,
+                    lang: None,
+                    expected_type: None,
+                    schema: None,
+                },
+                MappingRule {
+                    key: "arr".to_string(),
+                    mapping_type: MappingType::Constant,
+                    value: Some(json!(2)),
+                    merge_strategy: crate::model::rule::MergeStrategy::Append,
+                    source: None,
+                    transform: None,
+                    template: None,
+                    sub_mappings: None,
+                    condition: None,
+                    depends_on: None,
+                    comment: None,
+                    lang: None,
+                    expected_type: None,
+                    schema: None,
+                },
+            ],
+            ..Default::default()
+        };
+        let input = json!({});
+        let result = MappingEngine::apply(dsl, &input).unwrap();
+        assert_eq!(result["arr"], json!([1, 2]));
+    }
+}

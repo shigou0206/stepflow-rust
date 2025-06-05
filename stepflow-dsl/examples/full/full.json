@@ -1,12 +1,12 @@
 {
-  "Comment": "Full integration workflow example",
-  "Version": "1.0.0",
-  "StartAt": "PrepareTask",
-  "States": {
+  "comment": "Full integration workflow example",
+  "version": "1.0.0",
+  "startAt": "PrepareTask",
+  "states": {
     "PrepareTask": {
-      "Type": "Task",
-      "Resource": "log.input",
-      "InputMapping": {
+      "type": "Task",
+      "resource": "log.input",
+      "inputMapping": {
         "preserve": "none",
         "mappings": [
           { "key": "x", "type": "constant", "value": 1 },
@@ -19,71 +19,71 @@
           }
         ]
       },
-      "Next": "DecidePath"
+      "next": "DecidePath"
     },
     "DecidePath": {
-      "Type": "Choice",
-      "Choices": [
+      "type": "Choice",
+      "choices": [
         {
-          "Condition": {
-            "Variable": "$.sum",
-            "Operator": "GreaterThan",
-            "Value": 3
+          "condition": {
+            "variable": "$.sum",
+            "operator": "GreaterThan",
+            "value": 3
           },
-          "Next": "MapLoop"
+          "next": "MapLoop"
         }
       ],
-      "Default": "FailState"
+      "default": "FailState"
     },
     "MapLoop": {
-      "Type": "Map",
-      "ItemsPath": "$.items",
-      "Iterator": {
-        "StartAt": "PassEach",
-        "States": {
+      "type": "Map",
+      "itemsPath": "$.items",
+      "iterator": {
+        "startAt": "PassEach",
+        "states": {
           "PassEach": {
-            "Type": "Pass",
-            "ResultPath": "$.result",
-            "Next": "SucceedInMap"
+            "type": "Pass",
+            "resultPath": "$.result",
+            "next": "SucceedInMap"
           },
-          "SucceedInMap": { "Type": "Succeed" }
+          "SucceedInMap": { "type": "Succeed" }
         }
       },
-      "Next": "ParallelBranch"
+      "next": "ParallelBranch"
     },
     "ParallelBranch": {
-      "Type": "Parallel",
-      "Branches": [
+      "type": "Parallel",
+      "branches": [
         {
-          "StartAt": "ParallelOne",
-          "States": {
+          "startAt": "ParallelOne",
+          "states": {
             "ParallelOne": {
-              "Type": "Task",
-              "Resource": "log.parallel.1",
-              "End": true
+              "type": "Task",
+              "resource": "log.parallel.1",
+              "end": true
             }
           }
         },
         {
-          "StartAt": "ParallelTwo",
-          "States": {
+          "startAt": "ParallelTwo",
+          "states": {
             "ParallelTwo": {
-              "Type": "Task",
-              "Resource": "log.parallel.2",
-              "End": true
+              "type": "Task",
+              "resource": "log.parallel.2",
+              "end": true
             }
           }
         }
       ],
-      "Next": "SuccessFinal"
+      "next": "SuccessFinal"
     },
     "SuccessFinal": {
-      "Type": "Succeed"
+      "type": "Succeed"
     },
     "FailState": {
-      "Type": "Fail",
-      "Error": "ValueTooLow",
-      "Cause": "The sum was less than or equal to 3"
+      "type": "Fail",
+      "error": "ValueTooLow",
+      "cause": "The sum was less than or equal to 3"
     }
   }
 }

@@ -1,21 +1,21 @@
 {
-  "StartAt": "Choose",
-  "States": {
+  "startAt": "Choose",
+  "states": {
     "Choose": {
-      "Type": "Choice",
-      "Choices": [
+      "type": "Choice",
+      "choices": [
         {
-          "Condition": {
-            "Variable": "$.value",
-            "Operator": "GreaterThan",
-            "Value": 10
+          "condition": {
+            "variable": "$.value",
+            "operator": "GreaterThan",
+            "value": 10
           },
-          "Next": "Pass"
+          "next": "Pass"
         }
       ],
-      "Default": "Fail"
+      "default": "Fail"
     },
-    "Pass": { "Type": "Succeed" },
-    "Fail": { "Type": "Fail" }
+    "Pass": { "type": "Succeed" },
+    "Fail": { "type": "Fail" }
   }
 }

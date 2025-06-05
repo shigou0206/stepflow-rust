@@ -1,10 +1,10 @@
 {
-  "StartAt": "FailNow",
-  "States": {
+  "startAt": "FailNow",
+  "states": {
     "FailNow": {
-      "Type": "Fail",
-      "Error": "SomeError",
-      "Cause": "Something went wrong"
+      "type": "Fail",
+      "error": "SomeError",
+      "cause": "Something went wrong"
     }
   }
 }

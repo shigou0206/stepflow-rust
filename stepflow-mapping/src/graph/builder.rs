@@ -63,3 +63,130 @@ pub fn sort_rules(rules: &[MappingRule]) -> Result<Vec<MappingRule>> {
 
     Ok(ordered)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::rule::{MappingRule, MappingType};
+
+    #[test]
+    fn test_sort_rules_no_dep() {
+        let rules = vec![
+            MappingRule {
+                key: "a".to_string(),
+                mapping_type: MappingType::Constant,
+                value: Some(1.into()),
+                source: None,
+                transform: None,
+                template: None,
+                sub_mappings: None,
+                merge_strategy: Default::default(),
+                condition: None,
+                depends_on: None,
+                comment: None,
+                lang: None,
+                expected_type: None,
+                schema: None,
+            },
+            MappingRule {
+                key: "b".to_string(),
+                mapping_type: MappingType::Constant,
+                value: Some(2.into()),
+                source: None,
+                transform: None,
+                template: None,
+                sub_mappings: None,
+                merge_strategy: Default::default(),
+                condition: None,
+                depends_on: None,
+                comment: None,
+                lang: None,
+                expected_type: None,
+                schema: None,
+            },
+        ];
+        let sorted = sort_rules(&rules).unwrap();
+        assert_eq!(sorted.len(), 2);
+    }
+
+    #[test]
+    fn test_sort_rules_with_dep() {
+        let rules = vec![
+            MappingRule {
+                key: "a".to_string(),
+                mapping_type: MappingType::Constant,
+                value: Some(1.into()),
+                source: None,
+                transform: None,
+                template: None,
+                sub_mappings: None,
+                merge_strategy: Default::default(),
+                condition: None,
+                depends_on: None,
+                comment: None,
+                lang: None,
+                expected_type: None,
+                schema: None,
+            },
+            MappingRule {
+                key: "b".to_string(),
+                mapping_type: MappingType::Constant,
+                value: Some(2.into()),
+                source: None,
+                transform: None,
+                template: None,
+                sub_mappings: None,
+                merge_strategy: Default::default(),
+                condition: None,
+                depends_on: Some(vec!["a".to_string()]),
+                comment: None,
+                lang: None,
+                expected_type: None,
+                schema: None,
+            },
+        ];
+        let sorted = sort_rules(&rules).unwrap();
+        let keys: Vec<_> = sorted.iter().map(|r| &r.key).collect();
+        assert_eq!(keys, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn test_sort_rules_cycle() {
+        let rules = vec![
+            MappingRule {
+                key: "a".to_string(),
+                mapping_type: MappingType::Constant,
+                value: Some(1.into()),
+                source: None,
+                transform: None,
+                template: None,
+                sub_mappings: None,
+                merge_strategy: Default::default(),
+                condition: None,
+                depends_on: Some(vec!["b".to_string()]),
+                comment: None,
+                lang: None,
+                expected_type: None,
+                schema: None,
+            },
+            MappingRule {
+                key: "b".to_string(),
+                mapping_type: MappingType::Constant,
+                value: Some(2.into()),
+                source: None,
+                transform: None,
+                template: None,
+                sub_mappings: None,
+                merge_strategy: Default::default(),
+                condition: None,
+                depends_on: Some(vec!["a".to_string()]),
+                comment: None,
+                lang: None,
+                expected_type: None,
+                schema: None,
+            },
+        ];
+        let sorted = sort_rules(&rules);
+        assert!(sorted.is_err());
+    }
+}

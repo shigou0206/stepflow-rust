@@ -5,7 +5,7 @@ use std::fmt;
 use super::rule::MappingRule;
 
 /// 输入字段保留策略
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PreserveFields {
     /// 保留全部字段
     All,
@@ -18,6 +18,19 @@ pub enum PreserveFields {
 impl Default for PreserveFields {
     fn default() -> Self {
         PreserveFields::None
+    }
+}
+
+impl Serialize for PreserveFields {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            PreserveFields::All => serializer.serialize_str("all"),
+            PreserveFields::None => serializer.serialize_str("none"),
+            PreserveFields::Some(list) => list.serialize(serializer),
+        }
     }
 }
 
@@ -66,20 +79,72 @@ impl<'de> Deserialize<'de> for PreserveFields {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MappingDSL {
+    /// 命名空间（可选）
+    pub namespace: Option<String>,
     /// 版本号（可选）
     pub version: Option<String>,
-
     /// 描述信息（可选）
     pub description: Option<String>,
-
     /// 输入字段保留策略：All / None（默认）/ Some([...])
     #[serde(default)]
     pub preserve: PreserveFields,
-
     /// 是否启用调试模式（默认 false）
     #[serde(default)]
     pub debug: bool,
-
     /// 映射规则列表
     pub mappings: Vec<MappingRule>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_namespace_serde() {
+        let dsl_json = json!({
+            "namespace": "tenant_a",
+            "version": "1.0",
+            "description": "test",
+            "preserve": "all",
+            "debug": true,
+            "mappings": []
+        });
+
+        let dsl: MappingDSL = serde_json::from_value(dsl_json.clone()).unwrap();
+        assert_eq!(dsl.namespace.as_deref(), Some("tenant_a"));
+        assert_eq!(dsl.version.as_deref(), Some("1.0"));
+        assert_eq!(dsl.preserve, PreserveFields::All);
+        assert!(dsl.debug);
+        assert!(dsl.mappings.is_empty());
+
+        let out = serde_json::to_value(&dsl).unwrap();
+        assert_eq!(out["namespace"], "tenant_a");
+        assert_eq!(out["preserve"], "all");
+    }
+
+    #[test]
+    fn test_default_values() {
+        let dsl: MappingDSL = serde_json::from_str("{\"mappings\":[]}").unwrap();
+        assert_eq!(dsl.namespace, None);
+        assert_eq!(dsl.preserve, PreserveFields::None);
+        assert!(!dsl.debug);
+        assert!(dsl.mappings.is_empty());
+    }
+
+    #[test]
+    fn test_roundtrip() {
+        let dsl = MappingDSL {
+            namespace: Some("ns1".to_string()),
+            version: Some("v1".to_string()),
+            description: Some("desc".to_string()),
+            preserve: PreserveFields::Some(vec!["foo".to_string(), "bar".to_string()]),
+            debug: false,
+            mappings: vec![],
+        };
+        let ser = serde_json::to_string(&dsl).unwrap();
+        let de: MappingDSL = serde_json::from_str(&ser).unwrap();
+        assert_eq!(de.namespace, Some("ns1".to_string()));
+        assert_eq!(de.preserve, PreserveFields::Some(vec!["foo".to_string(), "bar".to_string()]));
+    }
 }
