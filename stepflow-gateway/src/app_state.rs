@@ -1,7 +1,8 @@
 use std::{sync::Arc, collections::HashMap};
 use tokio::sync::Mutex;
-use stepflow_engine::engine::{WorkflowEngine, MemoryQueue, PersistentStore};
-use stepflow_engine::match_service::MatchService;
+use stepflow_engine::engine::WorkflowEngine;
+use stepflow_match::service::MatchService;   
+use stepflow_match::queue::{MemoryQueue, PersistentStore};
 use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::EngineEventDispatcher;
 

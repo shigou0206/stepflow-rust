@@ -6,14 +6,15 @@ use std::sync::Arc;
 use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
-use crate::match_service::MatchService;
+use stepflow_match::service::MatchService;
+use stepflow_match::queue::{TaskStore, TaskQueue};
 use crate::mapping::MappingPipeline;
+
 
 use crate::command::step_once;
 
 use super::{
     types::{WorkflowMode, StepOutcome, StateExecutionResult},
-    traits::{TaskStore, TaskQueue},
     dispatch::dispatch_command,
 };
 

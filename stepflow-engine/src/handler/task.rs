@@ -8,8 +8,9 @@ use serde_json::Value;
 use stepflow_dsl::state::task::TaskState;
 use stepflow_hook::EngineEventDispatcher;
 use stepflow_storage::persistence_manager::PersistenceManager;
-use crate::engine::{TaskStore, WorkflowMode};
-use crate::match_service::{MatchService, Task as MatchServiceTask};
+use crate::engine::{WorkflowMode};
+use stepflow_match::service::{MatchService, Task as MatchServiceTask};
+use stepflow_match::queue::TaskStore;
 use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::{debug, warn};
@@ -29,7 +30,7 @@ pub async fn handle_task<S: TaskStore>(
     store: &S,
     match_service: Arc<dyn MatchService>,
     persistence: &Arc<dyn PersistenceManager>,
-    event_dispatcher: Arc<EngineEventDispatcher>,
+    _event_dispatcher: Arc<EngineEventDispatcher>,
     persistence_for_handlers: Arc<dyn PersistenceManager>,
 ) -> Result<Value, String> {
     // 创建任务记录

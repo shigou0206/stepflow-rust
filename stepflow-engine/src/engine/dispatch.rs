@@ -2,16 +2,16 @@ use serde_json::Value;
 use stepflow_dsl::{state::base::BaseState, State};
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_storage::persistence_manager::PersistenceManager;
+use stepflow_match::service::MatchService;
+use stepflow_match::queue::TaskStore;
 use crate::{
     command::Command,
     handler,
-    mapping::MappingPipeline,
-    match_service::MatchService,
+    mapping::MappingPipeline
 };
 
 use super::{
-    types::{WorkflowMode, StepOutcome},
-    traits::{TaskStore},
+    types::{WorkflowMode, StepOutcome}
 };
 
 use std::sync::Arc;

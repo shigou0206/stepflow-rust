@@ -9,7 +9,7 @@ use tracing_subscriber::EnvFilter;
 use app_state::AppState;
 use stepflow_sqlite::SqliteStorageManager;
 use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
-use stepflow_engine::match_service::MemoryMatchService;
+use stepflow_match::service::MemoryMatchService;
 use tower_http::{
     trace::TraceLayer,
     cors::CorsLayer,

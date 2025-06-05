@@ -2889,6 +2889,7 @@ dependencies = [
  "stepflow-dsl",
  "stepflow-hook",
  "stepflow-mapping",
+ "stepflow-match",
  "stepflow-sqlite",
  "stepflow-storage",
  "thiserror 1.0.69",
@@ -2914,6 +2915,7 @@ dependencies = [
  "stepflow-dsl",
  "stepflow-engine",
  "stepflow-hook",
+ "stepflow-match",
  "stepflow-sqlite",
  "stepflow-storage",
  "thiserror 1.0.69",
@@ -2953,6 +2955,25 @@ dependencies = [
  "serde_yaml",
  "tera",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "stepflow-match"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "jsonpath_lib",
+ "log",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "stepflow-storage",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+ "warp",
 ]
 
 [[package]]

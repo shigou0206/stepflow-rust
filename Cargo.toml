@@ -6,7 +6,7 @@ members = [
     "stepflow-sqlite",
     "stepflow-storage", 
     "stepflow-hook", 
-    "stepflow-gateway",
+    "stepflow-gateway", "stepflow-match",
 ]
 resolver = "2"
 

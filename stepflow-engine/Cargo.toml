@@ -9,6 +9,7 @@ stepflow-storage = { path = "../stepflow-storage" }
 stepflow-sqlite = { path = "../stepflow-sqlite" }
 stepflow-mapping = { path = "../stepflow-mapping" }
 stepflow-hook = { path = "../stepflow-hook" }
+stepflow-match = { path = "../stepflow-match" }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"

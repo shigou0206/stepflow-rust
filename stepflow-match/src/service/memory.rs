@@ -37,7 +37,7 @@ impl MemoryMatchService {
     }
 
     /// 获取指定队列中等待的 worker 数量
-    pub async fn waiting_workers_count(&self, queue: &str) -> usize {
+    pub async fn waiting_workers_count(&self, _queue: &str) -> usize {
         self.waiting_workers
             .lock()
             .await
@@ -95,10 +95,10 @@ impl MatchService for MemoryMatchService {
 
     async fn wait_for_completion(
         &self,
-        run_id: &str,
-        state_name: &str,
+        _run_id: &str,
+        _state_name: &str,
         input: &Value,
-        persistence: Arc<dyn PersistenceManager>,
+        _persistence: Arc<dyn PersistenceManager>,
     ) -> Result<Value, String> {
         // 简单实现：直接返回输入值
         Ok(input.clone())
