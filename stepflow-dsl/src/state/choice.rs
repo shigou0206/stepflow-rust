@@ -4,7 +4,7 @@ use super::base::BaseState;
 use crate::logic::ChoiceRule;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct ChoiceState {
     #[serde(flatten)]
     pub base: BaseState,

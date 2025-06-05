@@ -4,7 +4,7 @@ use super::base::BaseState;
 use crate::branch::Branch;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct ParallelState {
     #[serde(flatten)]
     pub base: BaseState,

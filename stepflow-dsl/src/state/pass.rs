@@ -4,7 +4,7 @@ use serde_json::Value;
 use super::base::BaseState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct PassState {
     #[serde(flatten)]
     pub base: BaseState,

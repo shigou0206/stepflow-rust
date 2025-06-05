@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::state::State;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct Branch {
     pub start_at: String,
     pub states: HashMap<String, State>,

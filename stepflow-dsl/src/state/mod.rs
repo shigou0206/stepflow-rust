@@ -21,7 +21,7 @@ pub use parallel::ParallelState;
 pub use map::MapState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "Type", rename_all = "PascalCase")]
+#[serde(tag = "Type", rename_all = "camelCase")]
 pub enum State {
     Task(TaskState),
     Pass(PassState),

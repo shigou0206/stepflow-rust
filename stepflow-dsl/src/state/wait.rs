@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::base::BaseState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct WaitState {
     #[serde(flatten)]
     pub base: BaseState,

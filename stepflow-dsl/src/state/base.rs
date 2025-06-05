@@ -4,7 +4,7 @@ use stepflow_mapping::MappingDSL;
 use crate::policy::{RetryPolicy, CatchPolicy};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct BaseState {
     #[serde(default)]
     pub comment: Option<String>,

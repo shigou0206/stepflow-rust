@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct RetryPolicy {
     pub error_equals: Vec<String>,
     #[serde(default)]
@@ -13,7 +13,7 @@ pub struct RetryPolicy {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct CatchPolicy {
     pub error_equals: Vec<String>,
     pub next: String,

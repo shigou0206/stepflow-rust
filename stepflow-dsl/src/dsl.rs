@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use crate::state::{base::BaseState, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowDSL {
     #[serde(default)]
     pub comment: Option<String>,
