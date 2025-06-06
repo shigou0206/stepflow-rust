@@ -3070,6 +3070,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "stepflow-mapping",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

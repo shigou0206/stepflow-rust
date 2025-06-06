@@ -82,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // -------- infra (stub) --
-    let pool = sqlx::SqlitePool::connect_lazy("sqlite:data/data.db")?;
+    let pool = sqlx::SqlitePool::connect_lazy("sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db")?;
     let persist = std::sync::Arc::new(SqliteStorageManager::new(pool.clone()));
     let event_dispatcher = std::sync::Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
     let match_service = MemoryMatchService::new();

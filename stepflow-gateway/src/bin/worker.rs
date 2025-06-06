@@ -186,10 +186,12 @@ async fn execute_task(
         run_id = %task.run_id,
         state_name = %task.state_name,
         tool_type = %task.tool_type,
+        input = %serde_json::to_string_pretty(&task.input).unwrap(),
         "Executing task"
     );
 
     let start_time = std::time::Instant::now();
+    debug!("Executing tool {} with input: {:?}", task.tool_type, task.input);
     let result = registry.execute(&task.tool_type, task.input).await;
 
     let (status, output) = match result {
@@ -198,6 +200,7 @@ async fn execute_task(
                 worker_id = %config.worker_id,
                 run_id = %task.run_id,
                 duration_ms = %start_time.elapsed().as_millis(),
+                output = %serde_json::to_string_pretty(&tool_result.output).unwrap(),
                 "Task executed successfully"
             );
             ("SUCCEEDED", tool_result.output)
