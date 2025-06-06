@@ -33,4 +33,5 @@ pub struct UpdateStoredQueueTask {
     pub processing_at: Option<Option<NaiveDateTime>>,
     pub completed_at: Option<Option<NaiveDateTime>>,
     pub failed_at: Option<Option<NaiveDateTime>>,
-} 
+}
+

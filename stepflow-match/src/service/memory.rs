@@ -103,4 +103,52 @@ impl MatchService for MemoryMatchService {
         // 简单实现：直接返回输入值
         Ok(input.clone())
     }
-} 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::Duration;
+    use serde_json::json;
+    use stepflow_storage::mock_persistence::DummyPersistence;
+
+    #[tokio::test]
+    async fn test_pending_tasks_count() {
+        let service = MemoryMatchService::new();
+        assert_eq!(service.pending_tasks_count("test_queue").await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_waiting_workers_count() {
+        let service = MemoryMatchService::new();
+        assert_eq!(service.waiting_workers_count("test_queue").await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_enqueue_and_poll_task() {
+        let service = MemoryMatchService::new();
+        let task = Task {
+            run_id: "run1".to_string(),
+            state_name: "stateA".to_string(),
+            input: Some(serde_json::json!({})),
+            task_type: "typeA".to_string(),
+            task_token: Some("token1".to_string()),
+            priority: Some(1),
+            attempt: Some(1),
+            max_attempts: Some(3),
+            timeout_seconds: Some(60),
+            scheduled_at: Some(chrono::NaiveDateTime::from_timestamp(0, 0)), 
+        };
+        service.enqueue_task("test_queue", task.clone()).await.unwrap();
+        let polled_task = service.poll_task("test_queue", "worker_1", Duration::from_secs(1)).await;
+        assert!(polled_task.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_completion() {
+        let service = MemoryMatchService::new();
+        let input = json!({"key": "value"});
+        let result = service.wait_for_completion("run_id", "state_name", &input, Arc::new(DummyPersistence)).await;
+        assert_eq!(result.unwrap(), input);
+    }
+}

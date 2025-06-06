@@ -45,4 +45,5 @@ pub struct UpdateStoredWorkflowExecution {
     pub search_attrs: Option<Option<Value>>,
     pub context_snapshot: Option<Option<Value>>,
     pub version: Option<i64>,
-} 
+}
+

@@ -39,4 +39,5 @@ pub struct UpdateStoredActivityTask {
     pub started_at: Option<Option<NaiveDateTime>>,
     pub completed_at: Option<Option<NaiveDateTime>>,
     pub version: Option<i64>,
-} 
+}
+

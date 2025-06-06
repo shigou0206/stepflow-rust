@@ -145,4 +145,64 @@ impl TaskQueue for MemoryQueue {
         let mut tasks = self.tasks.lock().await;
         Ok(tasks.pop_front().map(|task| (task.run_id, task.state_name)))
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::runtime::Runtime;
+    use chrono::Duration as ChronoDuration;
+
+    #[test]
+    fn test_memory_queue_basic_ops() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let queue = MemoryQueue::with_capacity(10);
+            assert!(queue.is_empty().await);
+            assert_eq!(queue.len().await, 0);
+
+            // push_with_priority
+            queue.push_with_priority("rid1", "state1", 100).await.unwrap();
+            queue.push_with_priority("rid2", "state2", 200).await.unwrap();
+            queue.push_with_priority("rid3", "state3", 150).await.unwrap();
+            assert_eq!(queue.len().await, 3);
+
+            // peek 应该是优先级最高的 rid2
+            let peeked = queue.peek().await.unwrap();
+            assert_eq!(peeked.run_id, "rid2");
+
+            // contains
+            assert!(queue.contains("rid1").await);
+            assert!(!queue.contains("not_exist").await);
+
+            // pop_batch
+            let batch = queue.pop_batch(2).await;
+            assert_eq!(batch.len(), 2);
+            // 剩下一个
+            assert_eq!(queue.len().await, 1);
+
+            // clear
+            queue.clear().await;
+            assert!(queue.is_empty().await);
+        });
+    }
+
+    #[test]
+    fn test_memory_queue_push_batch_and_cleanup() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let queue = MemoryQueue::with_capacity(10);
+            let mut tasks = vec![];
+            for i in 0..5 {
+                tasks.push(QueueTask::with_priority(format!("rid{i}"), format!("state{i}"), 100 + i));
+            }
+            queue.push_batch(tasks).await.unwrap();
+            assert_eq!(queue.len().await, 5);
+
+            // cleanup_expired (设置极短的 max_age，全部过期)
+            let cleaned = queue.cleanup_expired(ChronoDuration::seconds(-1)).await;
+            assert_eq!(cleaned, 5);
+            assert!(queue.is_empty().await);
+        });
+    }
 } 

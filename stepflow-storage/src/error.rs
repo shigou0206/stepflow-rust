@@ -46,4 +46,58 @@ pub enum StorageError {
 
     #[error("Database connection error: {0}")]
     ConnectionError(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_storage_error_variants_display() {
+        let err = StorageError::NotFound("foo".to_string());
+        assert_eq!(format!("{}", err), "Entity not found: foo");
+
+        let err = StorageError::InvalidData("bad data".to_string());
+        assert!(format!("{}", err).contains("bad data"));
+
+        let err = StorageError::ConcurrentModification("row1".to_string());
+        assert!(format!("{}", err).contains("Concurrent modification"));
+
+        let err = StorageError::OperationNotPermitted("op".to_string());
+        assert!(format!("{}", err).contains("Operation not permitted"));
+
+        let err = StorageError::UniqueConstraintViolation {
+            entity: "User".to_string(),
+            field: "email".to_string(),
+            value: "foo@bar.com".to_string(),
+        };
+        assert!(format!("{}", err).contains("User.email"));
+        assert!(format!("{}", err).contains("foo@bar.com"));
+
+        let err = StorageError::ForeignKeyConstraintViolation {
+            constraint_name: "fk_user".to_string(),
+            details: "user_id missing".to_string(),
+        };
+        assert!(format!("{}", err).contains("fk_user"));
+        assert!(format!("{}", err).contains("user_id missing"));
+
+        let err = StorageError::OptimisticLockConflict {
+            entity: "Order".to_string(),
+            id: "123".to_string(),
+            expected_version: 2,
+            actual_version: 1,
+        };
+        assert!(format!("{}", err).contains("Order"));
+        assert!(format!("{}", err).contains("123"));
+        assert!(format!("{}", err).contains("Expected version 2"));
+
+        let err = StorageError::SerializationError("ser fail".to_string());
+        assert!(format!("{}", err).contains("ser fail"));
+
+        let err = StorageError::DeserializationError("de fail".to_string());
+        assert!(format!("{}", err).contains("de fail"));
+
+        let err = StorageError::ConnectionError("conn fail".to_string());
+        assert!(format!("{}", err).contains("conn fail"));
+    }
 } 
