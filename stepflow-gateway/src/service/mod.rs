@@ -26,6 +26,9 @@ pub trait ExecutionService: Clone + Send + Sync + 'static {
     async fn start(&self, req: ExecStart) -> AppResult<ExecDto>;
     async fn get  (&self, run_id: &str) -> AppResult<ExecDto>;
     async fn list (&self, limit: i64, offset: i64) -> AppResult<Vec<ExecDto>>;
+    async fn update(&self, run_id: &str, status: String, result: Option<Value>) -> AppResult<()>;
+    async fn delete(&self, run_id: &str) -> AppResult<()>;
+    async fn list_by_status(&self, status: &str, limit: i64, offset: i64) -> AppResult<Vec<ExecDto>>;
 }
 
 pub mod activity_task;

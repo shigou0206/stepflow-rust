@@ -161,4 +161,37 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             finished_at: Option::map(r.close_time, |t| t.and_utc()),
         }).collect::<Vec<_>>())
     }
+
+    async fn update(&self, run_id: &str, status: String, result: Option<Value>) -> AppResult<()> {
+        let update = stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution {
+            status: Some(status),
+            result: Some(result),
+            result_version: Some(2),
+            ..Default::default()
+        };
+        self.state.persist.update_execution(run_id, &update)
+            .await
+            .map_err(|e| AppError::Anyhow(anyhow::anyhow!("update execution failed: {}", e)))?;
+        Ok(())
+    }
+
+    async fn delete(&self, run_id: &str) -> AppResult<()> {
+        self.state.persist.delete_execution(run_id)
+            .await
+            .map_err(|e| AppError::Anyhow(anyhow::anyhow!("delete execution failed: {}", e)))?;
+        Ok(())
+    }
+
+    async fn list_by_status(&self, status: &str, limit: i64, offset: i64) -> AppResult<Vec<ExecDto>> {
+        let rows = self.state.persist.find_executions_by_status(status, limit, offset).await
+            .map_err(|e| AppError::Anyhow(anyhow::anyhow!("list_by_status failed: {}", e)))?;
+        Ok(rows.into_iter().map(|r| ExecDto {
+            run_id: r.run_id,
+            mode:   r.mode,
+            status: r.status,
+            result: r.result,
+            started_at: r.start_time.and_utc(),
+            finished_at: Option::map(r.close_time, |t| t.and_utc()),
+        }).collect())
+    }
 }
