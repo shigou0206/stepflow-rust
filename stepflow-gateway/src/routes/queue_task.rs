@@ -1,5 +1,5 @@
 use axum::{
-    routing::get,
+    routing::{get, put, delete},
     extract::{Path, State, Query},
     Json, Router,
 };
@@ -10,11 +10,13 @@ use crate::{
     app_state::AppState,
 };
 use std::collections::HashMap;
+use chrono::NaiveDateTime;
 
 pub fn router(svc: QueueTaskSvc) -> Router<AppState> {
     Router::new()
         .route("/", get(list_by_status))
-        .route("/:id", get(get_one).put(update_one))
+        .route("/retry", get(list_to_retry))
+        .route("/:id", get(get_one).put(update_one).delete(delete_one))
         .route("/:id/validate-dsl", get(validate_dsl))
         .with_state(svc)
 }
@@ -65,6 +67,28 @@ pub async fn update_one(
     Ok(())
 }
 
+/// 删除任务
+#[utoipa::path(
+    delete,
+    path = "/v1/queue_tasks/{id}",
+    params(
+        ("id" = String, Path, description = "任务 ID")
+    ),
+    responses(
+        (status = 200, description = "成功删除任务"),
+        (status = 404, description = "任务不存在"),
+        (status = 500, description = "服务器内部错误")
+    ),
+    tag = "queue_tasks"
+)]
+pub async fn delete_one(
+    State(svc): State<QueueTaskSvc>,
+    Path(id): Path<String>,
+) -> AppResult<()> {
+    svc.delete_task(&id).await?;
+    Ok(())
+}
+
 /// 根据状态列出任务
 #[utoipa::path(
     get,
@@ -112,4 +136,33 @@ pub async fn validate_dsl(
 ) -> AppResult<()> {
     svc.validate_task_dsl(&id).await?;
     Ok(())
+}
+
+/// 查询待重试任务
+#[utoipa::path(
+    get,
+    path = "/v1/queue_tasks/retry",
+    params(
+        ("before" = String, Query, description = "重试时间上限（ISO 格式）"),
+        ("limit" = i64, Query, description = "分页数量")
+    ),
+    responses(
+        (status = 200, description = "成功获取任务列表", body = [QueueTaskDto]),
+        (status = 400, description = "请求参数错误"),
+        (status = 500, description = "服务器内部错误")
+    ),
+    tag = "queue_tasks"
+)]
+pub async fn list_to_retry(
+    State(svc): State<QueueTaskSvc>,
+    Query(params): Query<HashMap<String, String>>,
+) -> AppResult<Json<Vec<QueueTaskDto>>> {
+    let before_str = params.get("before").cloned().ok_or_else(|| {
+        crate::error::AppError::BadRequest("missing 'before' param".into())
+    })?;
+    let before = before_str.parse::<NaiveDateTime>()
+        .map_err(|e| crate::error::AppError::BadRequest(format!("invalid datetime: {e}")))?;
+    let limit = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(50);
+    let list = svc.list_tasks_to_retry(before, limit).await?;
+    Ok(Json(list))
 }

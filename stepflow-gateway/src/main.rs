@@ -51,6 +51,8 @@ use utoipa_swagger_ui::SwaggerUi;
         routes::queue_task::update_one,
         routes::queue_task::list_by_status,
         routes::queue_task::validate_dsl,
+        routes::queue_task::list_to_retry,
+        routes::queue_task::delete_one,
         routes::timer::create_timer,
         routes::timer::get_timer,
         routes::timer::update_timer,
