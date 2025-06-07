@@ -3,7 +3,6 @@ use async_trait::async_trait;
 use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
 use stepflow_storage::error::StorageError;
 use stepflow_engine::engine::{WorkflowEngine, WorkflowMode};
-use stepflow_match::queue::{MemoryQueue, PersistentStore};
 use crate::dto::execution::*;
 use crate::error::{AppResult, AppError};
 use crate::app_state::AppState;
@@ -69,9 +68,6 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             dsl,
             req.init_ctx.clone().unwrap_or(Value::Object(Default::default())),
             mode,
-            // 使用 MemoryStore/Queue；后续可换 SqlStore/Queue
-            PersistentStore::new(self.state.persist.clone()),
-            MemoryQueue::new(),
             self.state.event_dispatcher.clone(),
             self.state.persist.clone(),
             self.state.match_service.clone(),

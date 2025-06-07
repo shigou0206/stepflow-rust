@@ -7,7 +7,6 @@ use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 use stepflow_match::service::MatchService;
-use stepflow_match::queue::{TaskStore, TaskQueue};
 use crate::mapping::MappingPipeline;
 
 
@@ -18,15 +17,13 @@ use super::{
     dispatch::dispatch_command,
 };
 
-pub struct WorkflowEngine<S: TaskStore, Q: TaskQueue> {
+pub struct WorkflowEngine{
     pub run_id: String,
     pub dsl: WorkflowDSL,
     pub context: Value,
     pub current_state: String,
 
     pub mode: WorkflowMode,
-    pub store: S,
-    pub queue: Q,
     pub event_dispatcher: Arc<EngineEventDispatcher>,
     pub persistence: Arc<dyn PersistenceManager>,
     pub match_service: Arc<dyn MatchService>,
@@ -35,14 +32,12 @@ pub struct WorkflowEngine<S: TaskStore, Q: TaskQueue> {
     pub updated_at: DateTime<Utc>,
 }
 
-impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
+impl WorkflowEngine {
     pub fn new(
         run_id: String,
         dsl: WorkflowDSL,
         input: Value,
         mode: WorkflowMode,
-        store: S,
-        queue: Q,
         event_dispatcher: Arc<EngineEventDispatcher>,
         persistence: Arc<dyn PersistenceManager>,
         match_service: Arc<dyn MatchService>,
@@ -53,8 +48,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             dsl,
             context: input,
             mode,
-            store,
-            queue,
             event_dispatcher,
             persistence,
             match_service,
@@ -66,8 +59,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
     /// 从数据库恢复工作流引擎状态
     pub async fn restore(
         run_id: String,
-        store: S,
-        queue: Q,
         event_dispatcher: Arc<EngineEventDispatcher>,
         persistence: Arc<dyn PersistenceManager>,
         match_service: Arc<dyn MatchService>,
@@ -134,8 +125,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             dsl,
             context,
             mode,
-            store,
-            queue,
             event_dispatcher,
             persistence,
             match_service,
@@ -364,7 +353,6 @@ impl<S: TaskStore, Q: TaskQueue> WorkflowEngine<S, Q> {
             &self.context,
             &self.run_id,
             self.mode,
-            &self.store,
             self.match_service.clone(),
             &self.persistence,
             self.event_dispatcher.clone(),

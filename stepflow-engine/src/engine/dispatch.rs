@@ -3,15 +3,14 @@ use stepflow_dsl::{state::base::BaseState, State};
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_match::service::MatchService;
-use stepflow_match::queue::TaskStore;
 use crate::{
     command::Command,
     handler,
-    mapping::MappingPipeline
+    mapping::MappingPipeline,
 };
 
 use super::{
-    types::{WorkflowMode, StepOutcome}
+    types::{WorkflowMode, StepOutcome},
 };
 
 use std::sync::Arc;
@@ -35,7 +34,6 @@ impl From<String> for DispatchError {
 
 type DispatchResult<T> = Result<T, DispatchError>;
 
-// 统一的事件处理结构
 struct EventContext<'a> {
     run_id: &'a str,
     state_name: &'a str,
@@ -83,7 +81,6 @@ trait StateTransition {
         input: &Value,
         run_id: &str,
         mode: WorkflowMode,
-        store: &impl TaskStore,
         match_service: Arc<dyn MatchService>,
         persistence: &Arc<dyn PersistenceManager>,
         event_dispatcher: &Arc<EngineEventDispatcher>,
@@ -98,7 +95,6 @@ impl StateTransition for State {
         input: &Value,
         run_id: &str,
         mode: WorkflowMode,
-        store: &impl TaskStore,
         match_service: Arc<dyn MatchService>,
         persistence: &Arc<dyn PersistenceManager>,
         event_dispatcher: &Arc<EngineEventDispatcher>,
@@ -115,11 +111,8 @@ impl StateTransition for State {
                     state_name,
                     t,
                     input,
-                    store,
                     match_service,
-                    persistence,
-                    event_dispatcher.clone(),
-                    persistence_for_handlers.clone(),
+                    persistence.clone(),
                 ).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
@@ -139,7 +132,7 @@ impl StateTransition for State {
                     mode,
                     run_id,
                     persistence_for_handlers,
-                    event_dispatcher
+                    event_dispatcher,
                 ).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
@@ -152,7 +145,14 @@ impl StateTransition for State {
                 }
             }
             State::Pass(p) => {
-                match handler::handle_pass(state_name, p, input, run_id, event_dispatcher, persistence).await {
+                match handler::handle_pass(
+                    state_name,
+                    p,
+                    input,
+                    run_id,
+                    event_dispatcher,
+                    persistence,
+                ).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, p.base.next.clone()))
@@ -164,7 +164,14 @@ impl StateTransition for State {
                 }
             }
             State::Choice(c) => {
-                match handler::handle_choice(state_name, c, input, run_id, event_dispatcher, persistence).await {
+                match handler::handle_choice(
+                    state_name,
+                    c,
+                    input,
+                    run_id,
+                    event_dispatcher,
+                    persistence,
+                ).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, None))
@@ -176,7 +183,13 @@ impl StateTransition for State {
                 }
             }
             State::Succeed(_) => {
-                match handler::handle_succeed(state_name, input, run_id, event_dispatcher, persistence).await {
+                match handler::handle_succeed(
+                    state_name,
+                    input,
+                    run_id,
+                    event_dispatcher,
+                    persistence,
+                ).await {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, None))
@@ -217,13 +230,12 @@ impl StateTransition for State {
     }
 }
 
-pub(crate) async fn dispatch_command<S: TaskStore>(
+pub(crate) async fn dispatch_command(
     cmd: &Command,
     state_enum: &State,
     context: &Value,
     run_id: &str,
     mode: WorkflowMode,
-    store: &S,
     match_service: Arc<dyn MatchService>,
     persistence: &Arc<dyn PersistenceManager>,
     event_dispatcher: Arc<EngineEventDispatcher>,
@@ -231,7 +243,7 @@ pub(crate) async fn dispatch_command<S: TaskStore>(
 ) -> Result<(StepOutcome, Option<String>), String> {
     let state_name = cmd.state_name().to_string();
 
-    // 提取 BaseState 引用 & 构建 MappingPipeline
+    // 提取 BaseState & MappingPipeline
     let base: &BaseState = match state_enum {
         State::Task(s) => &s.base,
         State::Wait(s) => &s.base,
@@ -240,7 +252,7 @@ pub(crate) async fn dispatch_command<S: TaskStore>(
         State::Fail(s) => &s.base,
         State::Succeed(s) => &s.base,
         State::Parallel(_) | State::Map(_) => {
-            return Err("Parallel / Map not yet supported".to_string())
+            return Err("Parallel / Map not yet supported".to_string());
         }
     };
 
@@ -249,20 +261,19 @@ pub(crate) async fn dispatch_command<S: TaskStore>(
         output_mapping: base.output_mapping.as_ref(),
     };
 
-    // Input-Mapping
+    // 1. Input Mapping
     let exec_in = pipeline
         .apply_input(context)
         .map_err(|e| DispatchError::MappingError(e.to_string()))
         .map_err(|e| e.to_string())?;
 
-    // 执行状态转换
+    // 2. 执行状态逻辑
     let (raw_out, mut logical_next) = state_enum
         .execute(
             &state_name,
             &exec_in,
             run_id,
             mode,
-            store,
             match_service,
             persistence,
             &event_dispatcher,
@@ -271,12 +282,12 @@ pub(crate) async fn dispatch_command<S: TaskStore>(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 对于 Choice 状态，使用 Command 中的 next_state
+    // 3. Choice 覆盖跳转状态
     if let (Command::Choice { next_state, .. }, State::Choice(_)) = (cmd, state_enum) {
         logical_next = Some(next_state.clone());
     }
 
-    // Output-Mapping
+    // 4. Output Mapping
     let new_ctx = pipeline
         .apply_output(&raw_out, context)
         .map_err(|e| DispatchError::MappingError(e.to_string()))
@@ -289,4 +300,4 @@ pub(crate) async fn dispatch_command<S: TaskStore>(
         },
         logical_next,
     ))
-} 
+}

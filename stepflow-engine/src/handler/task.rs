@@ -6,64 +6,58 @@
 
 use serde_json::Value;
 use stepflow_dsl::state::task::TaskState;
-use stepflow_hook::EngineEventDispatcher;
 use stepflow_storage::persistence_manager::PersistenceManager;
-use crate::engine::{WorkflowMode};
+use crate::engine::WorkflowMode;
 use stepflow_match::service::{MatchService, Task as MatchServiceTask};
-use stepflow_match::queue::TaskStore;
 use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::{debug, warn};
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 
-
-// -----------------------------------------------------------------------------
-// Public API
-// -----------------------------------------------------------------------------
 /// Executes TaskState: decides between Inline execution or Deferred dispatch via MatchService.
-pub async fn handle_task<S: TaskStore>(
+pub async fn handle_task(
     mode: WorkflowMode,
     run_id: &str,
     state_name: &str,
     state: &TaskState,
     input: &Value,
-    store: &S,
     match_service: Arc<dyn MatchService>,
-    persistence: &Arc<dyn PersistenceManager>,
-    _event_dispatcher: Arc<EngineEventDispatcher>,
     persistence_for_handlers: Arc<dyn PersistenceManager>,
 ) -> Result<Value, String> {
-    // 创建任务记录
-    store.insert_task(
-        persistence,
-        run_id,
-        state_name,
-        &state.resource,
-        input,
-    ).await?;
+    // 构造任务
+    let service_task = MatchServiceTask {
+        run_id: run_id.to_string(),
+        state_name: state_name.to_string(),
+        input: Some(input.clone()),
+        task_type: state.resource.clone(),
+        task_token: None,
+        priority: None,
+        attempt: Some(0),
+        max_attempts: Some(3),
+        timeout_seconds: None,
+        scheduled_at: None,
+    };
 
-    // 如果是 inline 模式，等待任务完成
+    match_service
+        .enqueue_task(&state.resource, service_task)
+        .await
+        .map_err(|e| format!("enqueue failed: {e}"))?;
+
     if mode == WorkflowMode::Inline {
-        // 等待任务完成
-        match_service.wait_for_completion(
-            run_id,
-            state_name,
-            input,
-            persistence_for_handlers,
-        ).await
+        match_service
+            .wait_for_completion(run_id, state_name, input, persistence_for_handlers)
+            .await
     } else {
-        // deferred 模式，直接返回输入
         Ok(input.clone())
     }
 }
 
-pub struct TaskHandler<'a> { // Removed generic <S: TaskStore>
+pub struct TaskHandler<'a> {
     match_service: Arc<dyn MatchService>,
     state: &'a TaskState,
-    // _marker: std::marker::PhantomData<S>, // Removed PhantomData
 }
 
-impl<'a> TaskHandler<'a> { // Removed generic <S: TaskStore>
+impl<'a> TaskHandler<'a> {
     pub fn new(
         match_service: Arc<dyn MatchService>,
         state: &'a TaskState,
@@ -86,8 +80,6 @@ impl<'a> TaskHandler<'a> { // Removed generic <S: TaskStore>
     ) -> Result<Value, String> {
         debug!("Creating deferred task for resource: {} via MatchService", self.state.resource);
 
-        // TODO: Define how priority and timeout_seconds are sourced from TaskState's DSL definition.
-        //       Currently attempting to parse from execution_config, defaulting to None.
         let mut priority = None;
         let mut timeout_seconds = None;
 
@@ -116,11 +108,11 @@ impl<'a> TaskHandler<'a> { // Removed generic <S: TaskStore>
             task_token: None,
             priority,
             attempt: Some(0),
-            max_attempts: Some(3), // 默认最多重试3次
+            max_attempts: Some(3),
             timeout_seconds,
             scheduled_at: None,
         };
-        
+
         self.match_service
             .enqueue_task(&self.state.resource, service_task)
             .await
