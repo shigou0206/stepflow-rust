@@ -5,9 +5,10 @@ use tokio::sync::Mutex;
 use tokio::time::timeout;
 use async_trait::async_trait;
 use serde_json::Value;
+use std::any::Any;
 use stepflow_storage::persistence_manager::PersistenceManager;
 
-use super::interface::{MatchService, Task};
+use crate::service::interface::{MatchService, Task, MatchStats};
 
 /// 内存版的任务匹配服务实现
 pub struct MemoryMatchService {
@@ -48,6 +49,28 @@ impl MemoryMatchService {
 
 #[async_trait]
 impl MatchService for MemoryMatchService {
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    async fn queue_stats(&self) -> Vec<MatchStats> {
+        let pending_tasks = self.pending_tasks.lock().await;
+        let waiting_workers = self.waiting_workers.lock().await;
+
+        pending_tasks
+            .iter()
+            .map(|(queue, tasks)| {
+                let waiting = waiting_workers.len(); 
+                MatchStats {
+                    queue: queue.clone(),
+                    pending_tasks: tasks.len(),
+                    waiting_workers: waiting,
+                }
+            })
+            .collect()
+    }
+
     async fn poll_task(&self, queue: &str, worker_id: &str, wait_time: Duration) -> Option<Task> {
         let mut pending_tasks = self.pending_tasks.lock().await;
         

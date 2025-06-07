@@ -1,31 +1,34 @@
-use serde::Serialize;
-use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use stepflow_match::service::Task;
+use utoipa::{ToSchema};
 
-#[derive(Serialize)]
-pub struct QueueTaskPreview {
-    pub run_id: String,
-    pub state_name: String,
-    pub priority: u8,
-    pub created_at: DateTime<Utc>,
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct EnqueueRequest {
+    #[schema(example = "default_task_queue")]
+    pub queue: String,
+    pub task: Task,
 }
 
-#[derive(Serialize)]
-pub struct MemoryStats {
-    pub total: usize,
-    pub peek: Option<QueueTaskPreview>,
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PollRequest {
+    #[schema(example = "default_task_queue")]
+    pub queue: String,
+    #[schema(example = "worker-1")]
+    pub worker_id: String,
+    #[schema(example = 10)]
+    pub timeout_secs: Option<u64>,
 }
 
-#[derive(Serialize)]
-pub struct DbStats {
-    pub pending: usize,
-    pub processing: usize,
-    pub completed: usize,
-    pub failed: usize,
-    pub retrying: usize,
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PollResponse {
+    pub has_task: bool,
+    pub task: Option<Task>,
 }
 
-#[derive(Serialize)]
-pub struct MatchStatsResponse {
-    pub memory: MemoryStats,
-    pub db: DbStats,
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct MatchStats {
+    pub queue: String,
+    pub pending_tasks: usize,
+    pub waiting_workers: usize,
 }

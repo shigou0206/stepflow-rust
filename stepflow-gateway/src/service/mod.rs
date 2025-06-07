@@ -74,12 +74,3 @@ pub trait TimerService: Send + Sync {
     async fn delete_timer(&self, timer_id: &str) -> AppResult<()>;
     async fn find_timers_before(&self, before: DateTime<Utc>, limit: i64) -> AppResult<Vec<TimerDto>>;
 }
-
-pub mod match_stats;
-pub use match_stats::MatchService as MatchStatsSvc;
-use crate::dto::match_stats::*;
-
-#[async_trait]
-pub trait MatchStatsService: Send + Sync {
-    async fn collect_stats(&self) -> AppResult<MatchStatsResponse>;
-}

@@ -1,8 +1,9 @@
 use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use serde_json::Value;
+use std::any::Any;
 use stepflow_storage::persistence_manager::PersistenceManager;
-use super::interface::{MatchService, Task};
+use crate::service::interface::{MatchService, Task};
 
 /// HybridMatchService: combines memory-based and persistent task queues
 pub struct HybridMatchService {
@@ -26,6 +27,10 @@ impl HybridMatchService {
 
 #[async_trait]
 impl MatchService for HybridMatchService {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     async fn poll_task(&self, queue: &str, worker_id: &str, timeout: Duration) -> Option<Task> {
         // Step 1: Try memory
         if let Some(task) = self.memory_service.poll_task(queue, worker_id, timeout).await {

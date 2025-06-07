@@ -6,7 +6,9 @@ pub mod activity_task;
 pub mod workflow_event;
 pub mod queue_task;
 pub mod timer;
-pub mod match_stats;
+pub mod match_router;
+use stepflow_match::service::{HybridMatchService, MemoryMatchService, PersistentMatchService};
+use stepflow_match::queue::PersistentStore;
 use crate::{
     app_state::AppState, 
     service::{
@@ -15,8 +17,7 @@ use crate::{
         activity_task::ActivityTaskSqlxSvc,
         workflow_event::WorkflowEventSqlxSvc,
         queue_task::QueueTaskSqlxSvc,
-        timer::TimerSqlxSvc,
-        match_stats::MatchService,
+        timer::TimerSqlxSvc
     },
 };
 use std::sync::Arc;
@@ -30,11 +31,8 @@ pub fn new(state: AppState) -> Router<AppState> {
     let task_svc = ActivityTaskSqlxSvc::new(state.persist.clone());
     let queue_svc = QueueTaskSqlxSvc::new(state.clone());
     let timer_svc = TimerSqlxSvc::new(state.clone());
-    // let match_svc = Arc::new(MatchService::new(
-    //     state.queue.clone(),
-    //     state.memory.clone(),
-    //     state.persist.clone()
-    // ));
+
+
     let app = Router::new()
         .nest("/v1/templates", template::router(tpl_svc))
         .nest("/v1/executions", execution::router(exec_svc))

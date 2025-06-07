@@ -4,7 +4,15 @@ use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use chrono::NaiveDateTime;
 use std::sync::Arc;
+use std::any::Any;
 use stepflow_storage::persistence_manager::PersistenceManager;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatchStats {
+    pub queue: String,
+    pub pending_tasks: usize,
+    pub waiting_workers: usize,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
@@ -69,6 +77,11 @@ impl Task {
 
 #[async_trait]
 pub trait MatchService: Send + Sync {
+    fn as_any(&self) -> &dyn Any;
+    async fn queue_stats(&self) -> Vec<MatchStats> {
+        vec![]
+    }
+
     async fn poll_task(&self, queue: &str, worker_id: &str, timeout: Duration) -> Option<Task>;
     async fn enqueue_task(&self, queue: &str, task: Task) -> Result<(), String>;
     async fn wait_for_completion(
@@ -78,4 +91,4 @@ pub trait MatchService: Send + Sync {
         input: &Value,
         persistence: Arc<dyn PersistenceManager>,
     ) -> Result<Value, String>;
-} 
+}
