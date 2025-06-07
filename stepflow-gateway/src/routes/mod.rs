@@ -7,8 +7,6 @@ pub mod workflow_event;
 pub mod queue_task;
 pub mod timer;
 pub mod match_router;
-use stepflow_match::service::{HybridMatchService, MemoryMatchService, PersistentMatchService};
-use stepflow_match::queue::PersistentStore;
 use crate::{
     app_state::AppState, 
     service::{
@@ -41,6 +39,7 @@ pub fn new(state: AppState) -> Router<AppState> {
         .nest("/v1/workflow_events", workflow_event::router(event_svc))
         .nest("/v1/queue_tasks", queue_task::router(queue_svc))
         .nest("/v1/timers", timer::router(timer_svc))
+        .nest("/v1/match", match_router::router())
         .route("/v1/healthz", get(|| async { "ok" }))
         .with_state((*state).clone());      // 全局状态
     app
