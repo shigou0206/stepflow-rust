@@ -8,7 +8,9 @@ members = [
     "stepflow-hook", 
     "stepflow-gateway", 
     "stepflow-match", 
-    "stepflow-tool", "stepflow-dto",
+    "stepflow-tool", 
+    "stepflow-dto", 
+    "stepflow-worker",
 ]
 resolver = "2"
 

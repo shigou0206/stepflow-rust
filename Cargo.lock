@@ -3257,6 +3257,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "stepflow-worker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "reqwest 0.12.18",
+ "serde",
+ "serde_json",
+ "stepflow-dto",
+ "stepflow-tool",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "stringprep"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
