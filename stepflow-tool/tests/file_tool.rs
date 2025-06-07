@@ -1,7 +1,6 @@
 use serde_json::json;
 use stepflow_tool::{Tool, ToolContext};
 use stepflow_tool::tools::file::{FileTool, FileConfig};
-use std::path::PathBuf;
 use tempfile::tempdir;
 
 #[tokio::test]

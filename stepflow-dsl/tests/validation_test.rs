@@ -1,5 +1,4 @@
 use stepflow_dsl::{WorkflowDSL, ValidationError};
-use std::collections::HashMap;
 use serde_json::json;
 
 #[test]
