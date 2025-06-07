@@ -101,6 +101,7 @@ use stepflow_dto::dto as dto;
         (name = "workflow_events", description = "工作流事件管理"),
         (name = "queue_tasks", description = "队列任务管理"),
         (name = "timers", description = "定时任务管理"),
+        (name = "match", description = "匹配服务管理"),
     )
 )]
 struct ApiDoc;

@@ -1,3 +1,4 @@
+// ⚙️ 修改版：支持并发轮询和任务执行控制
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -5,8 +6,8 @@ use serde_json::{json, Value};
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::sleep;
-use tracing::{debug, error, info, warn};
+use tokio::{sync::Semaphore, time::sleep};
+use tracing::error;
 
 use stepflow_tool::core::registry::ToolRegistry;
 use stepflow_tool::tools::http::HttpTool;
@@ -15,6 +16,7 @@ use stepflow_tool::tools::file::FileTool;
 
 const DEFAULT_GATEWAY_SERVER_URL: &str = "http://127.0.0.1:3000/v1/worker";
 const DEFAULT_WORKER_ID: &str = "tool-worker-1";
+const MAX_CONCURRENCY: usize = 4;
 
 #[derive(Debug, Clone)]
 struct WorkerConfig {
@@ -25,14 +27,12 @@ struct WorkerConfig {
 impl WorkerConfig {
     fn from_env() -> Result<Self> {
         let worker_id = env::var("WORKER_ID").unwrap_or_else(|_| DEFAULT_WORKER_ID.to_string());
-        let gateway_server_url = env::var("GATEWAY_SERVER_URL").unwrap_or_else(|_| DEFAULT_GATEWAY_SERVER_URL.to_string());
-        
-        info!(
-            worker_id = %worker_id,
-            gateway_server_url = %gateway_server_url,
-            "Tool worker configured"
-        );
-        Ok(Self { worker_id, gateway_server_url })
+        let gateway_server_url = env::var("GATEWAY_SERVER_URL")
+            .unwrap_or_else(|_| DEFAULT_GATEWAY_SERVER_URL.to_string());
+        Ok(Self {
+            worker_id,
+            gateway_server_url,
+        })
     }
 }
 
@@ -68,107 +68,56 @@ async fn main() -> Result<()> {
         .with_target(true)
         .init();
 
-    let config = WorkerConfig::from_env().context("Failed to load worker configuration")?;
-    
-    // 创建工具注册表
+    let config = WorkerConfig::from_env()?;
+
     let mut registry = ToolRegistry::new();
     registry.register(HttpTool::new(None))?;
     registry.register(ShellTool::new(None))?;
     registry.register(FileTool::new(None))?;
     let registry = Arc::new(registry);
 
-    info!(
-        worker_id = %config.worker_id,
-        tools = ?registry.list_tools(),
-        "Tool registry initialized"
-    );
-    
-    run_worker_loop(config, registry).await
-}
-
-async fn run_worker_loop(config: WorkerConfig, registry: Arc<ToolRegistry>) -> Result<()> {
-    let client = Client::new();
-    let mut backoff_seconds = 1u64;
-    const MAX_BACKOFF_SECONDS: u64 = 60;
-
-    info!(worker_id = %config.worker_id, "Tool worker loop starting...");
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENCY));
+    let client = Arc::new(Client::new());
 
     loop {
-        match poll_for_task(&client, &config).await {
-            Ok(Some(task_details)) => {
-                backoff_seconds = 1; // 重置退避时间
-                info!(
-                    worker_id = %config.worker_id,
-                    run_id = %task_details.run_id,
-                    state_name = %task_details.state_name,
-                    tool_type = %task_details.tool_type,
-                    "Polled new task"
-                );
-                
-                if let Err(e) = execute_task(&client, &config, &registry, task_details).await {
-                    error!(
-                        worker_id = %config.worker_id,
-                        error = ?e,
-                        "Task execution failed"
-                    );
+        let permit = semaphore.clone().acquire_owned().await?;
+        let config = config.clone();
+        let registry = registry.clone();
+        let client = client.clone();
+
+        tokio::spawn(async move {
+            let _permit = permit; // 控制并发
+            if let Ok(Some(task)) = poll_for_task(&client, &config).await {
+                if let Err(e) = execute_task(&client, &config, &registry, task).await {
+                    error!("Worker task failed: {e:?}");
                 }
+            } else {
+                sleep(Duration::from_secs(2)).await;
             }
-            Ok(None) => {
-                debug!(
-                    worker_id = %config.worker_id,
-                    sleep_duration_s = backoff_seconds,
-                    "No task available, sleeping."
-                );
-                sleep(Duration::from_secs(backoff_seconds)).await;
-                backoff_seconds = (backoff_seconds * 2).min(MAX_BACKOFF_SECONDS);
-            }
-            Err(e) => {
-                warn!(
-                    worker_id = %config.worker_id,
-                    error = ?e,
-                    sleep_duration_s = backoff_seconds,
-                    "Polling error, sleeping."
-                );
-                sleep(Duration::from_secs(backoff_seconds)).await;
-                backoff_seconds = (backoff_seconds * 2).min(MAX_BACKOFF_SECONDS);
-            }
-        }
+        });
+
+        sleep(Duration::from_millis(200)).await; // 控制轮询速率
     }
 }
 
 async fn poll_for_task(client: &Client, config: &WorkerConfig) -> Result<Option<TaskDetails>> {
-    let poll_url = format!("{}/poll", config.gateway_server_url);
-    debug!(worker_id = %config.worker_id, url = %poll_url, "Polling for task");
-
-    let response = client
-        .post(&poll_url)
+    let res = client
+        .post(format!("{}/poll", config.gateway_server_url))
         .json(&json!({
             "worker_id": config.worker_id,
-            "capabilities": ["http", "shell", "file"] // 声明支持的工具类型
+            "capabilities": ["http", "shell", "file"]
         }))
         .send()
-        .await
-        .context("Failed to send poll request")?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_body = response.text().await.unwrap_or_else(|_| "<Failed to read error body>".to_string());
-        return Err(anyhow::anyhow!(
-            "Polling request failed with status: {}. Body: {}", status, error_body
-        ));
-    }
-
-    let poll_api_response = response
+        .await?
         .json::<PollApiResponse>()
-        .await
-        .context("Failed to deserialize poll response")?;
+        .await?;
 
-    if poll_api_response.has_task {
+    if res.has_task {
         Ok(Some(TaskDetails {
-            run_id: poll_api_response.run_id.context("Task received with no run_id")?,
-            state_name: poll_api_response.state_name.context("Task received with no state_name")?,
-            tool_type: poll_api_response.tool_type.context("Task received with no tool_type")?,
-            input: poll_api_response.input.unwrap_or_default(),
+            run_id: res.run_id.context("missing run_id")?,
+            state_name: res.state_name.context("missing state_name")?,
+            tool_type: res.tool_type.context("missing tool_type")?,
+            input: res.input.unwrap_or_default(),
         }))
     } else {
         Ok(None)
@@ -179,71 +128,27 @@ async fn execute_task(
     client: &Client,
     config: &WorkerConfig,
     registry: &ToolRegistry,
-    task: TaskDetails
+    task: TaskDetails,
 ) -> Result<()> {
-    info!(
-        worker_id = %config.worker_id,
-        run_id = %task.run_id,
-        state_name = %task.state_name,
-        tool_type = %task.tool_type,
-        input = %serde_json::to_string_pretty(&task.input).unwrap(),
-        "Executing task"
-    );
+    let result = registry.execute(&task.tool_type, task.input.clone()).await;
 
-    let start_time = std::time::Instant::now();
-    debug!("Executing tool {} with input: {:?}", task.tool_type, task.input);
-    let result = registry.execute(&task.tool_type, task.input).await;
-
-    let (status, output) = match result {
-        Ok(tool_result) => {
-            info!(
-                worker_id = %config.worker_id,
-                run_id = %task.run_id,
-                duration_ms = %start_time.elapsed().as_millis(),
-                output = %serde_json::to_string_pretty(&tool_result.output).unwrap(),
-                "Task executed successfully"
-            );
-            ("SUCCEEDED", tool_result.output)
-        }
-        Err(e) => {
-            error!(
-                worker_id = %config.worker_id,
-                run_id = %task.run_id,
-                error = ?e,
-                "Task execution failed"
-            );
-            ("FAILED", json!({
-                "error": e.to_string(),
-                "duration_ms": start_time.elapsed().as_millis()
-            }))
-        }
+    let (status, result) = match result {
+        Ok(tool_result) => ("SUCCEEDED", tool_result.output),
+        Err(e) => ("FAILED", json!({"error": e.to_string()})),
     };
 
-    let update_request = TaskResult {
+    let res = TaskResult {
         run_id: task.run_id,
         state_name: task.state_name,
         status: status.to_string(),
-        result: output,
+        result,
     };
 
-    let update_url = format!("{}/update", config.gateway_server_url);
-    debug!(worker_id = %config.worker_id, url = %update_url, "Sending task update");
-
-    let response = client
-        .post(&update_url)
-        .json(&update_request)
+    client
+        .post(format!("{}/update", config.gateway_server_url))
+        .json(&res)
         .send()
-        .await
-        .context("Failed to send task update request")?;
+        .await?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_body = response.text().await.unwrap_or_else(|_| "<Failed to read error body>".to_string());
-        return Err(anyhow::anyhow!(
-            "Task update request failed with status: {}. Body: {}", status, error_body
-        ));
-    }
-
-    info!(worker_id = %config.worker_id, url = %update_url, "Task update sent successfully");
     Ok(())
-} 
+}
