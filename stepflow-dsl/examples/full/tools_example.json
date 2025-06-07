@@ -1,0 +1,122 @@
+{
+  "comment": "示例工作流：使用多种工具处理数据",
+  "version": "1.0",
+  "startAt": "FetchData",
+  "states": {
+    "FetchData": {
+      "type": "task",
+      "resource": "http_get",
+      "parameters": {
+        "url": "https://api.example.com/data",
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      },
+      "next": "ValidateData"
+    },
+    "ValidateData": {
+      "type": "choice",
+      "choices": [
+        {
+          "condition": "$.statusCode == 200",
+          "next": "ProcessData"
+        },
+        {
+          "condition": "$.statusCode >= 400",
+          "next": "HandleError"
+        }
+      ],
+      "default": "HandleError"
+    },
+    "ProcessData": {
+      "type": "task",
+      "resource": "data_transform",
+      "parameters": {
+        "input_path": "$.body",
+        "transforms": [
+          {
+            "type": "filter",
+            "field": "status",
+            "value": "active"
+          },
+          {
+            "type": "map",
+            "field": "name",
+            "template": "User: {{name}}"
+          }
+        ]
+      },
+      "next": "ParallelProcess"
+    },
+    "ParallelProcess": {
+      "type": "parallel",
+      "branches": [
+        {
+          "startAt": "SaveToDatabase",
+          "states": {
+            "SaveToDatabase": {
+              "type": "task",
+              "resource": "db_write",
+              "parameters": {
+                "table": "users",
+                "data": "$.filtered_data"
+              },
+              "end": true
+            }
+          }
+        },
+        {
+          "startAt": "SendNotification",
+          "states": {
+            "SendNotification": {
+              "type": "task",
+              "resource": "notification",
+              "parameters": {
+                "channel": "email",
+                "template": "new_users"
+              },
+              "end": true
+            }
+          }
+        }
+      ],
+      "next": "MapUserRoles"
+    },
+    "MapUserRoles": {
+      "type": "map",
+      "itemsPath": "$.users",
+      "iterator": {
+        "startAt": "AssignRole",
+        "states": {
+          "AssignRole": {
+            "type": "task",
+            "resource": "role_assignment",
+            "parameters": {
+              "user_id": "$.id",
+              "role": "standard_user"
+            },
+            "end": true
+          }
+        }
+      },
+      "next": "Success"
+    },
+    "HandleError": {
+      "type": "task",
+      "resource": "error_logger",
+      "parameters": {
+        "level": "error",
+        "message": "Data fetch failed: $.error"
+      },
+      "next": "Fail"
+    },
+    "Success": {
+      "type": "succeed"
+    },
+    "Fail": {
+      "type": "fail",
+      "error": "WorkflowFailed",
+      "cause": "Error occurred during data processing"
+    }
+  }
+} 

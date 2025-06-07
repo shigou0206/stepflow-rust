@@ -42,8 +42,22 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             req.dsl.clone()
                 .ok_or(AppError::BadRequest("dsl or template_id required".into()))?
         };
-        let dsl = serde_json::from_value(dsl_val.clone())
-            .map_err(|e| AppError::BadRequest(format!("invalid DSL: {e}")))?;
+        // let dsl = serde_json::from_value(dsl_val.clone())
+        //     .map_err(|e| AppError::BadRequest(format!("invalid DSL: {e}")))?;
+
+        let dsl = match dsl_val {
+            Value::Object(_) => {
+                serde_json::from_value(dsl_val)
+                    .map_err(|e| AppError::BadRequest(format!("invalid DSL: {e}")))?
+            }
+            Value::String(ref s) => {
+                serde_json::from_str(s)
+                    .map_err(|e| AppError::BadRequest(format!("invalid DSL string: {e}")))?
+            }
+            _ => {
+                return Err(AppError::BadRequest("DSL must be a JSON object or JSON string".into()));
+            }
+        };
 
         // ② 构造引擎
         let mode = Self::mode_from_str(&req.mode)?;

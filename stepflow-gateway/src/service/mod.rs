@@ -46,3 +46,13 @@ pub trait ActivityTaskService: Clone + Send + Sync + 'static {
 pub mod workflow_event;
 pub use workflow_event::WorkflowEventSqlxSvc as WorkflowEventSvc;
 
+pub mod queue_task;
+pub use queue_task::QueueTaskSqlxSvc as QueueTaskSvc;
+use crate::dto::queue_task::*;
+
+#[async_trait]
+pub trait QueueTaskService: Send + Sync {
+    async fn get_task(&self, task_id: &str) -> AppResult<QueueTaskDto>;
+    async fn list_tasks_by_status(&self, status: &str, limit: i64, offset: i64) -> AppResult<Vec<QueueTaskDto>>;
+    async fn update_task(&self, task_id: &str, update: UpdateQueueTaskDto) -> AppResult<()>;
+}

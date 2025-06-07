@@ -1,0 +1,60 @@
+{
+  "name": "fetch_and_process_data",
+  "dsl": {
+    "comment": "示例工作流：使用多种工具处理数据",
+    "version": "1.0",
+    "startAt": "FetchData",
+    "states": {
+      "FetchData": {
+        "type": "task",
+        "resource": "http_get",
+        "parameters": {
+          "url": "https://api.example.com/data",
+          "headers": {
+            "Content-Type": "application/json"
+          }
+        },
+        "next": "ValidateData"
+      },
+      "ValidateData": {
+        "type": "choice",
+        "choices": [
+          {
+            "condition": "$.statusCode == 200",
+            "next": "ProcessData"
+          },
+          {
+            "condition": "$.statusCode >= 400",
+            "next": "HandleError"
+          }
+        ],
+        "default": "HandleError"
+      },
+      "ProcessData": {
+        "type": "task",
+        "resource": "data_transform",
+        "parameters": {
+          "input_path": "$.body"
+        },
+        "next": "Success"
+      },
+      "HandleError": {
+        "type": "task",
+        "resource": "error_logger",
+        "parameters": {
+          "level": "error",
+          "message": "Data fetch failed: $.error"
+        },
+        "next": "Fail"
+      },
+      "Success": {
+        "type": "succeed"
+      },
+      "Fail": {
+        "type": "fail",
+        "error": "WorkflowFailed",
+        "cause": "Error occurred during data processing"
+      }
+    }
+  }
+} 
