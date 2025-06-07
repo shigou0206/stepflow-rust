@@ -7,11 +7,11 @@ use serde_json::Value;
 use chrono::{DateTime, Utc};
 #[async_trait]
 pub trait TemplateService: Clone + Send + Sync + 'static {
-    async fn create(&self, dto: TemplateUpsert)               -> AppResult<TemplateDto>;
-    async fn update(&self, id: &str, dto: TemplateUpsert)     -> AppResult<TemplateDto>;
-    async fn get   (&self, id: &str)                          -> AppResult<TemplateDto>;
-    async fn list  (&self)                                    -> AppResult<Vec<TemplateDto>>;
-    async fn delete(&self, id: &str)                          -> AppResult<()>;
+    async fn create(&self, dto: TemplateUpsert) -> AppResult<TemplateDto>;
+    async fn update(&self, id: &str, dto: TemplateUpsert) -> AppResult<TemplateDto>;
+    async fn get   (&self, id: &str) -> AppResult<TemplateDto>;
+    async fn list  (&self) -> AppResult<Vec<TemplateDto>>;
+    async fn delete(&self, id: &str) -> AppResult<()>;
 }
 
 pub use template::TemplateSqlxSvc as TemplateSvc;
@@ -67,7 +67,6 @@ pub use timer::TimerSqlxSvc as TimerSvc;
 use crate::dto::timer::*;
 
 #[async_trait]
-#[async_trait]
 pub trait TimerService: Send + Sync {
     async fn create_timer(&self, dto: CreateTimerDto) -> AppResult<TimerDto>;
     async fn get_timer(&self, timer_id: &str) -> AppResult<TimerDto>;
@@ -76,3 +75,11 @@ pub trait TimerService: Send + Sync {
     async fn find_timers_before(&self, before: DateTime<Utc>, limit: i64) -> AppResult<Vec<TimerDto>>;
 }
 
+pub mod match_stats;
+pub use match_stats::MatchService as MatchStatsSvc;
+use crate::dto::match_stats::*;
+
+#[async_trait]
+pub trait MatchStatsService: Send + Sync {
+    async fn collect_stats(&self) -> AppResult<MatchStatsResponse>;
+}

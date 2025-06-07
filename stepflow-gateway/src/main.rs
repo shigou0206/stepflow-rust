@@ -6,10 +6,12 @@ mod routes;
 
 use axum::Router;
 use tracing_subscriber::EnvFilter;
+use std::sync::Arc;
 use app_state::AppState;
 use stepflow_sqlite::SqliteStorageManager;
 use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
-use stepflow_match::service::MemoryMatchService;
+use stepflow_match::service::{MemoryMatchService, HybridMatchService};
+use stepflow_match::queue::{MemoryQueue, PersistentStore};
 use tower_http::{
     trace::TraceLayer,
     cors::CorsLayer,
@@ -108,6 +110,16 @@ async fn main() -> anyhow::Result<()> {
     let persist = std::sync::Arc::new(SqliteStorageManager::new(pool.clone()));
     let event_dispatcher = std::sync::Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
     let match_service = MemoryMatchService::new();
+
+    // let memory_queue = Arc::new(MemoryQueue::new());
+    // let persistent_store = Arc::new(PersistentStore::new(persist.clone()));
+
+    // // 构造 HybridMatchService（混合任务匹配服务）
+    // let match_service = Arc::new(HybridMatchService::new(
+    //     memory_queue.clone(),
+    //     persistent_store.clone(),
+    // ));
+
 
     let state = AppState { 
         persist, 
