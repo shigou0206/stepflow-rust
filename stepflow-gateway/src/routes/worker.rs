@@ -9,6 +9,7 @@ use crate::{
     app_state::AppState,
 };
 use std::time::Duration;
+use tracing::{info, warn, error, debug};
 
 /// Worker 轮询任务
 #[utoipa::path(
@@ -29,25 +30,25 @@ pub async fn poll_task(
     const DEFAULT_QUEUE_NAME: &str = "default_task_queue";
     const POLL_TIMEOUT_SECONDS: u64 = 30;
 
-    println!(
-        "📡 [/poll] Worker '{}' polling queue '{}' with timeout {}s",
-        req.worker_id,
-        DEFAULT_QUEUE_NAME,
-        POLL_TIMEOUT_SECONDS
+    info!(
+        "[/poll] Worker '{}' polling queue '{}' with timeout {}s",
+        req.worker_id, DEFAULT_QUEUE_NAME, POLL_TIMEOUT_SECONDS
     );
 
     match state
         .match_service
         .poll_task(
-            DEFAULT_QUEUE_NAME, 
-            &req.worker_id, 
-            Duration::from_secs(POLL_TIMEOUT_SECONDS)
+            DEFAULT_QUEUE_NAME,
+            &req.worker_id,
+            Duration::from_secs(POLL_TIMEOUT_SECONDS),
         )
         .await
     {
         Some(task) => {
-            println!("✅ Task found for worker '{}': run_id: {}, state: {}", 
-                req.worker_id, task.run_id, task.state_name);
+            info!(
+                "✅ Task found for worker '{}': run_id: {}, state: {}",
+                req.worker_id, task.run_id, task.state_name
+            );
             Ok(Json(PollResponse {
                 has_task: true,
                 run_id: Some(task.run_id),
@@ -56,8 +57,10 @@ pub async fn poll_task(
             }))
         }
         None => {
-            println!("❌ No task available for worker '{}' in queue '{}' within timeout", 
-                req.worker_id, DEFAULT_QUEUE_NAME);
+            info!(
+                "❌ No task available for worker '{}' in queue '{}'",
+                req.worker_id, DEFAULT_QUEUE_NAME
+            );
             Ok(Json(PollResponse {
                 has_task: false,
                 run_id: None,
@@ -66,13 +69,6 @@ pub async fn poll_task(
             }))
         }
     }
-}
-
-/// Worker 路由
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/poll", post(poll_task))
-        .route("/update", post(update))
 }
 
 /// Worker 更新任务状态
@@ -88,52 +84,63 @@ pub fn router() -> Router<AppState> {
     tag = "worker"
 )]
 #[axum::debug_handler]
-pub async fn update(
+pub async fn update_task_status(
     State(state): State<AppState>,
     Json(req): Json<UpdateRequest>,
 ) -> AppResult<()> {
-    tracing::info!(
-        run_id = %req.run_id, 
-        state_name = %req.state_name, 
-        status = %req.status, 
-        "📥 [/update] Received task status update from worker."
+    info!(
+        run_id = %req.run_id,
+        state_name = %req.state_name,
+        status = %req.status,
+        "📥 Received task update from worker."
     );
-    
+
     let mut engines = state.engines.lock().await;
-    tracing::debug!("🧠 Current engine count: {}", engines.len());
+    debug!("🧠 Current engine count: {}", engines.len());
 
     if let Some(engine) = engines.get_mut(&req.run_id) {
-        tracing::info!(
-            run_id = %req.run_id, 
-            current_engine_state = %engine.current_state, 
-            "✅ Engine found."
+        info!(
+            run_id = %req.run_id,
+            current_state = %engine.current_state,
+            "✅ Engine found"
         );
 
         engine.context = req.result.clone();
-        tracing::debug!(run_id = %req.run_id, context = ?engine.context, "📦 Engine context updated.");
+        debug!(context = ?engine.context, "📦 Updated engine context");
 
         match engine.advance_until_blocked().await {
             Ok(_) => {
-                tracing::info!(run_id = %req.run_id, "🎯 Engine advanced successfully (or already blocked/finished).");
+                info!(run_id = %req.run_id, "🎯 Engine advanced");
             }
             Err(e) => {
-                tracing::error!(run_id = %req.run_id, error = %e, "❌ Engine advancement failed.");
+                error!(run_id = %req.run_id, error = %e, "❌ Engine advancement failed");
                 return Err(AppError::Anyhow(anyhow::anyhow!(
-                    "Engine advancement failed for run_id {}: {}", req.run_id, e
+                    "Failed to advance engine: {e}"
                 )));
             }
         }
 
         if engine.finished {
-            tracing::info!(run_id = %req.run_id, "🏁 Workflow finished. Removing engine from memory.");
+            info!(run_id = %req.run_id, "🏁 Workflow finished, engine removed");
             engines.remove(&req.run_id);
         } else {
-            tracing::info!(run_id = %req.run_id, current_engine_state = %engine.current_state, "🔄 Workflow not yet finished, remains in memory.");
+            info!(
+                run_id = %req.run_id,
+                current_state = %engine.current_state,
+                "🔄 Workflow not finished"
+            );
         }
     } else {
-        tracing::warn!(run_id = %req.run_id, "❌ Engine not found for task update.");
+        warn!(run_id = %req.run_id, "❌ Engine not found");
         return Err(AppError::NotFound);
     }
 
     Ok(())
+}
+
+/// Worker 路由
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/poll", post(poll_task))
+        .route("/update", post(update_task_status))
 }

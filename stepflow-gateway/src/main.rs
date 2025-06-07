@@ -31,6 +31,7 @@ use utoipa_swagger_ui::SwaggerUi;
         routes::execution::list,
         routes::execution::get_one,
         routes::worker::poll_task,
+        routes::worker::update_task_status,
         routes::activity_task::list_tasks,
         routes::activity_task::get_task,
         routes::activity_task::get_tasks_by_run_id,
