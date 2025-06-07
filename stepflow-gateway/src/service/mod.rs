@@ -4,7 +4,7 @@ use crate::error::AppResult;
 use async_trait::async_trait;
 use crate::dto::template::*;
 use serde_json::Value;
-
+use chrono::{DateTime, Utc};
 #[async_trait]
 pub trait TemplateService: Clone + Send + Sync + 'static {
     async fn create(&self, dto: TemplateUpsert)               -> AppResult<TemplateDto>;
@@ -56,3 +56,18 @@ pub trait QueueTaskService: Send + Sync {
     async fn list_tasks_by_status(&self, status: &str, limit: i64, offset: i64) -> AppResult<Vec<QueueTaskDto>>;
     async fn update_task(&self, task_id: &str, update: UpdateQueueTaskDto) -> AppResult<()>;
 }
+
+pub mod timer;
+pub use timer::TimerSqlxSvc as TimerSvc;
+use crate::dto::timer::*;
+
+#[async_trait]
+#[async_trait]
+pub trait TimerService: Send + Sync {
+    async fn create_timer(&self, dto: CreateTimerDto) -> AppResult<TimerDto>;
+    async fn get_timer(&self, timer_id: &str) -> AppResult<TimerDto>;
+    async fn update_timer(&self, timer_id: &str, update: UpdateTimerDto) -> AppResult<TimerDto>;
+    async fn delete_timer(&self, timer_id: &str) -> AppResult<()>;
+    async fn find_timers_before(&self, before: DateTime<Utc>, limit: i64) -> AppResult<Vec<TimerDto>>;
+}
+

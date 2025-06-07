@@ -5,7 +5,7 @@ pub mod worker;
 pub mod activity_task;
 pub mod workflow_event;
 pub mod queue_task;
-
+pub mod timer;
 use crate::{
     app_state::AppState, 
     service::{
@@ -14,6 +14,7 @@ use crate::{
         activity_task::ActivityTaskSqlxSvc,
         workflow_event::WorkflowEventSqlxSvc,
         queue_task::QueueTaskSqlxSvc,
+        timer::TimerSqlxSvc,
     },
 };
 use std::sync::Arc;
@@ -26,6 +27,7 @@ pub fn new(state: AppState) -> Router<AppState> {
     let event_svc = WorkflowEventSqlxSvc::new(state.persist.clone());
     let task_svc = ActivityTaskSqlxSvc::new(state.persist.clone());
     let queue_svc = QueueTaskSqlxSvc::new(state.clone());
+    let timer_svc = TimerSqlxSvc::new(state.clone());
     let app = Router::new()
         .nest("/v1/templates", template::router(tpl_svc))
         .nest("/v1/executions", execution::router(exec_svc))
@@ -33,6 +35,7 @@ pub fn new(state: AppState) -> Router<AppState> {
         .nest("/v1/worker", worker::router())
         .nest("/v1/workflow_events", workflow_event::router(event_svc))
         .nest("/v1/queue_tasks", queue_task::router(queue_svc))
+        .nest("/v1/timers", timer::router(timer_svc))
         .route("/v1/healthz", get(|| async { "ok" }))
         .with_state((*state).clone());      // 全局状态
     app

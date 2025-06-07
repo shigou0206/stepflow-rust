@@ -4,3 +4,4 @@ pub mod template;
 pub mod worker;
 pub mod workflow_event;
 pub mod queue_task;
+pub mod timer;

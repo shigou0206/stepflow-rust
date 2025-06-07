@@ -46,7 +46,12 @@ use utoipa_swagger_ui::SwaggerUi;
         routes::queue_task::get_one,
         routes::queue_task::update_one,
         routes::queue_task::list_by_status,
-        routes::queue_task::validate_dsl
+        routes::queue_task::validate_dsl,
+        routes::timer::create_timer,
+        routes::timer::get_timer,
+        routes::timer::update_timer,
+        routes::timer::delete_timer,
+        routes::timer::find_before,
     ),
     components(
         schemas(
@@ -67,6 +72,9 @@ use utoipa_swagger_ui::SwaggerUi;
             dto::workflow_event::RecordEventRequest,
             dto::queue_task::QueueTaskDto,
             dto::queue_task::UpdateQueueTaskDto,
+            dto::timer::TimerDto,
+            dto::timer::CreateTimerDto,
+            dto::timer::UpdateTimerDto,
         )
     ),
     tags(
@@ -76,6 +84,7 @@ use utoipa_swagger_ui::SwaggerUi;
         (name = "activity_tasks", description = "活动任务管理"),
         (name = "workflow_events", description = "工作流事件管理"),
         (name = "queue_tasks", description = "队列任务管理"),
+        (name = "timers", description = "定时任务管理"),
     )
 )]
 struct ApiDoc;
