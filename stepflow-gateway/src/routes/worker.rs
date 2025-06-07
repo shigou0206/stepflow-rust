@@ -56,6 +56,8 @@ pub async fn poll_task(
                 run_id: Some(task.run_id),
                 state_name: Some(task.state_name),
                 input: task.task_payload,
+                tool_type: None,
+                task_id: None,
             }))
         }
         None => {
@@ -67,6 +69,8 @@ pub async fn poll_task(
                 has_task: false,
                 run_id: None,
                 state_name: None,
+                tool_type: None,
+                task_id: None,
                 input: None,
             }))
         }
@@ -93,7 +97,7 @@ pub async fn update_task_status(
     info!(
         run_id = %req.run_id,
         state_name = %req.state_name,
-        status = %req.status,
+        status = ?req.status,
         "📥 Received task update from worker."
     );
 
