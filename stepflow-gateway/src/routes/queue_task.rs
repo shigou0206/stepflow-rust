@@ -1,10 +1,11 @@
 use axum::{
-    routing::{get, put, delete},
+    routing::get,
     extract::{Path, State, Query},
     Json, Router,
 };
+
+use stepflow_dto::dto::queue_task::{QueueTaskDto, UpdateQueueTaskDto};
 use crate::{
-    dto::queue_task::{QueueTaskDto, UpdateQueueTaskDto},
     service::{QueueTaskSvc, QueueTaskService},
     error::AppResult,
     app_state::AppState,

@@ -4,10 +4,11 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::any::Any;
 use stepflow_storage::persistence_manager::PersistenceManager;
-use crate::service::{MatchService, Task};
+use crate::service::MatchService;
 use crate::queue::PersistentStore;
 use crate::queue::TaskStore;
-use crate::service::interface::MatchStats;
+use stepflow_dto::dto::match_stats::MatchStats;
+use stepflow_dto::dto::queue_task::QueueTaskDto;
 
 /// 将 PersistentStore 包装为 MatchService 的适配器
 pub struct PersistentMatchService {
@@ -36,15 +37,15 @@ impl MatchService for PersistentMatchService {
         }]
     }
 
-    async fn poll_task(&self, _queue: &str, _worker_id: &str, _timeout: Duration) -> Option<Task> {
+    async fn poll_task(&self, _queue: &str, _worker_id: &str, _timeout: Duration) -> Option<QueueTaskDto> {
         let tasks = self
             .persistence
             .find_queue_tasks_by_status("pending", 1, 0)
             .await
             .ok()?;
-    
+
         if let Some(task) = tasks.into_iter().next() {
-            // 更新为 processing（可选）
+            // 更新状态为 processing（可选）
             let _ = self.persistence.update_queue_task(
                 &task.task_id,
                 &stepflow_storage::entities::queue_task::UpdateStoredQueueTask {
@@ -53,33 +54,37 @@ impl MatchService for PersistentMatchService {
                     ..Default::default()
                 },
             ).await;
-    
-            return Some(Task {
+
+            return Some(QueueTaskDto {
+                task_id: task.task_id.into(),
                 run_id: task.run_id,
-                state_name: task.state_name.unwrap_or_default(),
-                input: task.task_payload,
-                task_type: task.task_type,
-                task_token: Some(task.task_id),
-                priority: Some(task.priority.unwrap_or(0) as u8),
-                attempt: Some(task.attempts),
-                max_attempts: Some(task.max_attempts),
-                timeout_seconds: task.timeout_seconds,
-                scheduled_at: Some(task.queued_at),
+                state_name: task.state_name,
+                resource: task.resource,
+                task_payload: task.task_payload,
+                status: task.status,
+                attempts: task.attempts,
+                max_attempts: task.max_attempts,
+                error_message: task.error_message,
+                last_error_at: task.last_error_at.map(|dt| dt.and_utc()),
+                next_retry_at: task.next_retry_at.map(|dt| dt.and_utc()),
+                queued_at: task.queued_at.and_utc(),
+                processing_at: task.processing_at.map(|dt| dt.and_utc()),
+                completed_at: task.completed_at.map(|dt| dt.and_utc()),
+                failed_at: task.failed_at.map(|dt| dt.and_utc()),
             });
         }
-    
+
         None
     }
 
-    async fn enqueue_task(&self, _queue: &str, task: Task) -> Result<(), String> {
-        // 使用 store.insert_task 创建数据库任务记录
+    async fn enqueue_task(&self, _queue: &str, task: QueueTaskDto) -> Result<(), String> {
         self.store
             .insert_task(
                 &self.persistence,
                 &task.run_id,
                 &task.state_name,
-                &task.task_type,
-                &task.input.clone().unwrap_or(Value::Null),
+                &task.resource,
+                &task.task_payload.clone().unwrap_or(Value::Null),
             )
             .await
     }
@@ -91,7 +96,6 @@ impl MatchService for PersistentMatchService {
         input: &Value,
         _persistence: Arc<dyn PersistenceManager>,
     ) -> Result<Value, String> {
-        // 简单实现：直接返回输入
         Ok(input.clone())
     }
 }

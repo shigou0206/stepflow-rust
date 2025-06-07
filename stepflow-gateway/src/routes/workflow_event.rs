@@ -3,9 +3,11 @@ use axum::{
     routing::{get, post, delete},
     Json, Router,
 };
+
+use stepflow_dto::dto::workflow_event::{WorkflowEventDto, RecordEventRequest, ListQuery};
+
 use crate::{
     app_state::AppState,
-    dto::workflow_event::*,
     error::AppResult,
     service::WorkflowEventSvc,
 };

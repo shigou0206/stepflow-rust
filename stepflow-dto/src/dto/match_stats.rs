@@ -1,13 +1,12 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use stepflow_match::service::Task;
+use crate::dto::queue_task::QueueTaskDto;
 use utoipa::{ToSchema};
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EnqueueRequest {
     #[schema(example = "default_task_queue")]
     pub queue: String,
-    pub task: Task,
+    pub task: QueueTaskDto,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -23,7 +22,7 @@ pub struct PollRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PollResponse {
     pub has_task: bool,
-    pub task: Option<Task>,
+    pub task: Option<QueueTaskDto>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

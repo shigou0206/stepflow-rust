@@ -6,16 +6,18 @@ use tokio::time::timeout;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::any::Any;
-use stepflow_storage::persistence_manager::PersistenceManager;
 
-use crate::service::interface::{MatchService, Task, MatchStats};
+use stepflow_storage::persistence_manager::PersistenceManager;
+use crate::service::interface::{MatchService};
+use stepflow_dto::dto::match_stats::MatchStats;
+use stepflow_dto::dto::queue_task::QueueTaskDto;
 
 /// 内存版的任务匹配服务实现
 pub struct MemoryMatchService {
     // 工作进程ID -> 等待任务的工作进程
-    waiting_workers: Mutex<HashMap<String, tokio::sync::oneshot::Sender<Task>>>,
+    waiting_workers: Mutex<HashMap<String, tokio::sync::oneshot::Sender<QueueTaskDto>>>,
     // 队列名称 -> 待处理的任务队列
-    pending_tasks: Mutex<HashMap<String, VecDeque<Task>>>,
+    pending_tasks: Mutex<HashMap<String, VecDeque<QueueTaskDto>>>,
 }
 
 impl MemoryMatchService {
@@ -39,80 +41,58 @@ impl MemoryMatchService {
 
     /// 获取指定队列中等待的 worker 数量
     pub async fn waiting_workers_count(&self, _queue: &str) -> usize {
-        self.waiting_workers
-            .lock()
-            .await
-            .values()
-            .count()
+        self.waiting_workers.lock().await.len()
     }
 }
 
 #[async_trait]
 impl MatchService for MemoryMatchService {
-
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     async fn queue_stats(&self) -> Vec<MatchStats> {
-        let pending_tasks = self.pending_tasks.lock().await;
-        let waiting_workers = self.waiting_workers.lock().await;
-
-        pending_tasks
+        let pending = self.pending_tasks.lock().await;
+        let waiting = self.waiting_workers.lock().await;
+        pending
             .iter()
-            .map(|(queue, tasks)| {
-                let waiting = waiting_workers.len(); 
-                MatchStats {
-                    queue: queue.clone(),
-                    pending_tasks: tasks.len(),
-                    waiting_workers: waiting,
-                }
+            .map(|(queue, tasks)| MatchStats {
+                queue: queue.clone(),
+                pending_tasks: tasks.len(),
+                waiting_workers: waiting.len(), // 简化实现
             })
             .collect()
     }
 
-    async fn poll_task(&self, queue: &str, worker_id: &str, wait_time: Duration) -> Option<Task> {
+    async fn poll_task(&self, queue: &str, worker_id: &str, wait_time: Duration) -> Option<QueueTaskDto> {
         let mut pending_tasks = self.pending_tasks.lock().await;
-        
-        // 检查队列中是否有待处理的任务
         if let Some(tasks) = pending_tasks.get_mut(queue) {
             if let Some(task) = tasks.pop_front() {
                 return Some(task);
             }
         }
 
-        // 如果没有任务，则等待新任务
         let (tx, rx) = tokio::sync::oneshot::channel();
-        
-        // 注册等待的工作进程
         self.waiting_workers.lock().await.insert(worker_id.to_string(), tx);
-        
-        // 等待新任务或超时
+
         match timeout(wait_time, rx).await {
             Ok(Ok(task)) => Some(task),
             _ => {
-                // 超时或通道关闭，移除等待的工作进程
                 self.waiting_workers.lock().await.remove(worker_id);
                 None
             }
         }
     }
 
-    async fn enqueue_task(&self, queue: &str, task: Task) -> Result<(), String> {
-        let mut waiting_workers = self.waiting_workers.lock().await;
-        
-        // 检查是否有等待的工作进程
-        if let Some((_, worker)) = waiting_workers.drain().next() {
-            // 如果有等待的工作进程，直接发送任务
-            let _ = worker.send(task);
+    async fn enqueue_task(&self, queue: &str, task: QueueTaskDto) -> Result<(), String> {
+        let mut waiting = self.waiting_workers.lock().await;
+        if let Some((_, waiter)) = waiting.drain().next() {
+            let _ = waiter.send(task);
             return Ok(());
         }
-        
-        // 如果没有等待的工作进程，将任务加入队列
-        let mut pending_tasks = self.pending_tasks.lock().await;
-        let tasks = pending_tasks.entry(queue.to_string()).or_insert_with(VecDeque::new);
-        tasks.push_back(task);
-        
+
+        let mut pending = self.pending_tasks.lock().await;
+        pending.entry(queue.to_string()).or_default().push_back(task);
         Ok(())
     }
 
@@ -123,7 +103,6 @@ impl MatchService for MemoryMatchService {
         input: &Value,
         _persistence: Arc<dyn PersistenceManager>,
     ) -> Result<Value, String> {
-        // 简单实现：直接返回输入值
         Ok(input.clone())
     }
 }
@@ -133,45 +112,57 @@ mod tests {
     use super::*;
     use tokio::time::Duration;
     use serde_json::json;
+    use chrono::Utc;
     use stepflow_storage::mock_persistence::DummyPersistence;
+
+    fn sample_task() -> QueueTaskDto {
+        QueueTaskDto {
+            task_id: "task1".to_string(),
+            run_id: "run1".to_string(),
+            state_name: "stateA".to_string(),
+            resource: "resource1".to_string(),
+            task_payload: Some(json!({"key": "value"})),
+            status: "PENDING".to_string(),
+            attempts: 1,
+            max_attempts: 3,
+            error_message: None,
+            last_error_at: None,
+            next_retry_at: None,
+            queued_at: Utc::now(),
+            processing_at: None,
+            completed_at: None,
+            failed_at: None,
+        }
+    }
 
     #[tokio::test]
     async fn test_pending_tasks_count() {
         let service = MemoryMatchService::new();
-        assert_eq!(service.pending_tasks_count("test_queue").await, 0);
+        assert_eq!(service.pending_tasks_count("q1").await, 0);
     }
 
     #[tokio::test]
     async fn test_waiting_workers_count() {
         let service = MemoryMatchService::new();
-        assert_eq!(service.waiting_workers_count("test_queue").await, 0);
+        assert_eq!(service.waiting_workers_count("q1").await, 0);
     }
 
     #[tokio::test]
     async fn test_enqueue_and_poll_task() {
         let service = MemoryMatchService::new();
-        let task = Task {
-            run_id: "run1".to_string(),
-            state_name: "stateA".to_string(),
-            input: Some(serde_json::json!({})),
-            task_type: "typeA".to_string(),
-            task_token: Some("token1".to_string()),
-            priority: Some(1),
-            attempt: Some(1),
-            max_attempts: Some(3),
-            timeout_seconds: Some(60),
-            scheduled_at: Some(chrono::NaiveDateTime::from_timestamp(0, 0)), 
-        };
-        service.enqueue_task("test_queue", task.clone()).await.unwrap();
-        let polled_task = service.poll_task("test_queue", "worker_1", Duration::from_secs(1)).await;
-        assert!(polled_task.is_some());
+        let task = sample_task();
+        service.enqueue_task("q1", task.clone()).await.unwrap();
+
+        let result = service.poll_task("q1", "worker1", Duration::from_secs(1)).await;
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().task_id, task.task_id);
     }
 
     #[tokio::test]
     async fn test_wait_for_completion() {
         let service = MemoryMatchService::new();
-        let input = json!({"key": "value"});
-        let result = service.wait_for_completion("run_id", "state_name", &input, Arc::new(DummyPersistence)).await;
+        let input = json!({"input": 123});
+        let result = service.wait_for_completion("run", "state", &input, Arc::new(DummyPersistence)).await;
         assert_eq!(result.unwrap(), input);
     }
 }

@@ -10,15 +10,16 @@ where
     sqlx::query!(
         r#"
         INSERT INTO queue_tasks (
-            task_id, run_id, state_name, task_payload, status,
+            task_id, run_id, state_name, resource, task_payload, status,
             attempts, max_attempts, error_message, last_error_at, next_retry_at,
             queued_at, processing_at, completed_at, failed_at,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         task.task_id,
         task.run_id,
         task.state_name,
+        task.resource,
         task.task_payload,
         task.status,
         task.attempts,
@@ -48,6 +49,7 @@ where
         SELECT task_id as "task_id!",
                run_id as "run_id!",
                state_name as "state_name!",
+               resource as "resource!",
                task_payload,
                status as "status!",
                attempts as "attempts!",
@@ -81,6 +83,7 @@ where
         SELECT task_id as "task_id!",
                run_id as "run_id!",
                state_name as "state_name!",
+               resource as "resource!",
                task_payload,
                status as "status!",
                attempts as "attempts!",

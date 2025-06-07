@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::dto::queue_task::{QueueTaskDto, UpdateQueueTaskDto};
+use stepflow_dto::dto::queue_task::{QueueTaskDto, UpdateQueueTaskDto};
 use crate::error::{AppResult, AppError};
 use crate::app_state::AppState;
 use std::sync::Arc;
@@ -24,6 +24,7 @@ impl QueueTaskSqlxSvc {
             task_id: stored.task_id,
             run_id: stored.run_id,
             state_name: stored.state_name,
+            resource: stored.resource,
             task_payload: stored.task_payload,
             status: stored.status,
             attempts: stored.attempts,

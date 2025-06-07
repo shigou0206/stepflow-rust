@@ -4,7 +4,7 @@ use std::time::Duration;
 use axum::extract::State;
 use anyhow;
 
-use crate::dto::match_dto::{EnqueueRequest, PollRequest, PollResponse, MatchStats};
+use stepflow_dto::dto::match_stats::*;
 use stepflow_match::service::{MatchService, MemoryMatchService};
 use crate::error::{AppResult, AppError};
 

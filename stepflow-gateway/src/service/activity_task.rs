@@ -3,8 +3,8 @@ use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_storage::error::StorageError;
 use stepflow_storage::entities::activity_task::{StoredActivityTask, UpdateStoredActivityTask};
 use anyhow::Error;
+use stepflow_dto::dto::activity_task::*;
 use crate::{
-    dto::activity_task::*,
     error::{AppResult, AppError},
     service::ActivityTaskService,
 };
@@ -22,47 +22,7 @@ impl ActivityTaskSqlxSvc {
     }
 }
 
-impl From<StoredActivityTask> for ActivityTaskDto {
-    fn from(task: StoredActivityTask) -> Self {
-        Self {
-            task_token: task.task_token,
-            run_id: task.run_id,
-            activity_type: task.activity_type,
-            status: task.status,
-            input: task.input,
-            result: task.result,
-            error: task.error,
-            error_details: task.error_details,
-            attempt: task.attempt,
-            max_attempts: task.max_attempts,
-            scheduled_at: task.scheduled_at.and_utc(),
-            started_at: task.started_at.map(|dt| dt.and_utc()),
-            completed_at: task.completed_at.map(|dt| dt.and_utc()),
-            heartbeat_at: task.heartbeat_at.map(|dt| dt.and_utc()),
-        }
-    }
-}
 
-impl From<ActivityTask> for ActivityTaskDto {
-    fn from(task: ActivityTask) -> Self {
-        Self {
-            task_token: task.task_token,
-            run_id: task.run_id,
-            activity_type: task.activity_type,
-            status: task.status,
-            input: task.input.and_then(|s| serde_json::from_str(&s).ok()),
-            result: task.result.and_then(|s| serde_json::from_str(&s).ok()),
-            error: task.error,
-            error_details: task.error_details,
-            attempt: task.attempt,
-            max_attempts: task.max_attempts,
-            scheduled_at: task.scheduled_at.and_utc(),
-            started_at: task.started_at.map(|dt| dt.and_utc()),
-            completed_at: task.completed_at.map(|dt| dt.and_utc()),
-            heartbeat_at: task.heartbeat_at.map(|dt| dt.and_utc()),
-        }
-    }
-}
 
 #[async_trait]
 impl ActivityTaskService for ActivityTaskSqlxSvc {

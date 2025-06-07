@@ -1,8 +1,8 @@
 use chrono::{Utc, DateTime};
 use std::sync::Arc;
 use stepflow_storage::entities::timer::{StoredTimer, UpdateStoredTimer};
+use stepflow_dto::dto::timer::{TimerDto, CreateTimerDto, UpdateTimerDto};
 use crate::{
-    dto::timer::{TimerDto, CreateTimerDto, UpdateTimerDto},
     error::{AppResult, AppError},
     app_state::AppState,
 };

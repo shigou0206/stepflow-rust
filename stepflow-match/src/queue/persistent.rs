@@ -100,7 +100,7 @@ impl TaskStore for PersistentStore {
         persistence: &Arc<dyn PersistenceManager>,
         run_id: &str,
         state_name: &str,
-        _resource: &str, 
+        resource: &str, 
         input: &Value,
     ) -> Result<(), String> {
         let now = Utc::now().naive_utc();
@@ -108,6 +108,7 @@ impl TaskStore for PersistentStore {
             task_id: Uuid::new_v4().to_string(),
             run_id: run_id.to_string(),
             state_name: state_name.to_string(),
+            resource: resource.to_string(),
             task_payload: Some(input.clone()),
             status: TaskStatus::Pending.as_str().to_string(),
             attempts: 0,

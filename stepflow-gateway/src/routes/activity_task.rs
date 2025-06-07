@@ -4,9 +4,15 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
+use stepflow_dto::dto::activity_task::{
+    ActivityTaskDto, 
+    ListQuery, 
+    CompleteRequest, 
+    FailRequest, 
+    HeartbeatRequest};
+
 use crate::{
     app_state::AppState,
-    dto::activity_task::*,
     error::AppResult,
     service::{ActivityTaskService, ActivityTaskSvc},
 };

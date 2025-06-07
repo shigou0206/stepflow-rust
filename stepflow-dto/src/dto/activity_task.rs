@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use utoipa::{ToSchema, IntoParams};
-
+use stepflow_storage::entities::activity_task::StoredActivityTask;
 /// 活动任务列表查询参数
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -76,3 +76,24 @@ pub struct HeartbeatRequest {
     /// 心跳详情
     pub _details: Option<String>,
 } 
+
+impl From<StoredActivityTask> for ActivityTaskDto {
+    fn from(task: StoredActivityTask) -> Self {
+        Self {
+            task_token: task.task_token,
+            run_id: task.run_id,
+            activity_type: task.activity_type,
+            status: task.status,
+            input: task.input,
+            result: task.result,
+            error: task.error,
+            error_details: task.error_details,
+            attempt: task.attempt,
+            max_attempts: task.max_attempts,
+            scheduled_at: task.scheduled_at.and_utc(),
+            started_at: task.started_at.map(|dt| dt.and_utc()),
+            completed_at: task.completed_at.map(|dt| dt.and_utc()),
+            heartbeat_at: task.heartbeat_at.map(|dt| dt.and_utc()),
+        }
+    }
+}

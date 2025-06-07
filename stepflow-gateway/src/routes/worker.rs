@@ -3,8 +3,10 @@ use axum::{
     Json, Router,
     extract::State,
 };
+
+use stepflow_dto::dto::worker::{PollRequest, PollResponse, UpdateRequest};
+
 use crate::{
-    dto::worker::{PollRequest, PollResponse, UpdateRequest},
     error::{AppResult, AppError},
     app_state::AppState,
 };

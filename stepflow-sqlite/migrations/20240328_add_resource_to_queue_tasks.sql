@@ -1,0 +1,1 @@
+ALTER TABLE queue_tasks ADD COLUMN resource TEXT NOT NULL DEFAULT ''; 

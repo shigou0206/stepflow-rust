@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
 use stepflow_storage::error::StorageError;
 use stepflow_engine::engine::{WorkflowEngine, WorkflowMode};
-use crate::dto::execution::*;
+use stepflow_dto::dto::execution::*;
 use crate::error::{AppResult, AppError};
 use crate::app_state::AppState;
 use std::sync::Arc;

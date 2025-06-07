@@ -7,6 +7,7 @@ pub struct QueueTaskDto {
     pub task_id: String,
     pub run_id: String,
     pub state_name: String,
+    pub resource: String,
     pub task_payload: Option<Value>,
     pub status: String,
     pub attempts: i64,

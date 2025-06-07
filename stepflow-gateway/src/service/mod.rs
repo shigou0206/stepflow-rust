@@ -2,7 +2,7 @@ pub mod template;
 
 use crate::error::AppResult;
 use async_trait::async_trait;
-use crate::dto::template::*;
+use stepflow_dto::dto::template::*;
 use serde_json::Value;
 use chrono::{DateTime, Utc};
 #[async_trait]
@@ -19,7 +19,7 @@ pub use template::TemplateSqlxSvc as TemplateSvc;
 // gateway/src/service/mod.rs
 pub mod execution;
 pub use execution::ExecutionSqlxSvc as ExecutionSvc;
-use crate::dto::execution::*;
+use stepflow_dto::dto::execution::*;
 
 #[async_trait]
 pub trait ExecutionService: Clone + Send + Sync + 'static {
@@ -33,7 +33,7 @@ pub trait ExecutionService: Clone + Send + Sync + 'static {
 
 pub mod activity_task;
 pub use activity_task::ActivityTaskSqlxSvc as ActivityTaskSvc;
-use crate::dto::activity_task::*;
+use stepflow_dto::dto::activity_task::*;
 
 #[async_trait]
 pub trait ActivityTaskService: Clone + Send + Sync + 'static {
@@ -51,7 +51,7 @@ pub use workflow_event::WorkflowEventSqlxSvc as WorkflowEventSvc;
 
 pub mod queue_task;
 pub use queue_task::QueueTaskSqlxSvc as QueueTaskSvc;
-use crate::dto::queue_task::*;
+use stepflow_dto::dto::queue_task::*;
 
 #[async_trait]
 pub trait QueueTaskService: Send + Sync {
@@ -64,7 +64,7 @@ pub trait QueueTaskService: Send + Sync {
 
 pub mod timer;
 pub use timer::TimerSqlxSvc as TimerSvc;
-use crate::dto::timer::*;
+use stepflow_dto::dto::timer::*;
 
 #[async_trait]
 pub trait TimerService: Send + Sync {

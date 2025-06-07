@@ -3,7 +3,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::any::Any;
 use stepflow_storage::persistence_manager::PersistenceManager;
-use crate::service::interface::{MatchService, Task};
+use crate::service::interface::{MatchService};
+use stepflow_dto::dto::queue_task::QueueTaskDto;
 
 /// HybridMatchService: combines memory-based and persistent task queues
 pub struct HybridMatchService {
@@ -31,7 +32,7 @@ impl MatchService for HybridMatchService {
         self
     }
 
-    async fn poll_task(&self, queue: &str, worker_id: &str, timeout: Duration) -> Option<Task> {
+    async fn poll_task(&self, queue: &str, worker_id: &str, timeout: Duration) -> Option<QueueTaskDto> {
         // Step 1: Try memory
         if let Some(task) = self.memory_service.poll_task(queue, worker_id, timeout).await {
             return Some(task);
@@ -45,7 +46,7 @@ impl MatchService for HybridMatchService {
         }
     }
 
-    async fn enqueue_task(&self, queue: &str, task: Task) -> Result<(), String> {
+    async fn enqueue_task(&self, queue: &str, task: QueueTaskDto) -> Result<(), String> {
         // Try both memory and persistent
         self.memory_service.enqueue_task(queue, task.clone()).await?;
         self.persistent_service.enqueue_task(queue, task).await

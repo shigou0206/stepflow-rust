@@ -3,8 +3,8 @@ use std::sync::Arc;
 use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_storage::error::StorageError;
 use stepflow_storage::entities::workflow_event::StoredWorkflowEvent;
+use stepflow_dto::dto::workflow_event::{WorkflowEventDto, RecordEventRequest};
 use crate::{
-    dto::workflow_event::{WorkflowEventDto, RecordEventRequest},
     error::{AppResult, AppError},
 };
 use anyhow::Error;
@@ -20,26 +20,6 @@ impl WorkflowEventSqlxSvc {
     }
 }
 
-impl From<StoredWorkflowEvent> for WorkflowEventDto {
-    fn from(event: StoredWorkflowEvent) -> Self {
-        Self {
-            id: event.id,
-            run_id: event.run_id,
-            shard_id: event.shard_id,
-            event_id: event.event_id,
-            event_type: event.event_type,
-            state_id: event.state_id,
-            state_type: event.state_type,
-            trace_id: event.trace_id,
-            parent_event_id: event.parent_event_id,
-            context_version: event.context_version,
-            attributes: event.attributes.and_then(|s| serde_json::from_str(&s).ok()),
-            attr_version: event.attr_version,
-            timestamp: event.timestamp,
-            archived: event.archived,
-        }
-    }
-}
 
 impl WorkflowEventSqlxSvc {
     pub async fn list_events(&self, limit: i64, offset: i64) -> AppResult<Vec<WorkflowEventDto>> {

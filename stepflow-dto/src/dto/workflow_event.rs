@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use chrono::NaiveDateTime;
 use utoipa::{ToSchema, IntoParams};
-
+use stepflow_storage::entities::workflow_event::StoredWorkflowEvent;
 /// 工作流事件记录请求
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RecordEventRequest {
@@ -50,3 +50,24 @@ pub struct ListQuery {
 fn default_limit() -> i64 {
     20
 } 
+
+impl From<StoredWorkflowEvent> for WorkflowEventDto {
+    fn from(event: StoredWorkflowEvent) -> Self {
+        Self {
+            id: event.id,
+            run_id: event.run_id,
+            shard_id: event.shard_id,
+            event_id: event.event_id,
+            event_type: event.event_type,
+            state_id: event.state_id,
+            state_type: event.state_type,
+            trace_id: event.trace_id,
+            parent_event_id: event.parent_event_id,
+            context_version: event.context_version,
+            attributes: event.attributes.and_then(|s| serde_json::from_str(&s).ok()),
+            attr_version: event.attr_version,
+            timestamp: event.timestamp,
+            archived: event.archived,
+        }
+    }
+}

@@ -1,10 +1,10 @@
 [package]
-name = "stepflow-gateway"
+name = "stepflow-dto"
 version = "0.1.0"
 edition = "2024"
-default-run = "stepflow-gateway" 
 
 [dependencies]
+stepflow-storage = { path = "../stepflow-storage" }
 axum            = { version = "0.7", features = ["ws", "macros"] }
 tokio           = { version = "1", features=["macros","rt-multi-thread"] }
 tower           = "0.4"
@@ -17,16 +17,6 @@ http            = "1.1"
 utoipa          = { version = "4.2.0", features = ["axum_extras", "chrono"] }
 utoipa-swagger-ui = { version = "6.0.0", features = ["axum"] }
 
-# 引用 workspace 内已有库 —— 用 `path =` 即可
-stepflow-dto = { path = "../stepflow-dto" }
-stepflow-dsl     = { path = "../stepflow-dsl" }
-stepflow-engine  = { path = "../stepflow-engine" }
-stepflow-match   = { path = "../stepflow-match" }
-stepflow-storage = { path = "../stepflow-storage" }
-stepflow-sqlite  = { path = "../stepflow-sqlite" }
-stepflow-hook    = { path = "../stepflow-hook" }
-
-sqlx = { version="0.7", features=["sqlite","runtime-tokio-rustls"] }
 thiserror = "1.0"
 anyhow    = "1.0"
 async-trait = "0.1.88"

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_storage::error::StorageError;
 use stepflow_storage::entities::workflow_template::{StoredWorkflowTemplate, UpdateStoredWorkflowTemplate};
-use crate::dto::template::*;
+use stepflow_dto::dto::template::*;
 use crate::error::{AppResult, AppError};
 use anyhow::{Context, Error};
 

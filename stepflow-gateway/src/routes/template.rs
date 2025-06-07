@@ -3,8 +3,9 @@ use axum::{
     Json, Router,
     extract::{Path, State}
 };
+use stepflow_dto::dto::template::{TemplateUpsert, TemplateDto};   
+
 use crate::{
-    dto::template::{TemplateUpsert, TemplateDto},
     service::{TemplateSvc, TemplateService},
     error::AppResult,
     app_state::AppState,

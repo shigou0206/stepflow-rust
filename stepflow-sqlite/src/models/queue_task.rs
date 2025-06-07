@@ -7,6 +7,7 @@ pub struct QueueTask {
     pub task_id: String,
     pub run_id: String,
     pub state_name: String,
+    pub resource: String,
     pub task_payload: Option<String>,
 
     pub status: String,
