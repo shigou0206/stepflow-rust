@@ -61,6 +61,9 @@ use stepflow_dto::dto as dto;
         routes::timer::update_timer,
         routes::timer::delete_timer,
         routes::timer::find_before,
+        routes::match_router::enqueue_task,
+        routes::match_router::poll_task,
+        routes::match_router::get_stats,
     ),
     components(
         schemas(
@@ -84,6 +87,10 @@ use stepflow_dto::dto as dto;
             dto::timer::TimerDto,
             dto::timer::CreateTimerDto,
             dto::timer::UpdateTimerDto,
+            dto::match_stats::EnqueueRequest,
+            dto::match_stats::PollRequest,
+            dto::match_stats::PollResponse,
+            dto::match_stats::MatchStats,
         )
     ),
     tags(
