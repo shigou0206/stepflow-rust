@@ -55,7 +55,7 @@ pub async fn poll_task(
                 has_task: true,
                 run_id: Some(task.run_id),
                 state_name: Some(task.state_name),
-                input: task.input,
+                input: task.task_payload,
             }))
         }
         None => {

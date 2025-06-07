@@ -64,6 +64,8 @@ impl MatchService for PersistentMatchService {
                 status: task.status,
                 attempts: task.attempts,
                 max_attempts: task.max_attempts,
+                priority: task.priority.map(|p| p as u8),
+                timeout_seconds: task.timeout_seconds,
                 error_message: task.error_message,
                 last_error_at: task.last_error_at.map(|dt| dt.and_utc()),
                 next_retry_at: task.next_retry_at.map(|dt| dt.and_utc()),

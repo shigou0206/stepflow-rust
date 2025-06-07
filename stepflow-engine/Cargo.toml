@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 stepflow-dsl = { path = "../stepflow-dsl" }
+stepflow-dto = { path = "../stepflow-dto" }
 stepflow-storage = { path = "../stepflow-storage" }
 stepflow-sqlite = { path = "../stepflow-sqlite" }
 stepflow-mapping = { path = "../stepflow-mapping" }

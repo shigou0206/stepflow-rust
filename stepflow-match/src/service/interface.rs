@@ -8,7 +8,6 @@ use stepflow_dto::dto::match_stats::MatchStats;
 use stepflow_dto::dto::queue_task::QueueTaskDto;
 
 
-
 #[async_trait]
 pub trait MatchService: Send + Sync {
     fn as_any(&self) -> &dyn Any;

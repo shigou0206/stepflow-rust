@@ -3116,6 +3116,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "stepflow-dsl",
+ "stepflow-dto",
  "stepflow-hook",
  "stepflow-mapping",
  "stepflow-match",

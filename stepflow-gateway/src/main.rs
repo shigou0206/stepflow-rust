@@ -1,6 +1,5 @@
 mod app_state;
 mod error;
-mod dto;
 mod service;
 mod routes;
 
@@ -11,7 +10,7 @@ use app_state::AppState;
 use stepflow_sqlite::SqliteStorageManager;
 use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 use stepflow_match::service::{MemoryMatchService, HybridMatchService, PersistentMatchService};
-use stepflow_match::queue::{MemoryQueue, PersistentStore};
+use stepflow_match::queue::PersistentStore;
 use tower_http::{
     trace::TraceLayer,
     cors::CorsLayer,
@@ -20,6 +19,8 @@ use tower_http::{
 use std::net::SocketAddr;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+
+use stepflow_dto::dto as dto;
 
 #[derive(OpenApi)]
 #[openapi(

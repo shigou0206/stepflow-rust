@@ -125,6 +125,8 @@ mod tests {
             status: "PENDING".to_string(),
             attempts: 1,
             max_attempts: 3,
+            priority: Some(0),
+            timeout_seconds: Some(300),
             error_message: None,
             last_error_at: None,
             next_retry_at: None,
