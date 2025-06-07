@@ -286,4 +286,8 @@ impl stepflow_storage::traits::QueueStorage for SqliteStorageManager {
     async fn find_queue_tasks_by_status(&self, status: &str, limit: i64, offset: i64) -> Result<Vec<StoredQueueTask>, StorageError> {
         self.queue_task.find_queue_tasks_by_status(status, limit, offset).await
     }
+
+    async fn find_queue_tasks_to_retry(&self, before: NaiveDateTime, limit: i64) -> Result<Vec<StoredQueueTask>, StorageError> {
+        self.queue_task.find_queue_tasks_to_retry(before, limit).await
+    }
 } 

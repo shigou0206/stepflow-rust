@@ -58,6 +58,8 @@ pub trait QueueTaskService: Send + Sync {
     async fn get_task(&self, task_id: &str) -> AppResult<QueueTaskDto>;
     async fn list_tasks_by_status(&self, status: &str, limit: i64, offset: i64) -> AppResult<Vec<QueueTaskDto>>;
     async fn update_task(&self, task_id: &str, update: UpdateQueueTaskDto) -> AppResult<()>;
+    async fn delete_task(&self, task_id: &str) -> AppResult<()>;
+    async fn list_tasks_to_retry(&self, before: chrono::NaiveDateTime, limit: i64) -> AppResult<Vec<QueueTaskDto>>;
 }
 
 pub mod timer;

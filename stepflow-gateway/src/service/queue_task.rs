@@ -8,6 +8,7 @@ use crate::service::QueueTaskService;
 use serde_json::Value;
 use stepflow_dsl::WorkflowDSL;
 use anyhow::anyhow;
+use chrono::NaiveDateTime;
 
 #[derive(Clone)]
 pub struct QueueTaskSqlxSvc {
@@ -92,5 +93,17 @@ impl QueueTaskService for QueueTaskSqlxSvc {
         self.state.persist.update_queue_task(task_id, &stored_update).await
             .map_err(|e| AppError::Anyhow(anyhow!("update_queue_task failed: {e}")))?;
         Ok(())
+    }
+
+    async fn delete_task(&self, task_id: &str) -> AppResult<()> {
+        self.state.persist.delete_queue_task(task_id).await
+            .map_err(|e| AppError::Anyhow(anyhow!("delete_queue_task failed: {e}")))?;
+        Ok(())
+    }
+
+    async fn list_tasks_to_retry(&self, before: chrono::NaiveDateTime, limit: i64) -> AppResult<Vec<QueueTaskDto>> {
+        let stored_tasks = self.state.persist.find_queue_tasks_to_retry(before, limit).await
+            .map_err(|e| AppError::Anyhow(anyhow!("find_queue_tasks_to_retry failed: {e}")))?;
+        Ok(stored_tasks.into_iter().map(Self::to_dto).collect())
     }
 }

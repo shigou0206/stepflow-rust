@@ -17,4 +17,10 @@ pub trait QueueStorage: Send + Sync {
     
     /// Find queue tasks by status with pagination
     async fn find_queue_tasks_by_status(&self, status: &str, limit: i64, offset: i64) -> Result<Vec<StoredQueueTask>, StorageError>;
+
+    async fn find_queue_tasks_to_retry(
+        &self,
+        before: chrono::NaiveDateTime,
+        limit: i64,
+    ) -> Result<Vec<StoredQueueTask>, StorageError>;
 } 
