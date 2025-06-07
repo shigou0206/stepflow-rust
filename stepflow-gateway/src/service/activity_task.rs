@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use stepflow_storage::persistence_manager::PersistenceManager;   
 use stepflow_storage::error::StorageError;
-use stepflow_storage::entities::activity_task::{StoredActivityTask, UpdateStoredActivityTask};
+use stepflow_storage::entities::activity_task::UpdateStoredActivityTask;
 use anyhow::Error;
 use stepflow_dto::dto::activity_task::*;
 use crate::{
@@ -9,7 +9,6 @@ use crate::{
     service::ActivityTaskService,
 };
 use serde_json::Value;
-use stepflow_sqlite::models::activity_task::ActivityTask;
 
 #[derive(Clone)]
 pub struct ActivityTaskSqlxSvc {
