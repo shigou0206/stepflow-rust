@@ -10,7 +10,7 @@ use std::sync::Arc;
 use app_state::AppState;
 use stepflow_sqlite::SqliteStorageManager;
 use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
-use stepflow_match::service::{MemoryMatchService, HybridMatchService};
+use stepflow_match::service::{MemoryMatchService, HybridMatchService, PersistentMatchService};
 use stepflow_match::queue::{MemoryQueue, PersistentStore};
 use tower_http::{
     trace::TraceLayer,
@@ -109,17 +109,16 @@ async fn main() -> anyhow::Result<()> {
     let pool = sqlx::SqlitePool::connect_lazy("sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db")?;
     let persist = std::sync::Arc::new(SqliteStorageManager::new(pool.clone()));
     let event_dispatcher = std::sync::Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
-    let match_service = MemoryMatchService::new();
+    // let match_service = MemoryMatchService::new();
 
-    // let memory_queue = Arc::new(MemoryQueue::new());
-    // let persistent_store = Arc::new(PersistentStore::new(persist.clone()));
+    let memory_match = MemoryMatchService::new();
+    let persistent_store = Arc::new(PersistentStore::new(persist.clone()));
+    let persistent_match = PersistentMatchService::new(persistent_store.clone(), persist.clone());
 
-    // // 构造 HybridMatchService（混合任务匹配服务）
-    // let match_service = Arc::new(HybridMatchService::new(
-    //     memory_queue.clone(),
-    //     persistent_store.clone(),
-    // ));
-
+    let match_service = HybridMatchService::new(
+        memory_match.clone(),     // memory 组件
+        persistent_match.clone(), // persistent 组件
+    );
 
     let state = AppState { 
         persist, 

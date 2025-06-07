@@ -12,6 +12,4 @@ pub struct AppState {
     pub engines:   Arc<Mutex<HashMap<String, WorkflowEngine<PersistentStore, MemoryQueue>>>>,
     pub event_dispatcher: Arc<EngineEventDispatcher>,
     pub match_service: Arc<dyn MatchService>,
-    // pub queue: Arc<dyn TaskQueue>,
-    // pub memory: Arc<MemoryQueue>,
 }
