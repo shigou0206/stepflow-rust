@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: stepflow-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: stepflow
+      POSTGRES_PASSWORD: stepflow
+      POSTGRES_DB: stepflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  pgdata:

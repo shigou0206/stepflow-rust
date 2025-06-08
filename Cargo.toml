@@ -11,6 +11,7 @@ members = [
     "stepflow-tool", 
     "stepflow-dto", 
     "stepflow-worker",
+    "stepflow-postgres",
 ]
 resolver = "2"
 

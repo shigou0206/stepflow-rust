@@ -3212,6 +3212,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "stepflow-postgres"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "stepflow-storage",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "stepflow-sqlite"
 version = "0.1.0"
 dependencies = [
