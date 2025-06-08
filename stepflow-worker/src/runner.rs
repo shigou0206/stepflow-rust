@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::{sync::Semaphore, time::sleep};
 use std::time::Duration;
 
-const MAX_CONCURRENCY: usize = 4;
+const MAX_CONCURRENCY: usize = 1;
 
 pub async fn start() -> Result<()> {
     let registry = Arc::new(init_registry()?);

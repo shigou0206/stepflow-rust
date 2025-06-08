@@ -1,18 +1,15 @@
+use crate::{command::Command, handler, mapping::MappingPipeline};
 use serde_json::Value;
 use stepflow_dsl::{state::base::BaseState, State};
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_match::service::MatchService;
 use stepflow_storage::persistence_manager::PersistenceManager;
-use crate::{
-    command::Command,
-    handler,
-    mapping::MappingPipeline,
-};
-use stepflow_dto::dto::tool::ToolInputPayload;
 
-use super::types::{WorkflowMode, StepOutcome};
-use std::sync::Arc;
+use super::types::{StepOutcome, WorkflowMode};
+use std::{error, sync::Arc};
 use thiserror::Error;
+use log::error;
+use tracing::info;
 
 #[derive(Error, Debug)]
 pub enum DispatchError {
@@ -39,7 +36,11 @@ struct EventContext<'a> {
 }
 
 impl<'a> EventContext<'a> {
-    fn new(run_id: &'a str, state_name: &'a str, dispatcher: &'a Arc<EngineEventDispatcher>) -> Self {
+    fn new(
+        run_id: &'a str,
+        state_name: &'a str,
+        dispatcher: &'a Arc<EngineEventDispatcher>,
+    ) -> Self {
         Self {
             run_id,
             state_name,
@@ -48,27 +49,33 @@ impl<'a> EventContext<'a> {
     }
 
     async fn enter(&self, input: &Value) {
-        self.dispatcher.dispatch(EngineEvent::NodeEnter {
-            run_id: self.run_id.to_string(),
-            state_name: self.state_name.to_string(),
-            input: input.clone(),
-        }).await;
+        self.dispatcher
+            .dispatch(EngineEvent::NodeEnter {
+                run_id: self.run_id.to_string(),
+                state_name: self.state_name.to_string(),
+                input: input.clone(),
+            })
+            .await;
     }
 
     async fn success(&self, output: &Value) {
-        self.dispatcher.dispatch(EngineEvent::NodeSuccess {
-            run_id: self.run_id.to_string(),
-            state_name: self.state_name.to_string(),
-            output: output.clone(),
-        }).await;
+        self.dispatcher
+            .dispatch(EngineEvent::NodeSuccess {
+                run_id: self.run_id.to_string(),
+                state_name: self.state_name.to_string(),
+                output: output.clone(),
+            })
+            .await;
     }
 
     async fn fail(&self, error: &str) {
-        self.dispatcher.dispatch(EngineEvent::NodeFailed {
-            run_id: self.run_id.to_string(),
-            state_name: self.state_name.to_string(),
-            error: error.to_string(),
-        }).await;
+        self.dispatcher
+            .dispatch(EngineEvent::NodeFailed {
+                run_id: self.run_id.to_string(),
+                state_name: self.state_name.to_string(),
+                error: error.to_string(),
+            })
+            .await;
     }
 }
 
@@ -101,26 +108,21 @@ impl StateTransition for State {
         let evt_ctx = EventContext::new(run_id, state_name, event_dispatcher);
         evt_ctx.enter(input).await;
 
+        info!("🔥 executing state: {:?}", self);
+
         let result = match self {
             State::Task(t) => {
-                // ✅ 修正：对输入进行转换为 payload
-                let payload = ToolInputPayload {
-                    resource: t.resource.clone(),
-                    parameters: input.clone()
-                };
-
-                let input_value = serde_json::to_value(payload)
-                    .map_err(|e| DispatchError::MappingError(e.to_string()))?;
-
                 match handler::handle_task(
                     mode,
                     run_id,
                     state_name,
                     t,
-                    &input_value,
+                    &input,
                     match_service,
                     persistence.clone(),
-                ).await {
+                )
+                .await
+                {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, t.base.next.clone()))
@@ -141,7 +143,9 @@ impl StateTransition for State {
                     run_id,
                     persistence_for_handlers,
                     event_dispatcher,
-                ).await {
+                )
+                .await
+                {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, w.base.next.clone()))
@@ -161,7 +165,9 @@ impl StateTransition for State {
                     run_id,
                     event_dispatcher,
                     persistence,
-                ).await {
+                )
+                .await
+                {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, p.base.next.clone()))
@@ -181,7 +187,9 @@ impl StateTransition for State {
                     run_id,
                     event_dispatcher,
                     persistence,
-                ).await {
+                )
+                .await
+                {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, None))
@@ -201,7 +209,9 @@ impl StateTransition for State {
                     run_id,
                     event_dispatcher,
                     persistence,
-                ).await {
+                )
+                .await
+                {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, None))
@@ -221,7 +231,9 @@ impl StateTransition for State {
                     run_id,
                     event_dispatcher,
                     persistence,
-                ).await {
+                )
+                .await
+                {
                     Ok(result) => {
                         evt_ctx.success(&result).await;
                         Ok((result, None))
@@ -274,12 +286,18 @@ pub(crate) async fn dispatch_command(
         output_mapping: base.output_mapping.as_ref(),
     };
 
+    let _ = dbg!(format!("🟡 dispatch_command entered with state: {}", state_name));
     // ✅ input + parameters 已合并
-    let exec_in = pipeline
-        .apply_input(context)
-        .map_err(|e| DispatchError::MappingError(e.to_string()))
-        .map_err(|e| e.to_string())?;
+    let exec_in = match pipeline.apply_input(context) {
+        Ok(val) => val,
+        Err(e) => {
+            error!("❌ apply_input failed for state {}: {:?}", state_name, e);
+            return Err(format!("apply_input failed: {:?}", e));
+        }
+    };
 
+    let _ = dbg!(format!("🟢 exec_in ready: {:?}", &exec_in));
+    
     let (raw_out, mut logical_next) = state_enum
         .execute(
             &state_name,

@@ -110,9 +110,12 @@ struct ApiDoc;
 async fn main() -> anyhow::Result<()> {
     // -------- log ----------
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env()
-            .add_directive("stepflow_gateway=debug".parse()?))
-        .init();
+    .with_env_filter(
+        EnvFilter::from_default_env()
+            .add_directive("debug".parse()?) // ✅ 启用全局 debug
+    )
+    .with_target(true) // ✅ 打印模块名
+    .init();
 
     // -------- infra (stub) --
     let pool = sqlx::SqlitePool::connect_lazy("sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db")?;
