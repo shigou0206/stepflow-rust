@@ -87,7 +87,6 @@ impl Tool for ShellTool {
     async fn execute(&self, input: Value, context: ToolContext) -> anyhow::Result<ToolResult> {
         let payload: ToolInputPayload = serde_json::from_value(input)?;
         let shell_input: ShellInput = serde_json::from_value(payload.parameters)?;
-        let _logical_input = payload.input; // ✅ input is optional logical context, not used here
 
         let start_time = std::time::Instant::now();
 

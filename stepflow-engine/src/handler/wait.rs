@@ -93,11 +93,11 @@ impl<'a> WaitHandler<'a> {
         &self,
         ctx: &StateExecutionContext<'_>,
         exec_input: &Value,
-    ) -> Result<Value, String> {
+    ) -> Result<(), String> {
         if let Some(secs) = self.state.seconds {
             if secs == 0 {
                 debug!("⏩ Wait = 0s, skipping wait");
-                return Ok(exec_input.clone());
+                return Ok(());
             }
 
             match ctx.mode {
@@ -105,10 +105,11 @@ impl<'a> WaitHandler<'a> {
                 WorkflowMode::Deferred => self.handle_deferred(ctx, secs).await?,
             }
         } else if self.state.timestamp.is_some() {
+            warn!("Timestamp wait specified, but not supported yet");
             return Err(WaitError::TimestampNotSupported.to_string());
         }
 
-        Ok(exec_input.clone())
+        Ok(())
     }
 }
 
@@ -121,23 +122,21 @@ impl<'a> StateHandler for WaitHandler<'a> {
     ) -> Result<StateExecutionResult, String> {
         let pipeline = MappingPipeline {
             input_mapping: self.state.base.input_mapping.as_ref(),
-            parameter_mapping: self.state.base.parameter_mapping.as_ref(),
             output_mapping: self.state.base.output_mapping.as_ref(),
         };
 
         let exec_input = pipeline.apply_input(input)?;
-        let _param = pipeline.apply_parameter(&exec_input)?; // 保持接口一致性
 
-        debug!("WaitHandler mapped input: {}", exec_input);
+        debug!("WaitHandler input mapped: {}", exec_input);
 
-        let raw_output = self.process_wait(ctx, &exec_input).await?;
+        self.process_wait(ctx, &exec_input).await?;
 
-        let new_ctx = pipeline.apply_output(&raw_output, input)?;
+        let final_output = pipeline.apply_output(&exec_input, input)?;
 
-        debug!("WaitHandler final output: {}", new_ctx);
+        debug!("WaitHandler final output: {}", final_output);
 
         Ok(StateExecutionResult {
-            output: new_ctx,
+            output: final_output,
             next_state: self.state.base.next.clone(),
             should_continue: true,
         })
@@ -157,7 +156,15 @@ pub async fn handle_wait(
     persistence: &Arc<dyn PersistenceManager>,
     event_dispatcher: &Arc<EngineEventDispatcher>,
 ) -> Result<Value, String> {
-    let ctx = StateExecutionContext::new(run_id, state_name, "wait", mode, event_dispatcher, persistence);
+    let ctx = StateExecutionContext::new(
+        run_id,
+        state_name,
+        "wait",
+        mode,
+        event_dispatcher,
+        persistence,
+    );
+
     let handler = WaitHandler::new(state);
     let result = handler.execute(&ctx, input).await?;
     Ok(result.output)

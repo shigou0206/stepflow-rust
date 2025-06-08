@@ -101,9 +101,8 @@ impl Tool for FileTool {
     }
 
     async fn execute(&self, input: Value, context: ToolContext) -> anyhow::Result<ToolResult> {
-        let payload: ToolInputPayload = serde_json::from_value(input)?;         // ✅ 解包 payload
-        let file_input: FileInput = serde_json::from_value(payload.parameters)?; // ✅ 提取 FileInput
-        let _logical_input = payload.input; // 目前 FileTool 不用 input，可用于 future 拓展
+        let payload: ToolInputPayload = serde_json::from_value(input)?;
+        let file_input: FileInput = serde_json::from_value(payload.parameters)?;
 
         let path = self.resolve_path(&file_input.path);
         let start_time = std::time::Instant::now();

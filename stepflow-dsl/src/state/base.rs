@@ -13,9 +13,6 @@ pub struct BaseState {
     pub input_mapping: Option<MappingDSL>,
 
     #[serde(default)]
-    pub parameter_mapping: Option<MappingDSL>, 
-
-    #[serde(default)]
     pub output_mapping: Option<MappingDSL>,
 
     #[serde(default)]

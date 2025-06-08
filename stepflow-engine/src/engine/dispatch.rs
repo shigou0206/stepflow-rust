@@ -104,9 +104,12 @@ impl StateTransition for State {
         let result = match self {
             State::Task(t) => {
                 // ✅ 修正：对输入进行转换为 payload
-                let payload = ToolInputPayload::build(&t.resource, input)
-                    .map_err(|e| DispatchError::MappingError(e.to_string()))?;
-                let input_value = serde_json::to_value(&payload)
+                let payload = ToolInputPayload {
+                    resource: t.resource.clone(),
+                    parameters: input.clone()
+                };
+
+                let input_value = serde_json::to_value(payload)
                     .map_err(|e| DispatchError::MappingError(e.to_string()))?;
 
                 match handler::handle_task(
@@ -190,9 +193,10 @@ impl StateTransition for State {
                 }
             }
 
-            State::Succeed(_) => {
+            State::Succeed(s) => {
                 match handler::handle_succeed(
                     state_name,
+                    s,
                     input,
                     run_id,
                     event_dispatcher,
@@ -267,7 +271,6 @@ pub(crate) async fn dispatch_command(
 
     let pipeline = MappingPipeline {
         input_mapping: base.input_mapping.as_ref(),
-        parameter_mapping: base.parameter_mapping.as_ref(),
         output_mapping: base.output_mapping.as_ref(),
     };
 

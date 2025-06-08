@@ -85,6 +85,10 @@ pub async fn handle_task(
     let payload = ToolInputPayload::build(&state.resource, input)?;
     let input_value = serde_json::to_value(payload).map_err(|e| e.to_string())?;
 
+    use tracing::debug;
+
+    debug!("handle_task - mapped input: {:?}", input);
+
     let service_task = build_queue_task(run_id, state_name, state, &input_value);
 
     match_service

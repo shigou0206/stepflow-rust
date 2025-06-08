@@ -21,7 +21,6 @@ use stepflow_mapping::model::rule::MergeStrategy;
 #[derive(Debug, Clone, Copy)]
 pub struct MappingPipeline<'a> {
     pub input_mapping:  Option<&'a MappingDSL>,
-    pub parameter_mapping: Option<&'a MappingDSL>,
     pub output_mapping: Option<&'a MappingDSL>,
 }
 
@@ -33,15 +32,6 @@ impl<'a> MappingPipeline<'a> {
                 .map_err(|e| format!("InputMapping error: {e}"))
         } else {
             Ok(ctx.clone())
-        }
-    }
-
-    pub fn apply_parameter(&self, ctx: &Value) -> Result<Value, String> {
-        if let Some(cfg) = self.parameter_mapping {
-            MappingEngine::apply(cfg.clone(), ctx)
-                .map_err(|e| format!("ParameterMapping error: {e}"))
-        } else {
-            Ok(Value::Null) // 或者 Ok(json!({}))
         }
     }
 

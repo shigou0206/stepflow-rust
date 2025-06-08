@@ -31,15 +31,13 @@ impl<'a> StateHandler for SucceedHandler<'a> {
 
         let pipeline = MappingPipeline {
             input_mapping: self.state.base.input_mapping.as_ref(),
-            parameter_mapping: self.state.base.parameter_mapping.as_ref(),
             output_mapping: self.state.base.output_mapping.as_ref(),
         };
 
         let exec_input = pipeline.apply_input(input)?;
-        let _param = pipeline.apply_parameter(&exec_input)?;
-        let final_output = pipeline.apply_output(&exec_input, &exec_input)?;
+        let final_output = pipeline.apply_output(&exec_input, input)?;
 
-        debug!("✅ Final context after mapping: {:?}", final_output);
+        debug!("✅ Final context after mapping: {}", final_output);
 
         Ok(StateExecutionResult {
             output: final_output,
@@ -53,8 +51,10 @@ impl<'a> StateHandler for SucceedHandler<'a> {
     }
 }
 
+/// 兼容调用形式：传入已有 SucceedState
 pub async fn handle_succeed(
     state_name: &str,
+    state: &SucceedState,
     input: &Value,
     run_id: &str,
     event_dispatcher: &Arc<EngineEventDispatcher>,
@@ -63,26 +63,13 @@ pub async fn handle_succeed(
     let ctx = StateExecutionContext::new(
         run_id,
         state_name,
-        "succeed", // ✅ 添加 state_type
-        crate::engine::WorkflowMode::Inline,
+        "succeed",
+        crate::engine::WorkflowMode::Inline, // 或者从外部传入
         event_dispatcher,
         persistence,
     );
 
-    let state = SucceedState {
-        base: BaseState {
-            comment: None,
-            input_mapping: None,
-            parameter_mapping: None,
-            output_mapping: None,
-            retry: None,
-            catch: None,
-            next: None,
-            end: Some(true),
-        },
-    };
-
-    let handler = SucceedHandler::new(&state);
+    let handler = SucceedHandler::new(state);
     let result = handler.execute(&ctx, input).await?;
     Ok(result.output)
 }

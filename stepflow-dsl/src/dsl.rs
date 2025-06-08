@@ -67,7 +67,6 @@ impl Default for BaseState {
         Self {
             comment: None,
             input_mapping: None,
-            parameter_mapping: None,
             output_mapping: None,
             retry: None,
             catch: None,
@@ -151,7 +150,6 @@ mod tests {
         let base = BaseState {
             comment: Some("cmt".to_string()),
             input_mapping: None,
-            parameter_mapping: None,
             output_mapping: None,
             retry: None,
             catch: None,

@@ -46,7 +46,7 @@ pub async fn poll_for_task(
                 run_id: res.run_id.unwrap(),
                 state_name: res.state_name.unwrap(),
                 tool_type,
-                input: res.input.unwrap_or_default(),
+                parameters: res.input.unwrap_or_default(), // 🚨 注意这里默认 input 是 parameters
             },
         )))
     } else {
@@ -59,7 +59,7 @@ pub struct TaskDetails {
     pub run_id: String,
     pub state_name: String,
     pub tool_type: String,
-    pub input: Value,
+    pub parameters: Value, // ✅ 明确表示为 parameters（非上下文 input）
 }
 
 pub async fn execute_task(
@@ -69,7 +69,9 @@ pub async fn execute_task(
     task: TaskDetails,
 ) -> Result<()> {
     let start = Instant::now();
-    let result = registry.execute(&task.tool_type, task.input.clone()).await;
+
+    // ✅ 执行工具（仅传 parameters）
+    let result = registry.execute(&task.tool_type, task.parameters.clone()).await;
 
     let (status, result) = match result {
         Ok(ok) => (TaskStatus::SUCCEEDED, ok.output),

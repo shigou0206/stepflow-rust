@@ -4,7 +4,6 @@ use serde_json::Value;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolInputPayload {
-    pub input: Value,
     pub parameters: Value,
     pub resource: String,
 }
@@ -14,12 +13,11 @@ impl ToolInputPayload {
         match raw {
             Value::Object(map) => {
                 Ok(Self {
-                    input: map.get("input").cloned().unwrap_or(Value::Null),
                     parameters: map.get("parameters").cloned().unwrap_or(Value::Null),
                     resource: resource.to_string(),
                 })
             }
-            _ => Err("Expected an object with `input` and/or `parameters`".to_string()),
+            _ => Err("Expected an object with `parameters`".to_string()),
         }
     }
 }

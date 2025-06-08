@@ -251,7 +251,6 @@ impl WorkflowEngine {
 
                             let pipeline = MappingPipeline {
                                 input_mapping: base.input_mapping.as_ref(),
-                                parameter_mapping: base.parameter_mapping.as_ref(),
                                 output_mapping: base.output_mapping.as_ref(),
                             };
 
