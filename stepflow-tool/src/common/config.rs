@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-use crate::core::tool::{RetryPolicy, Validation};
+use stepflow_dto::dto::error_policy::RetryPolicy;
+use crate::core::tool::Validation;
 
 /// 工具执行的配置
 #[derive(Debug, Clone, Serialize, Deserialize)]

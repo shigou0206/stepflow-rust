@@ -10,6 +10,8 @@ use crate::common::config::ToolConfig;
 use crate::common::context::ToolContext;
 use crate::common::result::{ToolResult, ToolMetadata as ResultMetadata};
 
+use stepflow_dto::dto::tool::ToolInputPayload;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpConfig {
     pub timeout: Option<u64>,
@@ -82,36 +84,36 @@ impl Tool for HttpTool {
     }
 
     fn validate_input(&self, input: &Value, _context: &ToolContext) -> anyhow::Result<()> {
-        let _: HttpInput = serde_json::from_value(input.clone())?;
+        let payload: ToolInputPayload = serde_json::from_value(input.clone())?;
+        let _: HttpInput = serde_json::from_value(payload.parameters)?;
         Ok(())
     }
 
     async fn execute(&self, input: Value, context: ToolContext) -> anyhow::Result<ToolResult> {
-        let http_input: HttpInput = serde_json::from_value(input)?;
+        let payload: ToolInputPayload = serde_json::from_value(input)?;
+        let http_input: HttpInput = serde_json::from_value(payload.parameters)?;
+        let _actual_input = payload.input;
+
         let start_time = std::time::Instant::now();
 
         // 构建请求
         let method = Method::from_bytes(http_input.method.to_uppercase().as_bytes())?;
         let mut request = self.client.request(method, &http_input.url);
 
-        // 添加查询参数
         if let Some(query) = http_input.query {
             request = request.query(&query);
         }
 
-        // 添加请求头
         if let Some(headers) = http_input.headers {
             for (key, value) in headers {
                 request = request.header(&key, value);
             }
         }
 
-        // 添加请求体
         if let Some(body) = http_input.body {
             request = request.json(&body);
         }
 
-        // 发送请求
         let response = request.send().await?;
         let status = response.status();
         let headers = response
@@ -120,11 +122,9 @@ impl Tool for HttpTool {
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
 
-        // 读取响应体
         let body = response.json::<Value>().await?;
         let duration = start_time.elapsed().as_millis() as u64;
 
-        // 构建输出
         let output = HttpOutput {
             status: status.as_u16(),
             headers,
@@ -132,7 +132,6 @@ impl Tool for HttpTool {
             duration,
         };
 
-        // 构建元数据
         let metadata = ResultMetadata {
             duration: context.duration(),
             attempts: context.attempt,
@@ -145,4 +144,4 @@ impl Tool for HttpTool {
 
         Ok(ToolResult::new(json!(output), metadata))
     }
-} 
+}

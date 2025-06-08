@@ -48,8 +48,8 @@ impl<'a> StateHandler for FailHandler<'a> {
 
         Ok(StateExecutionResult {
             output,
-            next_state: None,  // Fail 状态是终止状态
-            should_continue: false,  // 工作流将终止
+            next_state: None,              // Fail 状态是终止状态
+            should_continue: false,       // 工作流将终止
         })
     }
 
@@ -58,7 +58,7 @@ impl<'a> StateHandler for FailHandler<'a> {
     }
 }
 
-// 修改兼容性函数签名，接收必要的依赖
+// ✅ 兼容性函数，使用新的 StateExecutionContext 构造方式
 pub async fn handle_fail(
     state_name: &str,
     state: &FailState,
@@ -70,13 +70,14 @@ pub async fn handle_fail(
     let ctx = StateExecutionContext::new(
         run_id,
         state_name,
-        crate::engine::WorkflowMode::Inline, // Fail 不区分模式
+        "fail", // ✅ 添加 state_type
+        crate::engine::WorkflowMode::Inline,
         event_dispatcher,
         persistence,
     );
 
     let handler = FailHandler::new(state);
     let result = handler.execute(&ctx, input).await?;
-    
+
     Ok(result.output)
 }

@@ -18,6 +18,7 @@ pub struct StateExecutionResult {
 pub struct StateExecutionContext<'a> {
     pub run_id: &'a str,
     pub state_name: &'a str,
+    pub state_type: &'a str,
     pub mode: WorkflowMode,
     pub dispatcher: &'a Arc<EngineEventDispatcher>,
     pub persistence: &'a Arc<dyn PersistenceManager>,
@@ -27,6 +28,7 @@ impl<'a> StateExecutionContext<'a> {
     pub fn new(
         run_id: &'a str,
         state_name: &'a str,
+        state_type: &'a str,
         mode: WorkflowMode,
         dispatcher: &'a Arc<EngineEventDispatcher>,
         persistence: &'a Arc<dyn PersistenceManager>,
@@ -34,6 +36,7 @@ impl<'a> StateExecutionContext<'a> {
         Self {
             run_id,
             state_name,
+            state_type,
             mode,
             dispatcher,
             persistence,
@@ -45,7 +48,7 @@ impl<'a> StateExecutionContext<'a> {
             state_id: format!("{}:{}", self.run_id, self.state_name),
             run_id: self.run_id.to_string(),
             state_name: self.state_name.to_string(),
-            state_type: "state".to_string(),
+            state_type: self.state_type.to_string(),
             status: "started".to_string(),
             input: Some(input.clone()),
             output: None,
@@ -58,7 +61,7 @@ impl<'a> StateExecutionContext<'a> {
             version: 1,
             shard_id: 1,
         };
-        
+
         self.persistence.create_state(&state)
             .await
             .map_err(|e| e.to_string())
@@ -72,7 +75,7 @@ impl<'a> StateExecutionContext<'a> {
             version: Some(2),
             ..Default::default()
         };
-        
+
         self.persistence.update_state(
             &format!("{}:{}", self.run_id, self.state_name),
             &update
@@ -87,7 +90,7 @@ impl<'a> StateExecutionContext<'a> {
             version: Some(2),
             ..Default::default()
         };
-        
+
         self.persistence.update_state(
             &format!("{}:{}", self.run_id, self.state_name),
             &update
@@ -117,4 +120,4 @@ impl<'a> StateExecutionContext<'a> {
             error: error.to_string(),
         }).await;
     }
-} 
+}

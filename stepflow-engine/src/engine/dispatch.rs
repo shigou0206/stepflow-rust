@@ -1,18 +1,16 @@
 use serde_json::Value;
 use stepflow_dsl::{state::base::BaseState, State};
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
-use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_match::service::MatchService;
+use stepflow_storage::persistence_manager::PersistenceManager;
 use crate::{
     command::Command,
     handler,
     mapping::MappingPipeline,
 };
+use stepflow_dto::dto::tool::ToolInputPayload;
 
-use super::{
-    types::{WorkflowMode, StepOutcome},
-};
-
+use super::types::{WorkflowMode, StepOutcome};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -105,12 +103,18 @@ impl StateTransition for State {
 
         let result = match self {
             State::Task(t) => {
+                // ✅ 修正：对输入进行转换为 payload
+                let payload = ToolInputPayload::build(&t.resource, input)
+                    .map_err(|e| DispatchError::MappingError(e.to_string()))?;
+                let input_value = serde_json::to_value(&payload)
+                    .map_err(|e| DispatchError::MappingError(e.to_string()))?;
+
                 match handler::handle_task(
                     mode,
                     run_id,
                     state_name,
                     t,
-                    input,
+                    &input_value,
                     match_service,
                     persistence.clone(),
                 ).await {
@@ -124,6 +128,7 @@ impl StateTransition for State {
                     }
                 }
             }
+
             State::Wait(w) => {
                 match handler::handle_wait(
                     state_name,
@@ -144,6 +149,7 @@ impl StateTransition for State {
                     }
                 }
             }
+
             State::Pass(p) => {
                 match handler::handle_pass(
                     state_name,
@@ -163,6 +169,7 @@ impl StateTransition for State {
                     }
                 }
             }
+
             State::Choice(c) => {
                 match handler::handle_choice(
                     state_name,
@@ -182,6 +189,7 @@ impl StateTransition for State {
                     }
                 }
             }
+
             State::Succeed(_) => {
                 match handler::handle_succeed(
                     state_name,
@@ -200,6 +208,7 @@ impl StateTransition for State {
                     }
                 }
             }
+
             State::Fail(f) => {
                 match handler::handle_fail(
                     state_name,
@@ -219,6 +228,7 @@ impl StateTransition for State {
                     }
                 }
             }
+
             _ => {
                 let err = "Parallel / Map not yet supported".to_string();
                 evt_ctx.fail(&err).await;
@@ -243,7 +253,6 @@ pub(crate) async fn dispatch_command(
 ) -> Result<(StepOutcome, Option<String>), String> {
     let state_name = cmd.state_name().to_string();
 
-    // 提取 BaseState & MappingPipeline
     let base: &BaseState = match state_enum {
         State::Task(s) => &s.base,
         State::Wait(s) => &s.base,
@@ -258,16 +267,16 @@ pub(crate) async fn dispatch_command(
 
     let pipeline = MappingPipeline {
         input_mapping: base.input_mapping.as_ref(),
+        parameter_mapping: base.parameter_mapping.as_ref(),
         output_mapping: base.output_mapping.as_ref(),
     };
 
-    // 1. Input Mapping
+    // ✅ input + parameters 已合并
     let exec_in = pipeline
         .apply_input(context)
         .map_err(|e| DispatchError::MappingError(e.to_string()))
         .map_err(|e| e.to_string())?;
 
-    // 2. 执行状态逻辑
     let (raw_out, mut logical_next) = state_enum
         .execute(
             &state_name,
@@ -282,12 +291,10 @@ pub(crate) async fn dispatch_command(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 3. Choice 覆盖跳转状态
     if let (Command::Choice { next_state, .. }, State::Choice(_)) = (cmd, state_enum) {
         logical_next = Some(next_state.clone());
     }
 
-    // 4. Output Mapping
     let new_ctx = pipeline
         .apply_output(&raw_out, context)
         .map_err(|e| DispatchError::MappingError(e.to_string()))

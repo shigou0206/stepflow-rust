@@ -1,48 +1,10 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::time::Duration;
 
 use crate::common::config::ToolConfig;
 use crate::common::context::ToolContext;
 use crate::common::result::ToolResult;
-
-/// 重试策略
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RetryPolicy {
-    pub max_attempts: u32,
-    pub initial_delay: Duration,
-    pub max_delay: Duration,
-    pub backoff_factor: f64,
-}
-
-impl RetryPolicy {
-    pub fn new(max_attempts: u32, initial_delay: Duration, max_delay: Duration, backoff_factor: f64) -> Self {
-        Self {
-            max_attempts,
-            initial_delay,
-            max_delay,
-            backoff_factor,
-        }
-    }
-
-    pub fn with_defaults() -> Self {
-        Self {
-            max_attempts: 3,
-            initial_delay: Duration::from_secs(1),
-            max_delay: Duration::from_secs(30),
-            backoff_factor: 2.0,
-        }
-    }
-
-    pub fn calculate_delay(&self, attempt: u32) -> Duration {
-        if attempt == 0 {
-            return self.initial_delay;
-        }
-        let delay = self.initial_delay.as_secs_f64() * self.backoff_factor.powi(attempt as i32);
-        Duration::from_secs_f64(delay.min(self.max_delay.as_secs_f64()))
-    }
-}
 
 /// 输入输出验证规则
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,16 +48,16 @@ pub struct ToolMetadata {
 pub trait Tool: Send + Sync {
     /// 工具类型标识
     fn kind(&self) -> &'static str;
-    
+
     /// 获取工具元数据
     fn metadata(&self) -> ToolMetadata;
-    
+
     /// 获取工具默认配置
     fn default_config(&self) -> ToolConfig;
-    
+
     /// 验证输入
     fn validate_input(&self, input: &Value, context: &ToolContext) -> anyhow::Result<()>;
-    
+
     /// 执行工具
     async fn execute(&self, input: Value, context: ToolContext) -> anyhow::Result<ToolResult>;
 }
@@ -103,52 +65,11 @@ pub trait Tool: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
     use serde_json::json;
     use async_trait::async_trait;
     use crate::common::config::ToolConfig;
     use crate::common::context::ToolContext;
     use crate::common::result::{ToolResult, ToolMetadata as ResultMetadata};
-
-    #[test]
-    fn test_retry_policy_defaults() {
-        let policy = RetryPolicy::with_defaults();
-        assert_eq!(policy.max_attempts, 3);
-        assert_eq!(policy.initial_delay, Duration::from_secs(1));
-        assert_eq!(policy.max_delay, Duration::from_secs(30));
-        assert_eq!(policy.backoff_factor, 2.0);
-    }
-
-    #[test]
-    fn test_retry_policy_delay_calculation() {
-        let policy = RetryPolicy::with_defaults();
-        
-        // 测试初始延迟
-        assert_eq!(policy.calculate_delay(0), Duration::from_secs(1));
-        
-        // 测试指数退避
-        assert_eq!(policy.calculate_delay(1), Duration::from_secs(2));
-        assert_eq!(policy.calculate_delay(2), Duration::from_secs(4));
-        assert_eq!(policy.calculate_delay(3), Duration::from_secs(8));
-        
-        // 测试最大延迟限制
-        assert_eq!(policy.calculate_delay(10), Duration::from_secs(30));
-    }
-
-    #[test]
-    fn test_retry_policy_custom() {
-        let policy = RetryPolicy::new(
-            5,
-            Duration::from_millis(100),
-            Duration::from_secs(1),
-            3.0,
-        );
-        
-        assert_eq!(policy.max_attempts, 5);
-        assert_eq!(policy.initial_delay, Duration::from_millis(100));
-        assert_eq!(policy.max_delay, Duration::from_secs(1));
-        assert_eq!(policy.backoff_factor, 3.0);
-    }
 
     #[test]
     fn test_validation_empty() {
@@ -166,7 +87,7 @@ mod tests {
                 "name": { "type": "string" }
             }
         });
-        
+
         let output_schema = json!({
             "type": "object",
             "properties": {
@@ -175,7 +96,7 @@ mod tests {
         });
 
         let validation = Validation::new(Some(input_schema.clone()), Some(output_schema.clone()));
-        
+
         assert!(validation.has_validation());
         assert_eq!(validation.input_schema.as_ref().unwrap(), &input_schema);
         assert_eq!(validation.output_schema.as_ref().unwrap(), &output_schema);
@@ -239,22 +160,19 @@ mod tests {
     #[tokio::test]
     async fn test_mock_tool() {
         let tool = MockTool;
-        
-        // 测试基本属性
+
         assert_eq!(tool.kind(), "mock");
         assert_eq!(tool.metadata().name, "Mock Tool");
-        
-        // 测试输入验证
+
         let valid_input = json!({ "valid": true });
         let invalid_input = json!({ "valid": false });
-        
+
         assert!(tool.validate_input(&valid_input, &ToolContext::default()).is_ok());
         assert!(tool.validate_input(&invalid_input, &ToolContext::default()).is_err());
-        
-        // 测试执行
+
         let context = ToolContext::default();
         let result = tool.execute(valid_input.clone(), context).await.unwrap();
-        
+
         let output: Value = result.output;
         assert_eq!(output.get("success").unwrap(), &json!(true));
         assert_eq!(output.get("input").unwrap(), &valid_input);

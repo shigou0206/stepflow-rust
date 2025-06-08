@@ -5,6 +5,9 @@ use stepflow_storage::persistence_manager::PersistenceManager;
 use crate::engine::WorkflowMode;
 use stepflow_match::service::MatchService;
 use stepflow_dto::dto::queue_task::QueueTaskDto;
+use stepflow_dto::dto::tool::ToolInputPayload;
+use stepflow_tool::common::context::ToolContext;
+use stepflow_tool::registry::globals::GLOBAL_TOOL_REGISTRY;
 
 use std::sync::Arc;
 use async_trait::async_trait;
@@ -12,7 +15,6 @@ use tracing::{debug, warn};
 
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 
-/// 从 TaskState 的 execution_config 中提取 priority 和 timeout
 fn extract_priority_and_timeout(
     state: &TaskState,
     run_id: &str,
@@ -26,7 +28,7 @@ fn extract_priority_and_timeout(
             if let Some(p) = p_val.as_u64().and_then(|v| u8::try_from(v).ok()) {
                 priority = Some(p);
             } else {
-                warn!("Invalid priority in config for {}.{}", run_id, state_name);
+                warn!("Invalid priority in config for {}.{}, using None", run_id, state_name);
             }
         }
 
@@ -34,7 +36,7 @@ fn extract_priority_and_timeout(
             if let Some(t) = t_val.as_i64() {
                 timeout_seconds = Some(t);
             } else {
-                warn!("Invalid timeout_seconds in config for {}.{}", run_id, state_name);
+                warn!("Invalid timeout_seconds in config for {}.{}, using None", run_id, state_name);
             }
         }
     }
@@ -42,7 +44,6 @@ fn extract_priority_and_timeout(
     (priority, timeout_seconds)
 }
 
-/// 构造完整的 QueueTaskDto（不含 task_id）
 fn build_queue_task(
     run_id: &str,
     state_name: &str,
@@ -52,7 +53,7 @@ fn build_queue_task(
     let (priority, timeout_seconds) = extract_priority_and_timeout(state, run_id, state_name);
 
     QueueTaskDto {
-        task_id: "".to_string(), // 留空，由持久化层生成
+        task_id: "".to_string(),
         run_id: run_id.to_string(),
         state_name: state_name.to_string(),
         resource: state.resource.clone(),
@@ -72,7 +73,6 @@ fn build_queue_task(
     }
 }
 
-/// 通用 Task 状态处理函数
 pub async fn handle_task(
     mode: WorkflowMode,
     run_id: &str,
@@ -82,7 +82,10 @@ pub async fn handle_task(
     match_service: Arc<dyn MatchService>,
     persistence_for_handlers: Arc<dyn PersistenceManager>,
 ) -> Result<Value, String> {
-    let service_task = build_queue_task(run_id, state_name, state, input);
+    let payload = ToolInputPayload::build(&state.resource, input)?;
+    let input_value = serde_json::to_value(payload).map_err(|e| e.to_string())?;
+
+    let service_task = build_queue_task(run_id, state_name, state, &input_value);
 
     match_service
         .enqueue_task(&state.resource, service_task)
@@ -91,14 +94,13 @@ pub async fn handle_task(
 
     if mode == WorkflowMode::Inline {
         match_service
-            .wait_for_completion(run_id, state_name, input, persistence_for_handlers)
+            .wait_for_completion(run_id, state_name, &input_value, persistence_for_handlers)
             .await
     } else {
-        Ok(input.clone())
+        Ok(input_value)
     }
 }
 
-/// TaskHandler 结构体，用于状态分发
 pub struct TaskHandler<'a> {
     match_service: Arc<dyn MatchService>,
     state: &'a TaskState,
@@ -117,7 +119,32 @@ impl<'a> TaskHandler<'a> {
 
     async fn handle_inline(&self, input: &Value) -> Result<Value, String> {
         debug!("Executing task inline with resource: {}", self.state.resource);
-        crate::tools::run_tool(&self.state.resource, input).await
+
+        let payload = ToolInputPayload::build(&self.state.resource, input)
+            .map_err(|e| format!("Failed to build tool payload: {}", e))?;
+
+        let tool = {
+            let registry = GLOBAL_TOOL_REGISTRY
+                .lock()
+                .map_err(|e| format!("Failed to lock tool registry: {}", e))?;
+
+            registry
+                .get(&payload.resource)
+                .ok_or_else(|| format!("Tool not found: {}", payload.resource))?
+                .clone()
+        };
+
+        let context = ToolContext::default();
+
+        tool.validate_input(&payload.parameters, &context)
+            .map_err(|e| format!("Tool input validation failed: {}", e))?;
+
+        let result = tool
+            .execute(payload.parameters.clone(), context)
+            .await
+            .map_err(|e| format!("Tool execution failed: {}", e))?;
+
+        Ok(result.output)
     }
 
     async fn handle_deferred(
@@ -130,14 +157,17 @@ impl<'a> TaskHandler<'a> {
             self.state.resource
         );
 
-        let task = build_queue_task(ctx.run_id, ctx.state_name, self.state, input);
+        let payload = ToolInputPayload::build(&self.state.resource, input)?;
+        let input_value = serde_json::to_value(payload).map_err(|e| e.to_string())?;
+
+        let task = build_queue_task(ctx.run_id, ctx.state_name, self.state, &input_value);
 
         self.match_service
             .enqueue_task(&self.state.resource, task)
             .await
             .map_err(|e| format!("Failed to enqueue task via MatchService: {}", e))?;
 
-        Ok(input.clone())
+        Ok(input_value)
     }
 }
 

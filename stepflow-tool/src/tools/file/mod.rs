@@ -5,10 +5,11 @@ use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::core::tool::{Tool, ToolMetadata};
+use crate::core::tool::{Tool, ToolMetadata}; // ✅ 引入 ToolInputPayload
 use crate::common::config::ToolConfig;
 use crate::common::context::ToolContext;
 use crate::common::result::{ToolResult, ToolMetadata as ResultMetadata};
+use stepflow_dto::dto::tool::ToolInputPayload;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileConfig {
@@ -94,12 +95,16 @@ impl Tool for FileTool {
     }
 
     fn validate_input(&self, input: &Value, _context: &ToolContext) -> anyhow::Result<()> {
-        let _: FileInput = serde_json::from_value(input.clone())?;
+        let payload: ToolInputPayload = serde_json::from_value(input.clone())?; // ✅ 解包 payload
+        let _: FileInput = serde_json::from_value(payload.parameters)?;         // ✅ 校验参数格式
         Ok(())
     }
 
     async fn execute(&self, input: Value, context: ToolContext) -> anyhow::Result<ToolResult> {
-        let file_input: FileInput = serde_json::from_value(input)?;
+        let payload: ToolInputPayload = serde_json::from_value(input)?;         // ✅ 解包 payload
+        let file_input: FileInput = serde_json::from_value(payload.parameters)?; // ✅ 提取 FileInput
+        let _logical_input = payload.input; // 目前 FileTool 不用 input，可用于 future 拓展
+
         let path = self.resolve_path(&file_input.path);
         let start_time = std::time::Instant::now();
 
@@ -146,13 +151,13 @@ impl Tool for FileTool {
                 let mut files = Vec::new();
                 let mut entries = fs::read_dir(&path).await?;
                 while let Some(entry) = entries.next_entry().await? {
-                    let path = entry.path();
+                    let p = entry.path();
                     if let Some(pattern) = &pattern {
-                        if !path.to_string_lossy().contains(pattern) {
+                        if !p.to_string_lossy().contains(pattern) {
                             continue;
                         }
                     }
-                    files.push(path);
+                    files.push(p);
                 }
                 FileOutput {
                     success: true,
@@ -188,7 +193,6 @@ impl Tool for FileTool {
 
         let duration = start_time.elapsed().as_millis() as u64;
 
-        // 构建元数据
         let metadata = ResultMetadata {
             duration: context.duration(),
             attempts: context.attempt,
@@ -201,4 +205,4 @@ impl Tool for FileTool {
 
         Ok(ToolResult::new(json!(result), metadata))
     }
-} 
+}

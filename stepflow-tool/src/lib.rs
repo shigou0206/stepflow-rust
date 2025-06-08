@@ -1,9 +1,9 @@
 pub mod core;
 pub mod common;
 pub mod tools;
-
+pub mod registry;
 // Re-export commonly used types
-pub use core::tool::{Tool, ToolMetadata, RetryPolicy, Validation};
+pub use core::tool::{Tool, ToolMetadata, Validation};
 pub use core::error::ToolError;
 pub use core::registry::ToolRegistry;
 pub use common::config::ToolConfig;

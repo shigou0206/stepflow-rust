@@ -78,7 +78,7 @@ impl<'a> StateHandler for ChoiceHandler<'a> {
     }
 }
 
-// 为了保持向后兼容，保留原有的函数签名
+/// 为了保持向后兼容，保留原有的函数签名
 pub async fn handle_choice(
     state_name: &str,
     state: &ChoiceState,
@@ -90,6 +90,7 @@ pub async fn handle_choice(
     let ctx = StateExecutionContext::new(
         run_id,
         state_name,
+        "choice", // ✅ 添加 state_type
         crate::engine::WorkflowMode::Inline, // Choice 不区分模式
         event_dispatcher,
         persistence,
@@ -97,6 +98,6 @@ pub async fn handle_choice(
 
     let handler = ChoiceHandler::new(state);
     let result = handler.execute(&ctx, input).await?;
-    
+
     Ok(result.output)
 }

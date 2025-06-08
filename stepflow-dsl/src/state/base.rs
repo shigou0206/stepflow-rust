@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use stepflow_mapping::MappingDSL;
 
-use crate::policy::{RetryPolicy, CatchPolicy};
+use stepflow_dto::dto::error_policy::{RetryPolicy, CatchPolicy};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -11,6 +11,9 @@ pub struct BaseState {
 
     #[serde(default)]
     pub input_mapping: Option<MappingDSL>,
+
+    #[serde(default)]
+    pub parameter_mapping: Option<MappingDSL>, 
 
     #[serde(default)]
     pub output_mapping: Option<MappingDSL>,

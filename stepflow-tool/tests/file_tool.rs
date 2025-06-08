@@ -3,10 +3,22 @@ use stepflow_tool::{Tool, ToolContext};
 use stepflow_tool::tools::file::{FileTool, FileConfig};
 use tempfile::tempdir;
 
+fn build_payload(path: &str, operation: serde_json::Value) -> serde_json::Value {
+    json!({
+        "resource": "file",
+        "input": null,
+        "parameters": {
+            "path": path,
+            "operation": operation
+        }
+    })
+}
+
 #[tokio::test]
 async fn test_file_write_and_read() {
     let temp_dir = tempdir().unwrap();
     let file_path = temp_dir.path().join("test.txt");
+    let file_path_str = file_path.to_str().unwrap();
 
     let mut config = FileConfig::default();
     config.create_dirs = true;
@@ -15,79 +27,58 @@ async fn test_file_write_and_read() {
     let tool = FileTool::new(Some(config));
     let context = ToolContext::default();
 
-    // 写入文件
-    let write_input = json!({
-        "path": file_path.to_str().unwrap(),
-        "operation": {
-            "type": "Write",
-            "content": "Hello, World!"
-        }
-    });
+    let write_payload = build_payload(
+        file_path_str,
+        json!({ "type": "Write", "content": "Hello, World!" })
+    );
 
-    let result = tool.execute(write_input, context.clone()).await.unwrap();
+    let result = tool.execute(write_payload, context.clone()).await.unwrap();
     assert!(result.output.get("success").unwrap().as_bool().unwrap());
 
-    // 读取文件
-    let read_input = json!({
-        "path": file_path.to_str().unwrap(),
-        "operation": {
-            "type": "Read"
-        }
-    });
+    let read_payload = build_payload(
+        file_path_str,
+        json!({ "type": "Read" })
+    );
 
-    let result = tool.execute(read_input, context).await.unwrap();
+    let result = tool.execute(read_payload, context).await.unwrap();
     let output = result.output;
 
     assert!(output.get("success").unwrap().as_bool().unwrap());
-    assert_eq!(
-        output.get("content").unwrap().as_str().unwrap(),
-        "Hello, World!"
-    );
+    assert_eq!(output.get("content").unwrap().as_str().unwrap(), "Hello, World!");
 }
 
 #[tokio::test]
 async fn test_file_list_and_delete() {
     let temp_dir = tempdir().unwrap();
     let file_path = temp_dir.path().join("test.txt");
+    let file_path_str = file_path.to_str().unwrap();
+    let dir_path_str = temp_dir.path().to_str().unwrap();
 
     let tool = FileTool::new(None);
     let context = ToolContext::default();
 
-    // 创建文件
-    let write_input = json!({
-        "path": file_path.to_str().unwrap(),
-        "operation": {
-            "type": "Write",
-            "content": "Test content"
-        }
-    });
+    let write_payload = build_payload(
+        file_path_str,
+        json!({ "type": "Write", "content": "Test content" })
+    );
 
-    tool.execute(write_input, context.clone()).await.unwrap();
+    tool.execute(write_payload, context.clone()).await.unwrap();
 
-    // 列出目录
-    let list_input = json!({
-        "path": temp_dir.path().to_str().unwrap(),
-        "operation": {
-            "type": "List",
-            "pattern": "test"
-        }
-    });
+    let list_payload = build_payload(
+        dir_path_str,
+        json!({ "type": "List", "pattern": "test" })
+    );
 
-    let result = tool.execute(list_input, context.clone()).await.unwrap();
-    let output = result.output;
+    let result = tool.execute(list_payload, context.clone()).await.unwrap();
+    let files = result.output.get("files").unwrap().as_array().unwrap();
+    assert_eq!(files.len(), 1);
 
-    assert!(output.get("success").unwrap().as_bool().unwrap());
-    assert_eq!(output.get("files").unwrap().as_array().unwrap().len(), 1);
+    let delete_payload = build_payload(
+        file_path_str,
+        json!({ "type": "Delete" })
+    );
 
-    // 删除文件
-    let delete_input = json!({
-        "path": file_path.to_str().unwrap(),
-        "operation": {
-            "type": "Delete"
-        }
-    });
-
-    let result = tool.execute(delete_input, context).await.unwrap();
+    let result = tool.execute(delete_payload, context).await.unwrap();
     assert!(result.output.get("success").unwrap().as_bool().unwrap());
 }
 
@@ -98,41 +89,30 @@ async fn test_file_copy_and_move() {
     let copy_path = temp_dir.path().join("copy.txt");
     let move_path = temp_dir.path().join("moved.txt");
 
+    let source_str = source_path.to_str().unwrap();
+    let copy_str = copy_path.to_str().unwrap();
+    let move_str = move_path.to_str().unwrap();
+
     let tool = FileTool::new(None);
     let context = ToolContext::default();
 
-    // 创建源文件
-    let write_input = json!({
-        "path": source_path.to_str().unwrap(),
-        "operation": {
-            "type": "Write",
-            "content": "Test content"
-        }
-    });
+    let write_payload = build_payload(
+        source_str,
+        json!({ "type": "Write", "content": "Test content" })
+    );
+    tool.execute(write_payload, context.clone()).await.unwrap();
 
-    tool.execute(write_input, context.clone()).await.unwrap();
-
-    // 复制文件
-    let copy_input = json!({
-        "path": source_path.to_str().unwrap(),
-        "operation": {
-            "type": "Copy",
-            "target": copy_path.to_str().unwrap()
-        }
-    });
-
-    let result = tool.execute(copy_input, context.clone()).await.unwrap();
+    let copy_payload = build_payload(
+        source_str,
+        json!({ "type": "Copy", "target": copy_str })
+    );
+    let result = tool.execute(copy_payload, context.clone()).await.unwrap();
     assert!(result.output.get("success").unwrap().as_bool().unwrap());
 
-    // 移动文件
-    let move_input = json!({
-        "path": copy_path.to_str().unwrap(),
-        "operation": {
-            "type": "Move",
-            "target": move_path.to_str().unwrap()
-        }
-    });
-
-    let result = tool.execute(move_input, context).await.unwrap();
+    let move_payload = build_payload(
+        copy_str,
+        json!({ "type": "Move", "target": move_str })
+    );
+    let result = tool.execute(move_payload, context).await.unwrap();
     assert!(result.output.get("success").unwrap().as_bool().unwrap());
-} 
+}

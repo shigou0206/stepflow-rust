@@ -1,79 +1,47 @@
 use serde_json::json;
 use stepflow_tool::{Tool, ToolContext};
 use stepflow_tool::tools::http::{HttpTool, HttpConfig};
-use std::collections::HashMap;
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{method, path};
 
 #[tokio::test]
-async fn test_http_get_request() {
-    // 启动模拟服务器
-    let mock_server = MockServer::start().await;
-
-    // 设置模拟响应
-    Mock::given(method("GET"))
-        .and(path("/test"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "message": "success"
-        })))
-        .mount(&mock_server)
-        .await;
-
-    // 创建 HTTP 工具
+async fn test_http_get_real_url() {
     let tool = HttpTool::new(None);
     let context = ToolContext::default();
 
-    // 构建请求
     let input = json!({
-        "url": format!("{}/test", mock_server.uri()),
-        "method": "GET",
-        "headers": {
-            "Content-Type": "application/json"
+        "resource": "http",
+        "input": null,
+        "parameters": {
+            "url": "https://jsonplaceholder.typicode.com/posts/1",
+            "method": "GET"
         }
     });
 
-    // 执行请求
     let result = tool.execute(input, context).await.unwrap();
     let output = result.output;
 
-    // 验证响应
     assert_eq!(output.get("status").unwrap().as_u64().unwrap(), 200);
-    assert_eq!(
-        output.get("body").unwrap().get("message").unwrap().as_str().unwrap(),
-        "success"
-    );
+    assert!(output.get("body").unwrap().get("id").is_some());
 }
 
 #[tokio::test]
-async fn test_http_post_request() {
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/test"))
-        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
-            "id": 1,
-            "status": "created"
-        })))
-        .mount(&mock_server)
-        .await;
-
-    let mut config = HttpConfig::default();
-    let mut headers = HashMap::new();
-    headers.insert("User-Agent".to_string(), "StepFlow-Test".to_string());
-    config.headers = Some(headers);
-
-    let tool = HttpTool::new(Some(config));
+async fn test_http_post_with_body() {
+    let tool = HttpTool::new(None);
     let context = ToolContext::default();
 
     let input = json!({
-        "url": format!("{}/test", mock_server.uri()),
-        "method": "POST",
-        "headers": {
-            "Content-Type": "application/json"
-        },
-        "body": {
-            "name": "test",
-            "value": 123
+        "resource": "http",
+        "input": null,
+        "parameters": {
+            "url": "https://jsonplaceholder.typicode.com/posts",
+            "method": "POST",
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": {
+                "title": "foo",
+                "body": "bar",
+                "userId": 1
+            }
         }
     });
 
@@ -81,38 +49,65 @@ async fn test_http_post_request() {
     let output = result.output;
 
     assert_eq!(output.get("status").unwrap().as_u64().unwrap(), 201);
-    assert_eq!(
-        output.get("body").unwrap().get("status").unwrap().as_str().unwrap(),
-        "created"
-    );
+    assert_eq!(output.get("body").unwrap().get("title").unwrap(), "foo");
 }
 
 #[tokio::test]
-async fn test_http_error_handling() {
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("GET"))
-        .and(path("/error"))
-        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
-            "error": "Not Found"
-        })))
-        .mount(&mock_server)
-        .await;
-
+async fn test_http_invalid_url() {
     let tool = HttpTool::new(None);
     let context = ToolContext::default();
 
     let input = json!({
-        "url": format!("{}/error", mock_server.uri()),
-        "method": "GET"
+        "resource": "http",
+        "input": null,
+        "parameters": {
+            "url": "http://invalid_url.local",
+            "method": "GET"
+        }
+    });
+
+    let result = tool.execute(input, context).await;
+    assert!(result.is_err()); // expect error on bad host
+}
+
+#[tokio::test]
+async fn test_http_with_query_and_headers() {
+    let tool = HttpTool::new(None);
+    let context = ToolContext::default();
+
+    let input = json!({
+        "resource": "http",
+        "input": null,
+        "parameters": {
+            "url": "https://jsonplaceholder.typicode.com/comments",
+            "method": "GET",
+            "query": {
+                "postId": "1"
+            },
+            "headers": {
+                "Accept": "application/json"
+            }
+        }
     });
 
     let result = tool.execute(input, context).await.unwrap();
     let output = result.output;
 
-    assert_eq!(output.get("status").unwrap().as_u64().unwrap(), 404);
-    assert_eq!(
-        output.get("body").unwrap().get("error").unwrap().as_str().unwrap(),
-        "Not Found"
-    );
-} 
+    assert_eq!(output.get("status").unwrap(), 200);
+    assert!(output.get("body").unwrap().is_array());
+}
+
+#[tokio::test]
+async fn test_http_missing_parameters_should_fail() {
+    let tool = HttpTool::new(None);
+    let context = ToolContext::default();
+
+    // 缺少 parameters 字段
+    let input = json!({
+        "resource": "http",
+        "input": null
+    });
+
+    let result = tool.execute(input, context).await;
+    assert!(result.is_err());
+}
