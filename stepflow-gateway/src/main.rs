@@ -20,8 +20,9 @@ use tower_http::{
 use std::net::SocketAddr;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use stepflow_dto::dto as dto;
+use std::str::FromStr;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -119,14 +120,19 @@ async fn main() -> anyhow::Result<()> {
     .init();
 
     // -------- infra (stub) --
-    let db_url = concat!(
-        "sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db",
-        "?mode=rwc",               // 读写并创建
-        "&journal_mode=WAL",       // 打开 WAL
-        "&busy_timeout=5000"       // 冲突时最多等 5 s
-    );
+    // let db_url = concat!(
+    //     "sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db",
+    //     "?mode=rwc",               // 读写并创建
+    //     "&journal_mode=WAL",       // 打开 WAL
+    //     "&busy_timeout=5000"       // 冲突时最多等 5 s
+    // );
     
-    let pool = SqlitePool::connect_lazy(db_url)?; 
+    let db_options = SqliteConnectOptions::from_str("sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db")?
+    .create_if_missing(true)
+    .journal_mode(SqliteJournalMode::Wal) // ← 设置 WAL 模式
+    .busy_timeout(std::time::Duration::from_secs(5)); // ← 设置 busy_timeout
+
+    let pool = SqlitePool::connect_with(db_options).await?;
     let persist = std::sync::Arc::new(SqliteStorageManager::new(pool.clone()));
     let event_dispatcher = std::sync::Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
     // let match_service = MemoryMatchService::new();
