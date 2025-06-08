@@ -1,32 +1,31 @@
+// src/persistence_manager.rs
 use async_trait::async_trait;
 use crate::transaction::TransactionManager;
 use crate::traits::*;
 
-#[async_trait]
-pub trait PersistenceManager: 
-    WorkflowStorage +
-    EventStorage +
-    StateStorage +
-    ActivityStorage +
-    TimerStorage +
-    TemplateStorage +
-    VisibilityStorage +
-    QueueStorage +
-    TransactionManager +
-    Send + Sync
+#[async_trait]     // 只是为了以后若要加异步方法
+pub trait PersistenceManager:
+      WorkflowStorage
+    + EventStorage
+    + StateStorage
+    + ActivityStorage
+    + TimerStorage
+    + TemplateStorage
+    + VisibilityStorage
+    + QueueStorage
+    + TransactionManager            // ← 带上事务能力，但不写死 DB
+    + Send + Sync
 {}
 
-// 自动实现 PersistenceManager
+// 自动 blanket-impl
 impl<T> PersistenceManager for T where
-    T: WorkflowStorage
-        + EventStorage
-        + StateStorage
-        + ActivityStorage
-        + TimerStorage
-        + TemplateStorage
-        + VisibilityStorage
-        + QueueStorage
-        + TransactionManager
-        + Send
-        + Sync
-{}
+      T: WorkflowStorage
+      + EventStorage
+      + StateStorage
+      + ActivityStorage
+      + TimerStorage
+      + TemplateStorage
+      + VisibilityStorage
+      + QueueStorage
+      + TransactionManager
+      + Send + Sync {}

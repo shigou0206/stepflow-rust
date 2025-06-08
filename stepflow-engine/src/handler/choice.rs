@@ -4,17 +4,26 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use tracing::{debug, warn};
+
+use std::sync::Arc;
+
 use stepflow_dsl::{
     logic::ChoiceRule,
     state::choice::ChoiceState,
 };
-use std::sync::Arc;
-use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::EngineEventDispatcher;
+use stepflow_match::queue::DynPM;           // ✅ 统一别名
+use crate::engine::WorkflowMode;       // Inline/Deferred 枚举
 
 use crate::logic::choice_eval::eval_choice_logic;
-use super::{StateHandler, StateExecutionContext, StateExecutionResult};
+use super::{
+    StateExecutionContext, StateExecutionResult,
+    StateHandler,
+};
 
+/// ---------------------------------------------------------------------
+/// ChoiceHandler
+/// ---------------------------------------------------------------------
 pub struct ChoiceHandler<'a> {
     state: &'a ChoiceState,
 }
@@ -24,39 +33,45 @@ impl<'a> ChoiceHandler<'a> {
         Self { state }
     }
 
+    /// 真正的分支匹配逻辑
     async fn evaluate_choice(&self, input: &Value) -> Result<Option<String>, String> {
-        debug!("Evaluating choice rules with {} branches", self.state.choices.len());
+        debug!(
+            "Evaluating choice rules with {} branches",
+            self.state.choices.len()
+        );
 
-        // 1. 遍历所有显式写在 DSL 里的 choice 规则
-        for (index, ChoiceRule { condition, next }) in self.state.choices.iter().enumerate() {
+        // 1️⃣ 依次判断 DSL 中显式列出的 branches
+        for (idx, ChoiceRule { condition, next }) in self.state.choices.iter().enumerate() {
             match eval_choice_logic(condition, input) {
                 Ok(true) => {
-                    debug!("Branch {} matched", index);
+                    debug!("Branch {idx} matched");
                     return Ok(Some(next.clone()));
                 }
                 Ok(false) => {
-                    debug!("Branch {} did not match", index);
-                    continue;
+                    debug!("Branch {idx} did not match");
                 }
                 Err(e) => {
-                    warn!("Failed to evaluate branch {}: {}", index, e);
+                    warn!("Failed to evaluate branch {idx}: {e}");
                     return Err(e);
                 }
             }
         }
 
-        // 2. 如果没有任何 choice 命中，但有 default
+        // 2️⃣ 无命中但存在 default
         if let Some(default) = &self.state.default {
-            debug!("No branches matched, using default");
+            debug!("No branches matched – using default");
             return Ok(Some(default.clone()));
         }
 
-        // 3. 都没命中也没有 default
+        // 3️⃣ 无命中且无 default
         warn!("No matching branch and no default");
-        Err("No matching branch and no default branch provided".to_string())
+        Err("No matching branch and no default branch provided".into())
     }
 }
 
+/// ---------------------------------------------------------------------
+/// StateHandler 实现
+/// ---------------------------------------------------------------------
 #[async_trait]
 impl<'a> StateHandler for ChoiceHandler<'a> {
     async fn handle(
@@ -67,7 +82,7 @@ impl<'a> StateHandler for ChoiceHandler<'a> {
         let next_state = self.evaluate_choice(input).await?;
 
         Ok(StateExecutionResult {
-            output: input.clone(),
+            output: input.clone(), // Choice 不修改上下文
             next_state,
             should_continue: true,
         })
@@ -78,24 +93,28 @@ impl<'a> StateHandler for ChoiceHandler<'a> {
     }
 }
 
-/// 为了保持向后兼容，保留原有的函数签名
+/// ---------------------------------------------------------------------
+/// 兼容旧调用方式的薄包装函数
+/// ---------------------------------------------------------------------
 pub async fn handle_choice(
     state_name: &str,
     state: &ChoiceState,
     input: &Value,
     run_id: &str,
     event_dispatcher: &Arc<EngineEventDispatcher>,
-    persistence: &Arc<dyn PersistenceManager>,
+    persistence: &DynPM,                   // ✅ 统一使用 DynPM
 ) -> Result<Value, String> {
+    // 构造执行上下文
     let ctx = StateExecutionContext::new(
         run_id,
         state_name,
-        "choice", // ✅ 添加 state_type
-        crate::engine::WorkflowMode::Inline, // Choice 不区分模式
+        "choice",
+        WorkflowMode::Inline,              // Choice 无需区分模式
         event_dispatcher,
         persistence,
     );
 
+    // 调用通用执行流程
     let handler = ChoiceHandler::new(state);
     let result = handler.execute(&ctx, input).await?;
 

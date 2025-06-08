@@ -1,15 +1,13 @@
+// src/transaction.rs
 use async_trait::async_trait;
+use sqlx::{Database, Transaction};
 use crate::error::StorageError;
 
-/// 事务管理器，提供事务相关的操作
 #[async_trait]
 pub trait TransactionManager {
-    /// 开始一个新的事务
-    async fn begin_transaction(&self) -> Result<(), StorageError>;
+    /// 由具体实现声明自己使用的数据库类型
+    type DB: Database;
 
-    /// 提交当前事务
-    async fn commit(&self) -> Result<(), StorageError>;
-
-    /// 回滚当前事务
-    async fn rollback(&self) -> Result<(), StorageError>;
-} 
+    /// 开启并返回一个事务句柄
+    async fn begin_tx(&self) -> Result<Transaction<'_, Self::DB>, StorageError>;
+}

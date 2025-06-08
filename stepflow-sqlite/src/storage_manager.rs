@@ -14,7 +14,7 @@ use stepflow_storage::{
         queue_task::{StoredQueueTask, UpdateStoredQueueTask},
     },
 };
-
+use sqlx::{Sqlite, Transaction};
 use crate::persistence::{
     workflow_execution::WorkflowExecutionPersistence,
     workflow_event::WorkflowEventPersistence,
@@ -53,21 +53,26 @@ impl SqliteStorageManager {
         }
     }
 
-    /// 在事务中执行一个异步闭包
     pub async fn with_transaction<F, Fut, R>(&self, f: F) -> Result<R, StorageError>
     where
-        F: FnOnce() -> Fut + Send,
-        Fut: std::future::Future<Output = Result<R, StorageError>> + Send,
+        // ⬇️  高阶生命周期：闭包接收 &mut Transaction 并返回 Future
+        F: for<'tx> FnOnce(&'tx mut Transaction<'_, Sqlite>) -> Fut + Send,
+        Fut: Future<Output = Result<R, StorageError>> + Send,
         R: Send,
     {
-        self.begin_transaction().await?;
-        match f().await {
-            Ok(result) => {
-                self.commit().await?;
-                Ok(result)
+        let mut tx = self.begin_tx().await?;          // 打开事务
+        let res = f(&mut tx).await;
+        let _ = &tx; // 显式结束可变借用
+        // ------------------------------------------------
+
+        match res {
+            Ok(val) => {
+                tx.commit().await.map_err(StorageError::from)?;
+                Ok(val)
             }
             Err(e) => {
-                self.rollback().await?;
+                // commit 失败时也不用管，再回滚一次
+                let _ = tx.rollback().await;
                 Err(e)
             }
         }
@@ -76,19 +81,11 @@ impl SqliteStorageManager {
 
 #[async_trait::async_trait]
 impl TransactionManager for SqliteStorageManager {
-    async fn begin_transaction(&self) -> Result<(), StorageError> {
-        sqlx::query("BEGIN TRANSACTION").execute(&self.pool).await.map_err(StorageError::from)?;
-        Ok(())
-    }
+    type DB = Sqlite;
 
-    async fn commit(&self) -> Result<(), StorageError> {
-        sqlx::query("COMMIT").execute(&self.pool).await.map_err(StorageError::from)?;
-        Ok(())
-    }
-
-    async fn rollback(&self) -> Result<(), StorageError> {
-        sqlx::query("ROLLBACK").execute(&self.pool).await.map_err(StorageError::from)?;
-        Ok(())
+    async fn begin_tx(&self) -> Result<Transaction<'_, Self::DB>, StorageError> {
+        let tx = self.pool.begin().await.map_err(StorageError::from)?;
+        Ok(tx)
     }
 }
 

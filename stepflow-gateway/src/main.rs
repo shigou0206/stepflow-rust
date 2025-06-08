@@ -11,6 +11,7 @@ use stepflow_sqlite::SqliteStorageManager;
 use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
 use stepflow_match::service::{MemoryMatchService, HybridMatchService, PersistentMatchService};
 use stepflow_match::queue::PersistentStore;
+use sqlx::SqlitePool;
 use tower_http::{
     trace::TraceLayer,
     cors::CorsLayer,
@@ -118,7 +119,14 @@ async fn main() -> anyhow::Result<()> {
     .init();
 
     // -------- infra (stub) --
-    let pool = sqlx::SqlitePool::connect_lazy("sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db")?;
+    let db_url = concat!(
+        "sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db",
+        "?mode=rwc",               // 读写并创建
+        "&journal_mode=WAL",       // 打开 WAL
+        "&busy_timeout=5000"       // 冲突时最多等 5 s
+    );
+    
+    let pool = SqlitePool::connect_lazy(db_url)?; 
     let persist = std::sync::Arc::new(SqliteStorageManager::new(pool.clone()));
     let event_dispatcher = std::sync::Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
     // let match_service = MemoryMatchService::new();

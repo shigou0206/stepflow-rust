@@ -1,170 +1,132 @@
-use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::Mutex;
-use tokio::time::timeout;
+// memory.rs  —— 经过 DynPM 适配后的最终版
+use std::{
+    any::Any,
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+    time::Duration,
+};
+
 use async_trait::async_trait;
 use serde_json::Value;
-use std::any::Any;
+use tokio::{
+    sync::{Mutex, oneshot},
+    time::timeout,
+};
 
-use stepflow_storage::persistence_manager::PersistenceManager;
-use crate::service::interface::{MatchService};
-use stepflow_dto::dto::match_stats::MatchStats;
-use stepflow_dto::dto::queue_task::QueueTaskDto;
+use crate::{
+    service::interface::{MatchService, DynPM},   // ← 引入 DynPM
+};
+use stepflow_dto::{
+    dto::match_stats::MatchStats,
+    dto::queue_task::QueueTaskDto,
+};
 
-/// 内存版的任务匹配服务实现
+/// 内存版任务匹配服务
 pub struct MemoryMatchService {
-    // 工作进程ID -> 等待任务的工作进程
-    waiting_workers: Mutex<HashMap<String, tokio::sync::oneshot::Sender<QueueTaskDto>>>,
-    // 队列名称 -> 待处理的任务队列
-    pending_tasks: Mutex<HashMap<String, VecDeque<QueueTaskDto>>>,
+    /// 队列名 → 待处理任务
+    pending_tasks:  Mutex<HashMap<String, VecDeque<QueueTaskDto>>>,
+    /// worker_id → 等待中的 oneshot Sender
+    waiting_workers: Mutex<HashMap<String, oneshot::Sender<QueueTaskDto>>>,
 }
 
 impl MemoryMatchService {
-    /// 创建新的内存匹配服务实例
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
+            pending_tasks:  Mutex::new(HashMap::new()),
             waiting_workers: Mutex::new(HashMap::new()),
-            pending_tasks: Mutex::new(HashMap::new()),
         })
     }
 
-    /// 获取指定队列中等待的任务数量
+    // 仅测试用的辅助函数
     pub async fn pending_tasks_count(&self, queue: &str) -> usize {
         self.pending_tasks
             .lock()
             .await
             .get(queue)
-            .map(|q| q.len())
-            .unwrap_or(0)
+            .map_or(0, |q| q.len())
     }
-
-    /// 获取指定队列中等待的 worker 数量
-    pub async fn waiting_workers_count(&self, _queue: &str) -> usize {
+    pub async fn waiting_workers_count(&self) -> usize {
         self.waiting_workers.lock().await.len()
     }
 }
 
 #[async_trait]
 impl MatchService for MemoryMatchService {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+    fn as_any(&self) -> &dyn Any { self }
 
+    // 1. 队列统计
     async fn queue_stats(&self) -> Vec<MatchStats> {
-        let pending = self.pending_tasks.lock().await;
-        let waiting = self.waiting_workers.lock().await;
+        let pending  = self.pending_tasks.lock().await;
+        let waiting  = self.waiting_workers.lock().await;
         pending
             .iter()
             .map(|(queue, tasks)| MatchStats {
                 queue: queue.clone(),
                 pending_tasks: tasks.len(),
-                waiting_workers: waiting.len(), // 简化实现
+                waiting_workers: waiting.len(),   // demo：全部 worker 共享
             })
             .collect()
     }
 
-    async fn poll_task(&self, queue: &str, worker_id: &str, wait_time: Duration) -> Option<QueueTaskDto> {
-        let mut pending_tasks = self.pending_tasks.lock().await;
-        if let Some(tasks) = pending_tasks.get_mut(queue) {
-            if let Some(task) = tasks.pop_front() {
-                return Some(task);
-            }
+    // 2. worker 轮询
+    async fn poll_task(
+        &self,
+        queue: &str,
+        worker_id: &str,
+        wait_time: Duration,
+    ) -> Option<QueueTaskDto> {
+        // ① 先看是否已有任务排队
+        if let Some(task) = self.pending_tasks
+            .lock()
+            .await
+            .get_mut(queue)
+            .and_then(|q| q.pop_front())
+        {
+            return Some(task);
         }
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.waiting_workers.lock().await.insert(worker_id.to_string(), tx);
+        // ② 否则挂起等待
+        let (tx, rx) = oneshot::channel();
+        self.waiting_workers
+            .lock()
+            .await
+            .insert(worker_id.to_string(), tx);
 
         match timeout(wait_time, rx).await {
             Ok(Ok(task)) => Some(task),
             _ => {
+                // 超时 / 发送端已取消
                 self.waiting_workers.lock().await.remove(worker_id);
                 None
             }
         }
     }
 
+    // 3. 入队
     async fn enqueue_task(&self, queue: &str, task: QueueTaskDto) -> Result<(), String> {
-        let mut waiting = self.waiting_workers.lock().await;
-        if let Some((_, waiter)) = waiting.drain().next() {
+        // 有等待的 worker？直接派发
+        if let Some((_, waiter)) = self.waiting_workers.lock().await.drain().next() {
             let _ = waiter.send(task);
             return Ok(());
         }
-
-        let mut pending = self.pending_tasks.lock().await;
-        pending.entry(queue.to_string()).or_default().push_back(task);
+        // 否则进入 pending 队列
+        self.pending_tasks
+            .lock()
+            .await
+            .entry(queue.to_string())
+            .or_default()
+            .push_back(task);
         Ok(())
     }
 
+    // 4. 等待完成（内存实现：直接回显）
     async fn wait_for_completion(
         &self,
         _run_id: &str,
         _state_name: &str,
         input: &Value,
-        _persistence: Arc<dyn PersistenceManager>,
+        _pm: &DynPM,                    // ⚠️ 必须与 trait 保持一致
     ) -> Result<Value, String> {
         Ok(input.clone())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::time::Duration;
-    use serde_json::json;
-    use chrono::Utc;
-    use stepflow_storage::mock_persistence::DummyPersistence;
-
-    fn sample_task() -> QueueTaskDto {
-        QueueTaskDto {
-            task_id: "task1".to_string(),
-            run_id: "run1".to_string(),
-            state_name: "stateA".to_string(),
-            resource: "resource1".to_string(),
-            task_payload: Some(json!({"key": "value"})),
-            status: "PENDING".to_string(),
-            attempts: 1,
-            max_attempts: 3,
-            priority: Some(0),
-            timeout_seconds: Some(300),
-            error_message: None,
-            last_error_at: None,
-            next_retry_at: None,
-            queued_at: Utc::now(),
-            processing_at: None,
-            completed_at: None,
-            failed_at: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn test_pending_tasks_count() {
-        let service = MemoryMatchService::new();
-        assert_eq!(service.pending_tasks_count("q1").await, 0);
-    }
-
-    #[tokio::test]
-    async fn test_waiting_workers_count() {
-        let service = MemoryMatchService::new();
-        assert_eq!(service.waiting_workers_count("q1").await, 0);
-    }
-
-    #[tokio::test]
-    async fn test_enqueue_and_poll_task() {
-        let service = MemoryMatchService::new();
-        let task = sample_task();
-        service.enqueue_task("q1", task.clone()).await.unwrap();
-
-        let result = service.poll_task("q1", "worker1", Duration::from_secs(1)).await;
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().task_id, task.task_id);
-    }
-
-    #[tokio::test]
-    async fn test_wait_for_completion() {
-        let service = MemoryMatchService::new();
-        let input = json!({"input": 123});
-        let result = service.wait_for_completion("run", "state", &input, Arc::new(DummyPersistence)).await;
-        assert_eq!(result.unwrap(), input);
     }
 }

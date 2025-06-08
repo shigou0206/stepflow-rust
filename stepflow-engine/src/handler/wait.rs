@@ -8,7 +8,7 @@ use chrono::Utc;
 use thiserror::Error;
 
 use stepflow_dsl::state::wait::WaitState;
-use stepflow_storage::persistence_manager::PersistenceManager;
+use stepflow_match::queue::DynPM;
 use stepflow_storage::entities::timer::StoredTimer;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 
@@ -92,7 +92,7 @@ impl<'a> WaitHandler<'a> {
     async fn process_wait(
         &self,
         ctx: &StateExecutionContext<'_>,
-        exec_input: &Value,
+        _exec_input: &Value,
     ) -> Result<(), String> {
         if let Some(secs) = self.state.seconds {
             if secs == 0 {
@@ -153,7 +153,7 @@ pub async fn handle_wait(
     input: &Value,
     mode: WorkflowMode,
     run_id: &str,
-    persistence: &Arc<dyn PersistenceManager>,
+    persistence: &DynPM,
     event_dispatcher: &Arc<EngineEventDispatcher>,
 ) -> Result<Value, String> {
     let ctx = StateExecutionContext::new(

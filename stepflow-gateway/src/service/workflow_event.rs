@@ -1,6 +1,6 @@
 use chrono::Utc;
 use std::sync::Arc;
-use stepflow_storage::persistence_manager::PersistenceManager;
+use stepflow_match::queue::DynPM;
 use stepflow_storage::error::StorageError;
 use stepflow_storage::entities::workflow_event::StoredWorkflowEvent;
 use stepflow_dto::dto::workflow_event::{WorkflowEventDto, RecordEventRequest};
@@ -11,11 +11,11 @@ use anyhow::Error;
 
 #[derive(Clone)]
 pub struct WorkflowEventSqlxSvc {
-    pm: Arc<dyn PersistenceManager>,
+    pm: DynPM,
 }
 
 impl WorkflowEventSqlxSvc {
-    pub fn new(pm: Arc<dyn PersistenceManager>) -> Self {
+    pub fn new(pm: DynPM) -> Self {
         Self { pm }
     }
 }

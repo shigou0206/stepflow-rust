@@ -1,7 +1,7 @@
 use chrono::Utc;
 use serde_json::Value;
 use stepflow_dsl::state::task::TaskState;
-use stepflow_storage::persistence_manager::PersistenceManager;
+use stepflow_match::queue::DynPM;
 use crate::engine::WorkflowMode;
 use stepflow_match::service::MatchService;
 use stepflow_dto::dto::queue_task::QueueTaskDto;
@@ -80,7 +80,7 @@ pub async fn handle_task(
     state: &TaskState,
     input: &Value,
     match_service: Arc<dyn MatchService>,
-    persistence_for_handlers: Arc<dyn PersistenceManager>,
+    persistence_for_handlers: &DynPM,
 ) -> Result<Value, String> {
     let payload = ToolInputPayload::build(&state.resource, input)?;
     let input_value = serde_json::to_value(payload).map_err(|e| e.to_string())?;

@@ -1,28 +1,33 @@
 // gateway/src/service/execution_sqlx.rs
+use crate::app_state::AppState;
+use crate::error::{AppError, AppResult};
+use anyhow::{Context, Error};
 use async_trait::async_trait;
+use serde_json::Value;
+use std::sync::Arc;
+use stepflow_dsl::dsl;
+use stepflow_dto::dto::execution::*;
+use stepflow_engine::engine::{WorkflowEngine, WorkflowMode};
 use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
 use stepflow_storage::error::StorageError;
-use stepflow_engine::engine::{WorkflowEngine, WorkflowMode};
-use stepflow_dto::dto::execution::*;
-use crate::error::{AppResult, AppError};
-use crate::app_state::AppState;
-use std::sync::Arc;
-use serde_json::Value;
-use anyhow::{Context, Error};
 
 #[derive(Clone)]
 pub struct ExecutionSqlxSvc {
-    state:     Arc<AppState>,
+    state: Arc<AppState>,
 }
 
 impl ExecutionSqlxSvc {
-    pub fn new(state: Arc<AppState>) -> Self { Self { state } }
+    pub fn new(state: Arc<AppState>) -> Self {
+        Self { state }
+    }
 
-    fn mode_from_str(s:&str) -> Result<WorkflowMode, AppError> {
+    fn mode_from_str(s: &str) -> Result<WorkflowMode, AppError> {
         match s {
-            "INLINE"   => Ok(WorkflowMode::Inline),
+            "INLINE" => Ok(WorkflowMode::Inline),
             "DEFERRED" => Ok(WorkflowMode::Deferred),
-            _ => Err(AppError::BadRequest("mode must be INLINE or DEFERRED".into())),
+            _ => Err(AppError::BadRequest(
+                "mode must be INLINE or DEFERRED".into(),
+            )),
         }
     }
 }
@@ -41,8 +46,6 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             req.dsl.clone()
                 .ok_or(AppError::BadRequest("dsl or template_id required".into()))?
         };
-        // let dsl = serde_json::from_value(dsl_val.clone())
-        //     .map_err(|e| AppError::BadRequest(format!("invalid DSL: {e}")))?;
 
         let dsl = match dsl_val {
             Value::Object(_) => {
@@ -58,86 +61,107 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             }
         };
 
-        // ② 构造引擎
+        // ---------- ② 生成 run_id / 创建引擎 ----------
         let mode = Self::mode_from_str(&req.mode)?;
-        println!("[Execution] mode: {:?}", mode);
         let run_id = uuid::Uuid::new_v4().to_string();
-        println!("[Execution] run_id: {}", run_id);
+
         let mut engine = WorkflowEngine::new(
             run_id.clone(),
             dsl,
-            req.init_ctx.clone().unwrap_or(Value::Object(Default::default())),
+            req.init_ctx.clone().unwrap_or_default(),
             mode,
             self.state.event_dispatcher.clone(),
             self.state.persist.clone(),
             self.state.match_service.clone(),
         );
 
-        // ③ Inline 直接跑完；Deferred 放入 Map
-        let (status, result, finished_at): (String, Option<Value>, Option<chrono::DateTime<chrono::Utc>>) = match mode {
-            WorkflowMode::Inline => {
-                let res = engine.run_inline().await
-                    .map_err(|e| AppError::BadRequest(format!("执行工作流失败: {}", e)))?;
-                ("COMPLETED".into(), Some(res), Some(chrono::Utc::now()))
-            },
-
-            WorkflowMode::Deferred => {
-                println!("[Execution] Deferred mode");
-            
-                let _ = engine.advance_until_blocked().await.ok();  // ⬅️ 合法了
-            
-                println!("[Execution] Deferred mode: executed advance_until_blocked");
-            
-                self.state.engines.lock().await.insert(run_id.clone(), engine);
-            
-                println!("[Execution] Deferred mode insert engine");
-            
-                ("RUNNING".into(), None, None)
-            }
-        };
-
-        // ④ 落库
-        let row = StoredWorkflowExecution {
+        // ---------- ③ 先落库 execution(状态 RUNNING) 防止锁冲突 ----------
+        let started_at = chrono::Utc::now();
+        let exec_row = StoredWorkflowExecution {
             run_id: run_id.clone(),
-            workflow_id: Some(format!("wf-{}", run_id)),  // 生成一个默认的 workflow_id
+            workflow_id: Some(format!("wf-{run_id}")),
             shard_id: 0,
             template_id: req.template_id.clone(),
             mode: req.mode.clone(),
-            current_state_name: Some("initial".to_string()),
-            status: status.clone(),
+            current_state_name: Some("initial".into()),
+            status: "RUNNING".into(),
             workflow_type: "default".into(),
-            input: Some(req.init_ctx.unwrap_or_default()),
+            input: Some(req.init_ctx.clone().unwrap_or_default()),
             input_version: 1,
-            result: result.clone(),
+            result: None,
             result_version: 1,
-            start_time: chrono::Utc::now().naive_utc(),
-            close_time: finished_at.map(|t| t.naive_utc()),
+            start_time: started_at.naive_utc(),
+            close_time: None,
             current_event_id: 0,
             memo: None,
             search_attrs: None,
             context_snapshot: None,
             version: 1,
         };
-        self.state.persist.create_execution(&row).await
-            .map_err(|e: StorageError| Error::new(e))?;
+        self.state
+            .persist
+            .create_execution(&exec_row)
+            .await
+            .map_err(|e: StorageError| AppError::Internal(e.to_string()))?;
 
+        // ---------- ④ 执行引擎 ----------
+        let (final_status, final_result, finished_at) = match mode {
+            WorkflowMode::Inline => {
+                let res = engine
+                    .run_inline()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("执行工作流失败: {e}")))?;
+                ("COMPLETED".to_string(), Some(res), Some(chrono::Utc::now()))
+            }
+            WorkflowMode::Deferred => {
+                engine.advance_until_blocked().await.ok(); // 允许 None
+                self.state
+                    .engines
+                    .lock()
+                    .await
+                    .insert(run_id.clone(), engine);
+                ("RUNNING".to_string(), None, None)
+            }
+        };
+
+        // ---------- ⑤ 若已结束则补丁更新 execution ----------
+        if final_status != "RUNNING" {
+            use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
+            let patch = UpdateStoredWorkflowExecution {
+                status: Some(final_status.clone()),
+                result: Some(final_result.clone()),
+                close_time: finished_at.map(|t| Some(t.naive_utc())),
+                result_version: Some(2),
+                ..Default::default()
+            };
+            self.state
+                .persist
+                .update_execution(&run_id, &patch)
+                .await
+                .map_err(|e: StorageError| AppError::Internal(e.to_string()))?;
+        }
+
+        // ---------- ⑥ 返回 DTO ----------
         Ok(ExecDto {
-            run_id, 
-            mode: req.mode, 
-            status, 
-            result,
-            started_at: chrono::Utc::now(),
+            run_id,
+            mode: req.mode,
+            status: final_status,
+            result: final_result,
+            started_at,
             finished_at,
         })
     }
-
-    async fn get(&self, id:&str) -> AppResult<ExecDto> {
-        let row = self.state.persist.get_execution(id).await
+    async fn get(&self, id: &str) -> AppResult<ExecDto> {
+        let row = self
+            .state
+            .persist
+            .get_execution(id)
+            .await
             .map_err(|e: StorageError| Error::new(e))?
             .ok_or(AppError::NotFound)?;
         Ok(ExecDto {
             run_id: row.run_id,
-            mode:   row.mode,
+            mode: row.mode,
             status: row.status,
             result: row.result,
             started_at: row.start_time.and_utc(),
@@ -145,49 +169,73 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
         })
     }
 
-    async fn list(&self, limit:i64, offset:i64) -> AppResult<Vec<ExecDto>> {
-        let rows = self.state.persist.find_executions(limit, offset).await
+    async fn list(&self, limit: i64, offset: i64) -> AppResult<Vec<ExecDto>> {
+        let rows = self
+            .state
+            .persist
+            .find_executions(limit, offset)
+            .await
             .map_err(|e: StorageError| Error::new(e))?;
-        Ok(rows.into_iter().map(|r| ExecDto {
-            run_id: r.run_id,
-            mode:   r.mode,
-            status: r.status,
-            result: r.result,
-            started_at: r.start_time.and_utc(),
-            finished_at: Option::map(r.close_time, |t| t.and_utc()),
-        }).collect::<Vec<_>>())
+        Ok(rows
+            .into_iter()
+            .map(|r| ExecDto {
+                run_id: r.run_id,
+                mode: r.mode,
+                status: r.status,
+                result: r.result,
+                started_at: r.start_time.and_utc(),
+                finished_at: Option::map(r.close_time, |t| t.and_utc()),
+            })
+            .collect::<Vec<_>>())
     }
 
     async fn update(&self, run_id: &str, status: String, result: Option<Value>) -> AppResult<()> {
-        let update = stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution {
-            status: Some(status),
-            result: Some(result),
-            result_version: Some(2),
-            ..Default::default()
-        };
-        self.state.persist.update_execution(run_id, &update)
+        let update =
+            stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution {
+                status: Some(status),
+                result: Some(result),
+                result_version: Some(2),
+                ..Default::default()
+            };
+        self.state
+            .persist
+            .update_execution(run_id, &update)
             .await
             .map_err(|e| AppError::Anyhow(anyhow::anyhow!("update execution failed: {}", e)))?;
         Ok(())
     }
 
     async fn delete(&self, run_id: &str) -> AppResult<()> {
-        self.state.persist.delete_execution(run_id)
+        self.state
+            .persist
+            .delete_execution(run_id)
             .await
             .map_err(|e| AppError::Anyhow(anyhow::anyhow!("delete execution failed: {}", e)))?;
         Ok(())
     }
 
-    async fn list_by_status(&self, status: &str, limit: i64, offset: i64) -> AppResult<Vec<ExecDto>> {
-        let rows = self.state.persist.find_executions_by_status(status, limit, offset).await
+    async fn list_by_status(
+        &self,
+        status: &str,
+        limit: i64,
+        offset: i64,
+    ) -> AppResult<Vec<ExecDto>> {
+        let rows = self
+            .state
+            .persist
+            .find_executions_by_status(status, limit, offset)
+            .await
             .map_err(|e| AppError::Anyhow(anyhow::anyhow!("list_by_status failed: {}", e)))?;
-        Ok(rows.into_iter().map(|r| ExecDto {
-            run_id: r.run_id,
-            mode:   r.mode,
-            status: r.status,
-            result: r.result,
-            started_at: r.start_time.and_utc(),
-            finished_at: Option::map(r.close_time, |t| t.and_utc()),
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| ExecDto {
+                run_id: r.run_id,
+                mode: r.mode,
+                status: r.status,
+                result: r.result,
+                started_at: r.start_time.and_utc(),
+                finished_at: Option::map(r.close_time, |t| t.and_utc()),
+            })
+            .collect())
     }
 }

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use stepflow_storage::persistence_manager::PersistenceManager;
+use stepflow_match::queue::DynPM;
 use stepflow_storage::error::StorageError;
 use stepflow_storage::entities::workflow_template::{StoredWorkflowTemplate, UpdateStoredWorkflowTemplate};
 use stepflow_dto::dto::template::*;
@@ -8,10 +8,10 @@ use anyhow::{Context, Error};
 
 #[derive(Clone)]
 pub struct TemplateSqlxSvc {
-    pm: std::sync::Arc<dyn PersistenceManager>,
+    pm: DynPM,
 }
 impl TemplateSqlxSvc {
-    pub fn new(pm: std::sync::Arc<dyn PersistenceManager>) -> Self { Self { pm } }
+    pub fn new(pm: DynPM) -> Self { Self { pm } }
 
     async fn insert_or_update(
         &self,

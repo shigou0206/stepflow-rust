@@ -10,8 +10,8 @@ use tracing::{error, debug};
 use stepflow_dsl::state::fail::FailState;
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 use std::sync::Arc;
-use stepflow_storage::persistence_manager::PersistenceManager;
 use stepflow_hook::EngineEventDispatcher;
+use stepflow_match::queue::DynPM;
 
 pub struct FailHandler<'a> {
     state: &'a FailState,
@@ -65,7 +65,7 @@ pub async fn handle_fail(
     input: &Value,
     run_id: &str,
     event_dispatcher: &Arc<EngineEventDispatcher>,
-    persistence: &Arc<dyn PersistenceManager>,
+    persistence: &DynPM,
 ) -> Result<Value, String> {
     let ctx = StateExecutionContext::new(
         run_id,

@@ -1,3 +1,7 @@
+//! workflow_engine.rs
+//! 统一持久层类型（DynPM），移除显式事务，并保持原有业务逻辑一致。
+
+use crate::command::step_once;
 use crate::mapping::MappingPipeline;
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
@@ -6,10 +10,8 @@ use std::sync::Arc;
 use stepflow_dsl::{State, WorkflowDSL};
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_match::service::MatchService;
+use stepflow_match::queue::DynPM;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
-use stepflow_storage::persistence_manager::PersistenceManager;
-
-use crate::command::step_once;
 
 use super::{
     dispatch::dispatch_command,
@@ -24,7 +26,7 @@ pub struct WorkflowEngine {
 
     pub mode: WorkflowMode,
     pub event_dispatcher: Arc<EngineEventDispatcher>,
-    pub persistence: Arc<dyn PersistenceManager>,
+    pub persistence: DynPM,
     pub match_service: Arc<dyn MatchService>,
 
     pub finished: bool,
@@ -38,7 +40,7 @@ impl WorkflowEngine {
         input: Value,
         mode: WorkflowMode,
         event_dispatcher: Arc<EngineEventDispatcher>,
-        persistence: Arc<dyn PersistenceManager>,
+        persistence: DynPM,
         match_service: Arc<dyn MatchService>,
     ) -> Self {
         Self {
@@ -55,24 +57,23 @@ impl WorkflowEngine {
         }
     }
 
-    /// 从数据库恢复工作流引擎状态
+    // ------------------------- 恢复 ----------------------------------
+
     pub async fn restore(
         run_id: String,
         event_dispatcher: Arc<EngineEventDispatcher>,
-        persistence: Arc<dyn PersistenceManager>,
+        persistence: DynPM,
         match_service: Arc<dyn MatchService>,
     ) -> Result<Self, String> {
-        // 1. 从 DB 加载执行记录
         let execution = persistence
             .get_execution(&run_id)
             .await
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Execution {} not found", run_id))?;
 
-        // 2. 从模板加载 DSL
         let template_id = execution
             .template_id
-            .ok_or_else(|| "Template ID not found in execution record".to_string())?;
+            .ok_or_else(|| "Template ID missing".to_string())?;
 
         let template = persistence
             .get_template(&template_id)
@@ -80,45 +81,27 @@ impl WorkflowEngine {
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Template {} not found", template_id))?;
 
-        let dsl: WorkflowDSL = serde_json::from_str(&template.dsl_definition)
-            .map_err(|e| format!("Failed to parse DSL from template: {}", e))?;
+        let dsl: WorkflowDSL =
+            serde_json::from_str(&template.dsl_definition).map_err(|e| e.to_string())?;
 
-        // 3. 解析上下文数据
-        let context = if let Some(ctx) = execution.context_snapshot {
-            ctx
-        } else {
-            warn!(
-                "[Engine] Missing context_snapshot for workflow {} (status: {}, mode: {}), using empty object as default",
-                run_id,
-                execution.status,
-                execution.mode
-            );
-            Value::Object(Default::default())
-        };
+        let context = execution
+            .context_snapshot
+            .unwrap_or_else(|| Value::Object(Default::default()));
 
-        // 4. 确定当前状态
         let current_state = execution
             .current_state_name
             .unwrap_or_else(|| dsl.start_at.clone());
 
-        // 5. 解析执行模式
         let mode = match execution.mode.as_str() {
             "INLINE" => WorkflowMode::Inline,
             "DEFERRED" => WorkflowMode::Deferred,
-            _ => return Err(format!("Invalid mode: {}", execution.mode)),
+            _ => return Err(format!("Invalid mode {}", execution.mode)),
         };
 
-        // 6. 确定工作流状态
-        let finished = match execution.status.as_str() {
-            // 终态
-            "COMPLETED" | "FAILED" | "TERMINATED" => true,
-            // 中间态
-            "RUNNING" | "PENDING" => false,
-            // 暂停态 - 需要手动恢复
-            "PAUSED" | "SUSPENDED" => true,
-            // 其他状态视为异常
-            status => return Err(format!("Invalid workflow status: {}", status)),
-        };
+        let finished = matches!(
+            execution.status.as_str(),
+            "COMPLETED" | "FAILED" | "TERMINATED" | "PAUSED" | "SUSPENDED"
+        );
 
         Ok(Self {
             run_id,
@@ -137,51 +120,28 @@ impl WorkflowEngine {
         })
     }
 
-    /// 恢复暂停的工作流
-    pub async fn resume(&mut self) -> Result<(), String> {
-        // 检查当前状态
-        let execution = self
-            .persistence
-            .get_execution(&self.run_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Execution {} not found", self.run_id))?;
+    // --------------------- 调度辅助 -----------------------------
 
-        match execution.status.as_str() {
-            "PAUSED" | "SUSPENDED" => {
-                self.finished = false;
-                Ok(())
-            }
-            status => Err(format!("Cannot resume workflow in {} status", status)),
-        }
+    async fn dispatch_event(&self, ev: EngineEvent) {
+        self.event_dispatcher.dispatch(ev).await;
+    }
+    fn state_def(&self) -> &State {
+        &self.dsl.states[&self.current_state]
+    }
+    fn deferred_task(&self) -> bool {
+        self.mode == WorkflowMode::Deferred && matches!(self.state_def(), State::Task(_))
     }
 
-    /// 暂停工作流
-    pub async fn pause(&mut self) -> Result<(), String> {
-        // 更新数据库状态
-        let update = UpdateStoredWorkflowExecution {
-            status: Some("PAUSED".to_string()),
-            ..Default::default()
-        };
-
-        self.persistence
-            .update_execution(&self.run_id, &update)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        self.finished = true;
-        Ok(())
-    }
+    // --------------------- 主入口 -------------------------------
 
     pub async fn run_inline(&mut self) -> Result<Value, String> {
-        let result = self.run_state().await?;
-        Ok(result)
+        self.run_state().await
     }
 
     pub async fn advance_until_blocked(&mut self) -> Result<StateExecutionResult, String> {
-        let result = self.run_state().await?;
+        let out = self.run_state().await?;
         Ok(StateExecutionResult {
-            output: result,
+            output: out,
             next_state: Some(self.current_state.clone()),
             should_continue: !self.finished,
         })
@@ -189,151 +149,108 @@ impl WorkflowEngine {
 
     async fn run_state(&mut self) -> Result<Value, String> {
         if self.mode == WorkflowMode::Inline {
-            self.event_dispatcher
-                .dispatch(EngineEvent::WorkflowStarted {
-                    run_id: self.run_id.clone(),
-                })
-                .await;
+            self.dispatch_event(EngineEvent::WorkflowStarted {
+                run_id: self.run_id.clone(),
+            })
+            .await;
         }
 
         loop {
             if self.finished {
-                debug!("[Engine] Workflow finished, breaking loop");
                 break;
             }
-
-            // Check deferred task status first
-            if self.check_deferred_task_status().await? {
+            if self.check_deferred().await? {
                 break;
             }
-
-            let step_result = self.advance_once().await?;
-
-            if !step_result.should_continue || self.is_deferred_task() {
-                debug!("[Engine] Stopping at state: {}", self.current_state);
+            let step_out = self.advance_once().await?;
+            if !step_out.should_continue || self.deferred_task() {
                 break;
             }
         }
-
         Ok(self.context.clone())
     }
 
-    async fn check_deferred_task_status(&mut self) -> Result<bool, String> {
-        if !self.is_deferred_task() {
+    // ------------------ Deferred 轮询 ---------------------------
+
+    async fn check_deferred(&mut self) -> Result<bool, String> {
+        if !self.deferred_task() {
             return Ok(false);
         }
 
-        // 开始事务
-        self.persistence
-            .begin_transaction()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let result = match self
+        let maybe_task = self
             .persistence
-            .as_ref()
             .find_queue_tasks_by_status("pending", 100, 0)
             .await
             .map_err(|e| e.to_string())?
             .into_iter()
-            .find(|t| t.run_id == self.run_id && t.state_name == self.current_state)
-        {
-            Some(task) => {
-                match task.status.as_str() {
-                    "completed" => {
-                        if let Some(payload) = task.task_payload {
-                            // 获取当前状态的 output mapping
-                            let state = self.current_state_type();
-                            let base = match state {
-                                State::Task(s) => &s.base,
-                                _ => return Err("Expected Task state".to_string()),
-                            };
+            .find(|t| t.run_id == self.run_id && t.state_name == self.current_state);
 
-                            let pipeline = MappingPipeline {
-                                input_mapping: base.input_mapping.as_ref(),
-                                output_mapping: base.output_mapping.as_ref(),
-                            };
-
-                            // 应用 output mapping
-                            let new_ctx = pipeline
-                                .apply_output(&payload, &self.context)
-                                .map_err(|e| e.to_string())?;
-
-                            self.context = new_ctx;
-
-                            // 更新执行记录
-                            let update = UpdateStoredWorkflowExecution {
-                                context_snapshot: Some(Some(self.context.clone())),
-                                ..Default::default()
-                            };
-
-                            self.persistence
-                                .update_execution(&self.run_id, &update)
-                                .await
-                                .map_err(|e| e.to_string())?;
-
-                            self.dispatch_event(EngineEvent::NodeSuccess {
-                                run_id: self.run_id.clone(),
-                                state_name: self.current_state.clone(),
-                                output: payload,
-                            })
-                            .await;
-                        }
-                        Ok(true)
-                    }
-                    "failed" => {
-                        let error = task
-                            .error_message
-                            .unwrap_or_else(|| "Task failed".to_string());
-
-                        // 更新执行记录
-                        let update = UpdateStoredWorkflowExecution {
-                            status: Some("FAILED".to_string()),
-                            close_time: Some(Some(Utc::now().naive_utc())),
-                            ..Default::default()
+        if let Some(t) = maybe_task {
+            match t.status.as_str() {
+                "completed" => {
+                    if let Some(payload) = t.task_payload {
+                        let State::Task(task_state) = self.state_def() else {
+                            return Err("Expected Task state".into());
                         };
+                        let pipeline = MappingPipeline {
+                            input_mapping: task_state.base.input_mapping.as_ref(),
+                            output_mapping: task_state.base.output_mapping.as_ref(),
+                        };
+                        self.context = pipeline
+                            .apply_output(&payload, &self.context)
+                            .map_err(|e| e.to_string())?;
 
                         self.persistence
-                            .update_execution(&self.run_id, &update)
+                            .update_execution(
+                                &self.run_id,
+                                &UpdateStoredWorkflowExecution {
+                                    context_snapshot: Some(Some(self.context.clone())),
+                                    ..Default::default()
+                                },
+                            )
                             .await
                             .map_err(|e| e.to_string())?;
 
-                        self.dispatch_event(EngineEvent::NodeFailed {
+                        self.dispatch_event(EngineEvent::NodeSuccess {
                             run_id: self.run_id.clone(),
                             state_name: self.current_state.clone(),
-                            error: error.clone(),
+                            output: payload,
                         })
                         .await;
-
-                        Err(error)
                     }
-                    _ => {
-                        debug!(
-                            "[Engine] Task {} is still in progress (status: {})",
-                            task.task_id, task.status
-                        );
-                        Ok(true)
-                    }
+                    Ok(true)
                 }
-            }
-            None => Ok(false),
-        };
-
-        match result {
-            Ok(r) => {
-                // 提交事务
-                self.persistence.commit().await.map_err(|e| e.to_string())?;
-                Ok(r)
-            }
-            Err(e) => {
-                // 回滚事务
-                if let Err(rollback_err) = self.persistence.rollback().await {
-                    warn!("Failed to rollback transaction: {}", rollback_err);
+                "failed" => {
+                    let err_msg = t
+                        .error_message
+                        .unwrap_or_else(|| "Task failed".to_string());
+                    self.persistence
+                        .update_execution(
+                            &self.run_id,
+                            &UpdateStoredWorkflowExecution {
+                                status: Some("FAILED".into()),
+                                close_time: Some(Some(Utc::now().naive_utc())),
+                                ..Default::default()
+                            },
+                        )
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    self.dispatch_event(EngineEvent::NodeFailed {
+                        run_id: self.run_id.clone(),
+                        state_name: self.current_state.clone(),
+                        error: err_msg.clone(),
+                    })
+                    .await;
+                    Err(err_msg)
                 }
-                Err(e)
+                _ => Ok(true),
             }
+        } else {
+            Ok(false)
         }
     }
+
+    // ------------------ 单步执行 -------------------------------
 
     async fn advance_once(&mut self) -> Result<StepOutcome, String> {
         if self.finished {
@@ -351,22 +268,11 @@ impl WorkflowEngine {
         .await;
 
         let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
-        debug!(
-            "[{}] step_once => {:?} @ {}",
-            self.run_id,
-            cmd.kind(),
-            self.current_state
-        );
+        debug!("[{}] step_once => {:?} @ {}", self.run_id, cmd.kind(), self.current_state);
 
-        // 开始事务
-        self.persistence
-            .begin_transaction()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let result = match dispatch_command(
+        let (outcome, next_state_opt) = dispatch_command(
             &cmd,
-            self.current_state_type(),
+            self.state_def(),
             &self.context,
             &self.run_id,
             self.mode,
@@ -375,77 +281,74 @@ impl WorkflowEngine {
             self.event_dispatcher.clone(),
             self.persistence.clone(),
         )
-        .await
-        {
-            Ok((outcome, next_state_opt)) => {
-                // 更新上下文和时间戳
-                self.context = outcome.updated_context.clone();
-                self.updated_at = Utc::now();
+        .await?;
 
-                // 准备数据库更新
-                let mut update = UpdateStoredWorkflowExecution {
-                    context_snapshot: Some(Some(self.context.clone())),
+        // ---- 更新本地状态 -------------------------------------
+        self.context = outcome.updated_context.clone();
+        self.updated_at = Utc::now();
+
+        // ---- 写回 DB ------------------------------------------
+        let mut exec_update = UpdateStoredWorkflowExecution {
+            context_snapshot: Some(Some(self.context.clone())),
+            ..Default::default()
+        };
+
+        if outcome.should_continue {
+            let next = next_state_opt.ok_or_else(|| {
+                format!("state {} should continue but next_state is None", self.current_state)
+            })?;
+            self.current_state = next.clone();
+            exec_update.current_state_name = Some(Some(next));
+        } else {
+            self.finished = true;
+            exec_update.status = Some("COMPLETED".into());
+            exec_update.close_time = Some(Some(self.updated_at.naive_utc()));
+            self.dispatch_event(EngineEvent::WorkflowFinished {
+                run_id: self.run_id.clone(),
+                result: self.context.clone(),
+            })
+            .await;
+        }
+
+        self.persistence
+            .update_execution(&self.run_id, &exec_update)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(outcome)
+    }
+
+    // ----------------- 外部控制 -------------------------------
+
+    pub async fn pause(&mut self) -> Result<(), String> {
+        self.persistence
+            .update_execution(
+                &self.run_id,
+                &UpdateStoredWorkflowExecution {
+                    status: Some("PAUSED".into()),
                     ..Default::default()
-                };
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        self.finished = true;
+        Ok(())
+    }
 
-                if outcome.should_continue {
-                    let next_state = next_state_opt.ok_or_else(|| {
-                        format!(
-                            "State '{}' wants to continue but returned no next_state",
-                            self.current_state
-                        )
-                    })?;
+    pub async fn resume(&mut self) -> Result<(), String> {
+        let exec = self
+            .persistence
+            .get_execution(&self.run_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Execution {} not found", self.run_id))?;
 
-                    // 更新当前状态
-                    self.current_state = next_state.clone();
-                    update.current_state_name = Some(Some(next_state));
-                } else {
-                    self.finished = true;
-                    update.status = Some("COMPLETED".to_string());
-                    update.close_time = Some(Some(self.updated_at.naive_utc()));
-
-                    self.dispatch_event(EngineEvent::WorkflowFinished {
-                        run_id: self.run_id.clone(),
-                        result: self.context.clone(),
-                    })
-                    .await;
-                }
-
-                // 更新执行记录
-                self.persistence
-                    .update_execution(&self.run_id, &update)
-                    .await
-                    .map_err(|e| e.to_string())?;
-
-                Ok(outcome)
+        match exec.status.as_str() {
+            "PAUSED" | "SUSPENDED" => {
+                self.finished = false;
+                Ok(())
             }
-            Err(e) => {
-                // 回滚事务
-                if let Err(rollback_err) = self.persistence.rollback().await {
-                    warn!("Failed to rollback transaction: {}", rollback_err);
-                }
-                Err(e)
-            }
-        }?;
-
-        // 提交事务
-        self.persistence.commit().await.map_err(|e| e.to_string())?;
-
-        Ok(result)
-    }
-
-    // 辅助方法：事件分发
-    async fn dispatch_event(&self, event: EngineEvent) {
-        self.event_dispatcher.dispatch(event).await;
-    }
-
-    // 辅助方法：获取当前状态类型
-    fn current_state_type(&self) -> &State {
-        &self.dsl.states[&self.current_state]
-    }
-
-    // 辅助方法：检查是否是延迟任务
-    fn is_deferred_task(&self) -> bool {
-        self.mode == WorkflowMode::Deferred && matches!(self.current_state_type(), State::Task(_))
+            s => Err(format!("Cannot resume from status {}", s)),
+        }
     }
 }

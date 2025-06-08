@@ -4,7 +4,7 @@ use tracing::debug;
 use stepflow_dsl::state::pass::PassState;
 use stepflow_hook::EngineEventDispatcher;
 use std::sync::Arc;
-use stepflow_storage::persistence_manager::PersistenceManager;
+use stepflow_match::queue::DynPM;
 
 use crate::mapping::MappingPipeline;
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
@@ -56,7 +56,7 @@ pub async fn handle_pass(
     input: &Value,
     run_id: &str,
     event_dispatcher: &Arc<EngineEventDispatcher>,
-    persistence: &Arc<dyn PersistenceManager>,
+    persistence: &DynPM,
 ) -> Result<Value, String> {
     let ctx = StateExecutionContext::new(
         run_id,

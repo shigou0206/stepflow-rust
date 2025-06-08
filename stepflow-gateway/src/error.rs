@@ -10,6 +10,8 @@ pub enum AppError {
     NotFound,
     #[error("bad request: {0}")]
     BadRequest(String),
+    #[error("internal error: {0}")]
+    Internal(String),
     #[error(transparent)]
     Db(#[from] sqlx::Error),
     #[error(transparent)]
