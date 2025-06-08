@@ -67,6 +67,8 @@ pub async fn handle_pass(
         persistence,
     );
 
+    println!("handle_pass input: {}", input);
+
     let handler = PassHandler::new(state);
     let result = handler.execute(&ctx, input).await?;
     Ok(result.output)
