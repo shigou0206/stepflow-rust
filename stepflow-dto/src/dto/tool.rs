@@ -8,16 +8,16 @@ pub struct ToolInputPayload {
     pub resource: String,
 }
 
-impl ToolInputPayload {
-    pub fn build(resource: &str, raw: &Value) -> Result<Self, String> {
-        match raw {
-            Value::Object(map) => {
-                Ok(Self {
-                    parameters: map.get("parameters").cloned().unwrap_or(Value::Null),
-                    resource: resource.to_string(),
-                })
-            }
-            _ => Err("Expected an object with `parameters`".to_string()),
-        }
-    }
-}
+// impl ToolInputPayload {
+//     pub fn build(resource: &str, raw: &Value) -> Result<Self, String> {
+//         match raw {
+//             Value::Object(map) => {
+//                 Ok(Self {
+//                     parameters: map.get("parameters").cloned().unwrap_or(Value::Null),
+//                     resource: resource.to_string(),
+//                 })
+//             }
+//             _ => Err("Expected an object with `parameters`".to_string()),
+//         }
+//     }
+// }

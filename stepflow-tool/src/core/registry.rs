@@ -39,11 +39,13 @@ impl ToolRegistry {
 
     /// 执行工具
     pub async fn execute(&self, kind: &str, input: Value) -> Result<ToolResult> {
+        println!("execute tool kind: {:?}", kind);
+        println!("execute tool input: {:?}", input);
         let tool = self.get(kind)
             .ok_or_else(|| anyhow!("Tool {} not found", kind))?;
         
         let context = ToolContext::default();
-        tool.validate_input(&input, &context)?;
+        // tool.validate_input(&input, &context)?;
         tool.execute(input, context).await
     }
 

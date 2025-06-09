@@ -71,3 +71,27 @@ pub struct UpdateRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_id: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompleteRequest {
+    /// 工作流运行 ID
+    pub run_id: String,
+
+    /// 节点状态名称
+    pub state_name: String,
+
+    /// 执行结果状态
+    #[schema(example = "SUCCEEDED")]
+    pub status: TaskStatus,
+
+    /// 工具执行输出（成功时输出结果，失败时输出 { error: "..."}）
+    pub result: Value,
+
+    /// 可选：任务耗时（毫秒）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+
+    /// 可选：任务 ID（如果你想做额外追踪）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
+}

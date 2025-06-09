@@ -82,14 +82,11 @@ pub async fn handle_task(
     match_service: Arc<dyn MatchService>,
     persistence_for_handlers: &DynPM,
 ) -> Result<Value, String> {
-    let payload = ToolInputPayload::build(&state.resource, input)?;
-    let input_value = serde_json::to_value(payload).map_err(|e| e.to_string())?;
-
     use tracing::debug;
 
     debug!("handle_task - mapped input: {:?}", input);
 
-    let service_task = build_queue_task(run_id, state_name, state, &input_value);
+    let service_task = build_queue_task(run_id, state_name, state, &input);
 
     match_service
         .enqueue_task(&state.resource, service_task)
@@ -98,10 +95,10 @@ pub async fn handle_task(
 
     if mode == WorkflowMode::Inline {
         match_service
-            .wait_for_completion(run_id, state_name, &input_value, persistence_for_handlers)
+            .wait_for_completion(run_id, state_name, &input, persistence_for_handlers)
             .await
     } else {
-        Ok(input_value)
+        Ok(input.clone())
     }
 }
 
@@ -124,27 +121,24 @@ impl<'a> TaskHandler<'a> {
     async fn handle_inline(&self, input: &Value) -> Result<Value, String> {
         debug!("Executing task inline with resource: {}", self.state.resource);
 
-        let payload = ToolInputPayload::build(&self.state.resource, input)
-            .map_err(|e| format!("Failed to build tool payload: {}", e))?;
-
         let tool = {
             let registry = GLOBAL_TOOL_REGISTRY
                 .lock()
                 .map_err(|e| format!("Failed to lock tool registry: {}", e))?;
 
             registry
-                .get(&payload.resource)
-                .ok_or_else(|| format!("Tool not found: {}", payload.resource))?
+                .get(&self.state.resource)
+                .ok_or_else(|| format!("Tool not found: {}", self.state.resource))?
                 .clone()
         };
 
         let context = ToolContext::default();
 
-        tool.validate_input(&payload.parameters, &context)
+        tool.validate_input(&input, &context)
             .map_err(|e| format!("Tool input validation failed: {}", e))?;
 
         let result = tool
-            .execute(payload.parameters.clone(), context)
+            .execute(input.clone(), context)
             .await
             .map_err(|e| format!("Tool execution failed: {}", e))?;
 
@@ -161,17 +155,14 @@ impl<'a> TaskHandler<'a> {
             self.state.resource
         );
 
-        let payload = ToolInputPayload::build(&self.state.resource, input)?;
-        let input_value = serde_json::to_value(payload).map_err(|e| e.to_string())?;
-
-        let task = build_queue_task(ctx.run_id, ctx.state_name, self.state, &input_value);
+        let task = build_queue_task(ctx.run_id, ctx.state_name, self.state, &input);
 
         self.match_service
             .enqueue_task(&self.state.resource, task)
             .await
             .map_err(|e| format!("Failed to enqueue task via MatchService: {}", e))?;
 
-        Ok(input_value)
+        Ok(input.clone())
     }
 }
 

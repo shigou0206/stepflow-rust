@@ -316,6 +316,7 @@ pub(crate) async fn dispatch_command(
         .map_err(|e| DispatchError::MappingError(e.to_string()))
         .map_err(|e| e.to_string())?;
 
+
     Ok((
         StepOutcome {
             should_continue: logical_next.is_some(),

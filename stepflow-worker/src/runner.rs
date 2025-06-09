@@ -25,6 +25,7 @@ pub async fn start() -> Result<()> {
                 match client::poll_for_task(&client, &config).await {
                     Ok(Some((worker_id, task))) => {
                         println!("[{worker_id}] Task received: {}", task.state_name);
+                        println!("task: {:?}", task);
                         if let Err(e) = client::execute_task(&client, &config, &registry, task).await {
                             eprintln!("[{worker_id}] Task execution error: {e:#}");
                         }

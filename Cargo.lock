@@ -3131,6 +3131,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "stepflow-eventbus"
+version = "0.1.0"
+
+[[package]]
 name = "stepflow-gateway"
 version = "0.1.0"
 dependencies = [
@@ -3240,6 +3244,7 @@ dependencies = [
  "sqlx",
  "stepflow-storage",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -3272,6 +3277,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
  "wiremock",
 ]
 

@@ -154,22 +154,36 @@ impl WorkflowEngine {
             })
             .await;
         }
-
         loop {
             if self.finished {
                 break;
             }
+        
+            // 记录当前 state 是否是 Task（SendData 之类）
+            let is_task_state = matches!(self.state_def(), State::Task(_));
+        
+            let step_out = self.advance_once().await?;
+            debug!("🔁 advance_once done | should_continue={} | new_state={}",
+                    step_out.should_continue, self.current_state);
+        
+            if !step_out.should_continue {
+                break;          // End 节点
+            }
+        
+            // ---- 如果刚才执行的就是 Task 状态，说明任务已写入队列；挂起 ----
+            if is_task_state && self.mode == WorkflowMode::Deferred {
+                debug!("⏸ task scheduled, engine suspend");
+                break;
+            }
+        
+            // ---- 处理 task 完成/失败的情况 ----
             if self.check_deferred().await? {
                 break;
             }
-            let step_out = self.advance_once().await?;
-            if !step_out.should_continue || self.deferred_task() {
-                break;
-            }
         }
+        debug!("🔚 loop exit | run_id={} | state={}", self.run_id, self.current_state);
         Ok(self.context.clone())
     }
-
     // ------------------ Deferred 轮询 ---------------------------
 
     async fn check_deferred(&mut self) -> Result<bool, String> {
@@ -314,6 +328,9 @@ impl WorkflowEngine {
             .update_execution(&self.run_id, &exec_update)
             .await
             .map_err(|e| e.to_string())?;
+
+        debug!("🔁 step_once returned: {:?}", cmd);
+        debug!("📤 step outcome: {:?}", outcome);
 
         Ok(outcome)
     }

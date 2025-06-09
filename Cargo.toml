@@ -11,7 +11,8 @@ members = [
     "stepflow-tool", 
     "stepflow-dto", 
     "stepflow-worker",
-    "stepflow-postgres",
+    "stepflow-postgres", 
+    "stepflow-eventbus",
 ]
 resolver = "2"
 

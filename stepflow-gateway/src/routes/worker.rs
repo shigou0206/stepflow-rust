@@ -56,8 +56,8 @@ pub async fn poll_task(
                 run_id: Some(task.run_id),
                 state_name: Some(task.state_name),
                 input: task.task_payload,
-                tool_type: None,
-                task_id: None,
+                tool_type: Some(task.resource),
+                task_id: Some(task.task_id.clone()),
             }))
         }
         None => {
