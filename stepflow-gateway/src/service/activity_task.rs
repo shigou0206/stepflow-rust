@@ -6,7 +6,7 @@ use chrono::Utc;
 use serde_json::Value;
 
 use stepflow_dto::dto::activity_task::*;
-use stepflow_match::queue::DynPM;
+use stepflow_storage::db::DynPM;
 use stepflow_storage::{
     entities::activity_task::UpdateStoredActivityTask,
     error::StorageError,

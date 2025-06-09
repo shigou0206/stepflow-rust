@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use stepflow_dsl::state::succeed::SucceedState;
 use stepflow_hook::EngineEventDispatcher;
-use stepflow_match::queue::DynPM;
+use stepflow_storage::db::DynPM;
 
 use crate::mapping::MappingPipeline;
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};

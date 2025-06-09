@@ -8,7 +8,7 @@ use chrono::Utc;
 use thiserror::Error;
 
 use stepflow_dsl::state::wait::WaitState;
-use stepflow_match::queue::DynPM;
+use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::timer::StoredTimer;
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 

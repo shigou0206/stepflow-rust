@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use stepflow_match::queue::DynPM;
+use stepflow_storage::db::DynPM;
 use stepflow_storage::error::StorageError;
 use stepflow_storage::entities::workflow_template::{StoredWorkflowTemplate, UpdateStoredWorkflowTemplate};
 use stepflow_dto::dto::template::*;

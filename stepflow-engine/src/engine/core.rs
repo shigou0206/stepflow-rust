@@ -10,7 +10,7 @@ use std::sync::Arc;
 use stepflow_dsl::{State, WorkflowDSL};
 use stepflow_hook::{EngineEvent, EngineEventDispatcher};
 use stepflow_match::service::MatchService;
-use stepflow_match::queue::DynPM;
+use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 
 use super::{

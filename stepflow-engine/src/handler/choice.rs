@@ -12,8 +12,8 @@ use stepflow_dsl::{
     state::choice::ChoiceState,
 };
 use stepflow_hook::EngineEventDispatcher;
-use stepflow_match::queue::DynPM;           // ✅ 统一别名
-use crate::engine::WorkflowMode;       // Inline/Deferred 枚举
+use stepflow_storage::db::DynPM;           
+use crate::engine::WorkflowMode;      
 
 use crate::logic::choice_eval::eval_choice_logic;
 use super::{

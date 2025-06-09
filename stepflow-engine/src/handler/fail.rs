@@ -11,7 +11,7 @@ use stepflow_dsl::state::fail::FailState;
 use super::{StateHandler, StateExecutionContext, StateExecutionResult};
 use std::sync::Arc;
 use stepflow_hook::EngineEventDispatcher;
-use stepflow_match::queue::DynPM;
+use stepflow_storage::db::DynPM;
 
 pub struct FailHandler<'a> {
     state: &'a FailState,

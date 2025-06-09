@@ -2,7 +2,7 @@ use std::{sync::Arc, collections::HashMap};
 use tokio::sync::Mutex;
 use stepflow_engine::engine::WorkflowEngine;
 use stepflow_match::service::MatchService;
-use stepflow_match::queue::DynPM;
+use stepflow_storage::db::DynPM;
 use stepflow_hook::EngineEventDispatcher;
 
 #[derive(Clone)]
