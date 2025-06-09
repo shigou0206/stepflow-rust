@@ -7,8 +7,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::Value;
 
+use stepflow_storage::db::DynPM;
+
 use crate::{
-    queue::{PersistentStore, TaskStore, DynPM},
+    queue::{PersistentStore, TaskStore},
     service::MatchService,
 };
 

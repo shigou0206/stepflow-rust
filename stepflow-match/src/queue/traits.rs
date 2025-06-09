@@ -1,13 +1,8 @@
-//! TaskStore / TaskQueue trait —— 仅改动 persistence 参数的类型别名
-use std::sync::Arc;
 use serde_json::Value;
 
-use stepflow_storage::{
-    db::DbBackend,                        // 👈 统一后端
-    persistence_manager::PersistenceManager,
-};
+use stepflow_storage::db::DynPM;
 
-pub type DynPM = Arc<dyn PersistenceManager<DB = DbBackend> + Send + Sync>;
+
 
 #[async_trait::async_trait]
 pub trait TaskStore: Send + Sync {

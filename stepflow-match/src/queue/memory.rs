@@ -1,20 +1,10 @@
-//! 基于内存的 TaskQueue 实现
-//! ------------------------------------------------------------
-//! 依赖：
-//!   - super::traits::{TaskQueue, DynPM}
-//!   - stepflow_storage::db::DbBackend  (间接出现在 DynPM 里)
-//!
-//! 重点：所有队列操作都带上 `persistence: &DynPM`，
-//!      如果暂时不用可以忽略（下划线前缀）。
-
 use chrono::{DateTime, Utc, Duration as ChronoDuration};
 use tokio::sync::Mutex;
 use std::collections::VecDeque;
-use std::sync::Arc;
 use async_trait::async_trait;
 
-use super::traits::{TaskQueue, DynPM};
-
+use super::traits::TaskQueue;  
+use stepflow_storage::db::DynPM;
 /// 内部任务对象；仅存储队列必要信息
 #[derive(Debug, Clone)]
 pub struct QueueTask {

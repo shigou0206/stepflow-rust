@@ -1,12 +1,11 @@
-//! 基于数据库的 TaskStore —— 适配 DynPM
-use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::traits::{DynPM, TaskStore};
+use super::traits::TaskStore;
 use stepflow_storage::entities::queue_task::{StoredQueueTask, UpdateStoredQueueTask};
+use stepflow_storage::db::DynPM;
 
 // ── 状态枚举 & 校验 ───────────────────────────────────────────────
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,7 +21,7 @@ impl TaskStatus {
             Self::Retrying   => "retrying",
         }
     }
-    fn from_str(s: &str) -> Option<Self> {                // 简要解析
+    fn from_str(s: &str) -> Option<Self> { 
         Some(match s {
             "pending"    => Self::Pending,
             "processing" => Self::Processing,
