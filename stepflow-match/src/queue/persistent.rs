@@ -69,20 +69,20 @@ impl TaskStore for PersistentStore {
     // ---------------- insert ----------------
     async fn insert_task(
         &self,
-        _pm: &DynPM,                      // 外部仍传，但内部用 self.pm
         run_id: &str,
         state_name: &str,
         resource: &str,
         input: &Value,
-    ) -> Result<(), String> {
+    ) -> Result<String, String> {
         let now = Utc::now().naive_utc();
-        let task = StoredQueueTask {
-            task_id: Uuid::new_v4().to_string(),
+        let task_id = Uuid::new_v4().to_string();
+        let rec = StoredQueueTask {
+            task_id: task_id.clone(),
             run_id: run_id.into(),
             state_name: state_name.into(),
             resource: resource.into(),
             task_payload: Some(input.clone()),
-            status: TaskStatus::Pending.as_str().into(),
+            status: "pending".into(),
             attempts: 0,
             max_attempts: 3,
             priority: Some(0),
@@ -97,13 +97,15 @@ impl TaskStore for PersistentStore {
             created_at: now,
             updated_at: now,
         };
-        self.pm.create_queue_task(&task).await.map_err(|e| e.to_string())
+        self.pm.create_queue_task(&rec)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(task_id)
     }
 
     // ---------------- update ----------------
     async fn update_task_status(
         &self,
-        _pm: &DynPM,
         run_id: &str,
         state_name: &str,
         new_status_str: &str,

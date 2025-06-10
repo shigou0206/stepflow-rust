@@ -94,14 +94,28 @@ impl MatchService for PersistentMatchService {
     }
 
     // 入队
-    async fn enqueue_task(&self, _queue: &str, task: QueueTaskDto) -> Result<(), String> {
+    async fn enqueue_task(&self, _queue: &str, task: QueueTaskDto) -> Result<String, String> {
         self.store.insert_task(
-            &self.persistence,
             &task.run_id,
             &task.state_name,
             &task.resource,
             &task.task_payload.clone().unwrap_or(Value::Null),
         ).await
+    }
+
+    // 标记任务为 processing
+    async fn mark_task_processing(&self, _queue: &str, task_id: &str) -> Result<(), String> {
+        self.persistence
+            .update_queue_task(
+                task_id,
+                &UpdateStoredQueueTask {
+                    status: Some("processing".into()),
+                    processing_at: Some(Some(Utc::now().naive_utc())),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())
     }
 
     // 等待完成（这里直接回显）

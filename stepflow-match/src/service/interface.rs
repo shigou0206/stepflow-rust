@@ -30,7 +30,11 @@ pub trait MatchService: Send + Sync {
     ) -> Option<QueueTaskDto>;
 
     /// push 任务到队列
-    async fn enqueue_task(&self, queue: &str, task: QueueTaskDto) -> Result<(), String>;
+    // async fn enqueue_task(&self, queue: &str, task: QueueTaskDto) -> Result<(), String>;
+    async fn enqueue_task(&self, queue: &str, task: QueueTaskDto) -> Result<String, String>;
+
+    /// 标记任务为 processing
+    async fn mark_task_processing(&self, queue: &str, task_id: &str) -> Result<(), String>;
 
     /// 等待任务完成
     async fn wait_for_completion(
@@ -38,6 +42,6 @@ pub trait MatchService: Send + Sync {
         run_id: &str,
         state_name: &str,
         input: &Value,
-        pm: &DynPM,                // ⚠️ 接口改为 &DynPM
+        pm: &DynPM,              
     ) -> Result<Value, String>;
 }
