@@ -2,15 +2,20 @@ mod app_state;
 mod error;
 mod service;
 mod routes;
-
+use prometheus::Registry;
+use std::time::Duration;
 use axum::Router;
 use tracing_subscriber::EnvFilter;
 use std::sync::Arc;
 use app_state::AppState;
 use stepflow_sqlite::SqliteStorageManager;
-use stepflow_hook::{EngineEventDispatcher, impls::log_hook::LogHook};
+use stepflow_hook::{EngineEventDispatcher, 
+    impls::log_hook::LogHook, 
+    impls::metrics_hook::MetricsHook, 
+    impls::persist_hook::PersistHook};
 use stepflow_match::service::{MemoryMatchService, HybridMatchService, PersistentMatchService};
 use stepflow_match::queue::PersistentStore;
+use stepflow_storage::traits::{WorkflowStorage, StateStorage, EventStorage};
 use sqlx::SqlitePool;
 use tower_http::{
     trace::TraceLayer,
@@ -134,7 +139,28 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = SqlitePool::connect_with(db_options).await?;
     let persist = std::sync::Arc::new(SqliteStorageManager::new(pool.clone()));
-    let event_dispatcher = std::sync::Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
+
+    // --- Event Dispatcher & Hooks ---
+    let workflow_store: Arc<dyn WorkflowStorage> = persist.clone();
+    let state_store:    Arc<dyn StateStorage>    = persist.clone();
+    let event_store:    Arc<dyn EventStorage>    = persist.clone();
+
+    let mut event_dispatcher = EngineEventDispatcher::new(vec![
+        LogHook::new(),
+        MetricsHook::new(&Registry::new()),
+        PersistHook::new(
+            workflow_store.clone(),    // impl WorkflowStorage
+            state_store.clone(),    // impl StateStorage
+            event_store.clone(),    // impl EventStorage
+        ),
+        // 如果有 WebSocket 推送：
+        // WsHook::new(ws_sender.clone()),
+    ]);
+    // 可选：批量异步刷写，每秒或 100 条
+    event_dispatcher = event_dispatcher.enable_batch_processing(100, Duration::from_secs(1));
+    let event_dispatcher = Arc::new(event_dispatcher);
+    
+    // let event_dispatcher = std::sync::Arc::new(EngineEventDispatcher::new(vec![LogHook::new()]));
     // let match_service = MemoryMatchService::new();
 
     let memory_match = MemoryMatchService::new();
