@@ -98,10 +98,10 @@ impl WorkflowDSL {
                 }
             }
             State::Choice(choice) => {
-                if choice.choices.is_empty() && choice.default.is_none() {
+                if choice.choices.is_empty() && choice.default_next.is_none() {
                     return Err(ValidationError::MissingRequiredField(
                         name.to_string(),
-                        "choices or default".to_string(),
+                        "choices or default_next".to_string(),
                     ));
                 }
             }

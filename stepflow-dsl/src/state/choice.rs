@@ -12,5 +12,5 @@ pub struct ChoiceState {
     pub choices: Vec<ChoiceRule>,
 
     #[serde(default)]
-    pub default: Option<String>,
+    pub default_next: Option<String>,
 }

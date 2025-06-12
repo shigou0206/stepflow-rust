@@ -23,7 +23,7 @@ impl HybridMatchService {
         Arc::new(Self {
             memory_service,
             persistent_service,
-            fallback_enabled: true,
+            fallback_enabled: false,
         })
     }
 }

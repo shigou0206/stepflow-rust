@@ -77,10 +77,10 @@ pub fn step_once(
                     });
                 }
             }
-            if let Some(default) = &choice.default {
+            if let Some(default_next) = &choice.default_next {
                 Ok(Command::Choice {
                     state_name: state_name.to_string(),
-                    next_state: default.clone(),
+                    next_state: default_next.clone(),
                 })
             } else {
                 Err(format!("No matching choice and no default in state '{}'.", state_name))

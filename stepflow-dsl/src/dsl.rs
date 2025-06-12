@@ -190,7 +190,7 @@ mod tests {
             State::Choice(ChoiceState {
                 base: BaseState::default(),
                 choices: vec![],
-                default: None,
+                default_next: None,
             }),
             State::Succeed(SucceedState {
                 base: BaseState::default(),

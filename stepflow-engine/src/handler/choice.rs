@@ -58,9 +58,9 @@ impl<'a> ChoiceHandler<'a> {
         }
 
         // 2️⃣ 无命中但存在 default
-        if let Some(default) = &self.state.default {
+        if let Some(default_next) = &self.state.default_next {
             debug!("No branches matched – using default");
-            return Ok(Some(default.clone()));
+            return Ok(Some(default_next.clone()));
         }
 
         // 3️⃣ 无命中且无 default
