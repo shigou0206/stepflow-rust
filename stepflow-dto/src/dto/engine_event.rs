@@ -31,4 +31,27 @@ pub enum EngineEvent {
         state_name: String,
         context: Value,
     },
+
+    TimerScheduled {
+        run_id: String,
+        state_name: String,
+        timestamp: String,
+    },
+    TimerFired {
+        run_id: String,
+        state_name: String,
+    },
+    ActivityTaskDispatched {
+        run_id: String,
+        task_type: String,
+        input: Value,
+    },
+    ActivityTaskCompleted {
+        run_id: String,
+        output: Value,
+    },
+    UiEventPushed {
+        run_id: String,
+        ui_event: Value,
+    },
 }

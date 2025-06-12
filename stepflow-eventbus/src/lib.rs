@@ -1,14 +1,13 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+pub mod core {
+    pub mod bus;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub mod impls {
+    pub mod local;
 }
+
+pub mod error;
+
+pub use core::bus::EventBus;
+pub use impls::local::LocalEventBus;
+pub use error::EventBusError;
