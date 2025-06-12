@@ -4,7 +4,8 @@ use chrono::Utc;
 use serde_json::Value;
 use std::sync::Arc;
 
-use stepflow_hook::{EngineEvent, EngineEventDispatcher};
+use stepflow_hook::EngineEventDispatcher;
+use stepflow_dto::dto::engine_event::EngineEvent;
 use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::workflow_state::{
     StoredWorkflowState, UpdateStoredWorkflowState,

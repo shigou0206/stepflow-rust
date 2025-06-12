@@ -5,7 +5,8 @@ use serde_json::Value;
 use std::sync::Arc;                       // ✅ 只保留 Arc
 use async_trait::async_trait;             // ✅ 补充宏的导入
 use stepflow_dsl::{state::base::BaseState, State};
-use stepflow_hook::{EngineEvent, EngineEventDispatcher};
+use stepflow_hook::EngineEventDispatcher;
+use stepflow_dto::dto::engine_event::EngineEvent;
 use stepflow_match::service::{MatchService};    
 use stepflow_storage::db::DynPM;
 use thiserror::Error;

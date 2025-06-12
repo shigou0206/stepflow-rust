@@ -1,4 +1,5 @@
-use crate::{EngineEvent, EngineEventHandler};
+use crate::EngineEventHandler;
+use stepflow_dto::dto::engine_event::EngineEvent;
 use stepflow_storage::traits::{WorkflowStorage, StateStorage, EventStorage};
 use stepflow_storage::entities::{
     workflow_execution::{StoredWorkflowExecution, UpdateStoredWorkflowExecution},

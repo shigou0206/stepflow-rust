@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum EngineEvent {
     WorkflowStarted {
         run_id: String,
@@ -28,5 +30,5 @@ pub enum EngineEvent {
         run_id: String,
         state_name: String,
         context: Value,
-    }
+    },
 }

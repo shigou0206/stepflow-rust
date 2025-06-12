@@ -1,5 +1,6 @@
-use crate::{EngineEvent, EngineEventHandler};
+use crate::{EngineEventHandler};
 use std::sync::Arc;
+use stepflow_dto::dto::engine_event::EngineEvent;
 
 pub struct LogHook;
 

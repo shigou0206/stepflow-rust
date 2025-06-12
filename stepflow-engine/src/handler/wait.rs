@@ -10,7 +10,8 @@ use thiserror::Error;
 use stepflow_dsl::state::wait::WaitState;
 use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::timer::StoredTimer;
-use stepflow_hook::{EngineEvent, EngineEventDispatcher};
+use stepflow_hook::EngineEventDispatcher;
+use stepflow_dto::dto::engine_event::EngineEvent;
 
 use crate::{
     engine::WorkflowMode,

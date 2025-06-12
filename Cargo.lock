@@ -3192,6 +3192,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "stepflow-dto",
  "stepflow-sqlite",
  "stepflow-storage",
  "tokio",

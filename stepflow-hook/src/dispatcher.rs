@@ -1,8 +1,8 @@
-use crate::{EngineEvent, EngineEventHandler};
+use crate::EngineEventHandler;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use std::time::Duration;
-
+use stepflow_dto::dto::engine_event::EngineEvent;
 pub struct EngineEventDispatcher {
     handlers: Vec<Arc<dyn EngineEventHandler>>,
     batch_sender: Option<mpsc::UnboundedSender<EngineEvent>>,

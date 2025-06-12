@@ -1,6 +1,7 @@
-use crate::{EngineEvent, EngineEventHandler};
+use crate::{EngineEventHandler};
 use std::sync::Arc;
 use prometheus::{IntCounterVec, HistogramVec, Registry, opts, register_int_counter_vec, register_histogram_vec};
+use stepflow_dto::dto::engine_event::EngineEvent;
 
 pub struct MetricsHook {
     workflow_started: IntCounterVec,

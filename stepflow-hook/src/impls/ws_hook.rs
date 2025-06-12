@@ -1,4 +1,5 @@
-use crate::{EngineEvent, EngineEventHandler, ui_event::UiEvent};
+use crate::{EngineEventHandler, ui_event::UiEvent};
+use stepflow_dto::dto::engine_event::EngineEvent;
 use serde_json::json;
 use tokio::sync::mpsc::UnboundedSender;
 use std::sync::Arc;

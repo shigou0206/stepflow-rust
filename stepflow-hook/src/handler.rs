@@ -1,4 +1,4 @@
-use crate::event::EngineEvent;
+use stepflow_dto::dto::engine_event::EngineEvent;
 
 #[async_trait::async_trait]
 pub trait EngineEventHandler: Send + Sync {
