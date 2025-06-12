@@ -3,6 +3,10 @@ name = "stepflow-frb-api"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "stepflow_frb_api"
+crate-type = ["cdylib"]
+
 [dependencies]
 flutter_rust_bridge = "=2.9.0"
 flutter_rust_bridge_macros  = "=2.9.0" 

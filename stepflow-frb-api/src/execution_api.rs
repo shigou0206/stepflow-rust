@@ -1,13 +1,24 @@
+pub use stepflow_gateway::service::execution::ExecutionSqlxSvc;
+
 use crate::execution_types::*;
 use stepflow_dto::dto::execution::ExecStart;
 use stepflow_gateway::service::ExecutionService;
-use stepflow_gateway::service::execution::ExecutionSqlxSvc;
+use serde_json::Value;
 
 pub async fn start_execution(svc: &ExecutionSqlxSvc, req: FrbStartExecutionRequest) -> Result<FrbExecutionResult, String> {
+    let dsl = match &req.dsl_json {
+        Some(json) => Some(serde_json::from_str(json).map_err(|e| format!("invalid dsl_json: {e}"))?),
+        None => None,
+    };
+    let init_ctx = match &req.init_ctx_json {
+        Some(json) => Some(serde_json::from_str(json).map_err(|e| format!("invalid init_ctx_json: {e}"))?),
+        None => None,
+    };
+
     let inner = ExecStart {
         template_id: req.template_id.clone(),
-        dsl: req.dsl.clone(),
-        init_ctx: req.init_ctx.clone(),
+        dsl,
+        init_ctx,
         mode: req.mode.clone(),
     };
 
@@ -17,7 +28,7 @@ pub async fn start_execution(svc: &ExecutionSqlxSvc, req: FrbStartExecutionReque
         run_id: dto.run_id,
         mode: dto.mode,
         status: dto.status,
-        result: dto.result,
+        result_json: dto.result.map(|v| serde_json::to_string(&v).unwrap()),
         started_at: dto.started_at.to_rfc3339(),
         finished_at: dto.finished_at.map(|t| t.to_rfc3339()),
     })
@@ -29,7 +40,7 @@ pub async fn get_execution(svc: &ExecutionSqlxSvc, run_id: String) -> Result<Frb
         run_id: dto.run_id,
         mode: dto.mode,
         status: dto.status,
-        result: dto.result,
+        result_json: dto.result.map(|v| serde_json::to_string(&v).unwrap()),
         started_at: dto.started_at.to_rfc3339(),
         finished_at: dto.finished_at.map(|t| t.to_rfc3339()),
     })
@@ -47,7 +58,7 @@ pub async fn list_executions(svc: &ExecutionSqlxSvc, req: FrbListRequest) -> Res
             run_id: dto.run_id,
             mode: dto.mode,
             status: dto.status,
-            result: dto.result,
+            result_json: dto.result.map(|v| serde_json::to_string(&v).unwrap()),
             started_at: dto.started_at.to_rfc3339(),
             finished_at: dto.finished_at.map(|t| t.to_rfc3339()),
         })
@@ -55,7 +66,12 @@ pub async fn list_executions(svc: &ExecutionSqlxSvc, req: FrbListRequest) -> Res
 }
 
 pub async fn update_execution(svc: &ExecutionSqlxSvc, run_id: String, req: FrbExecUpdateRequest) -> Result<(), String> {
-    svc.update(&run_id, req.status.clone(), req.result.clone())
+    let result = match &req.result_json {
+        Some(json) => Some(serde_json::from_str::<Value>(json).map_err(|e| format!("invalid result_json: {e}"))?),
+        None => None,
+    };
+
+    svc.update(&run_id, req.status.clone(), result)
         .await
         .map_err(|e| format!("{e}"))
 }
@@ -79,7 +95,7 @@ pub async fn list_executions_by_status(
             run_id: dto.run_id,
             mode: dto.mode,
             status: dto.status,
-            result: dto.result,
+            result_json: dto.result.map(|v| serde_json::to_string(&v).unwrap()),
             started_at: dto.started_at.to_rfc3339(),
             finished_at: dto.finished_at.map(|t| t.to_rfc3339()),
         })
