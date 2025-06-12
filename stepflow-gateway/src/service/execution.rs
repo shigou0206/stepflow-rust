@@ -5,13 +5,12 @@ use anyhow::{Context, Error};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;
-use stepflow_dsl::dsl;
 use stepflow_dto::dto::execution::*;
 use stepflow_engine::engine::{WorkflowEngine, WorkflowMode};
 use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
 use stepflow_storage::error::StorageError;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ExecutionSqlxSvc {
     state: Arc<AppState>,
 }
