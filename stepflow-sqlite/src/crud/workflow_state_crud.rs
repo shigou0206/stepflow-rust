@@ -82,8 +82,34 @@ where
 // 部分更新状态（避免空更新）
 pub async fn update_state<'e, E>(executor: E, state_id: &str, changes: &UpdateWorkflowState) -> Result<()>
 where
-    E: Executor<'e, Database = Sqlite>,
+    E: Executor<'e, Database = Sqlite> + Clone,
 {
+    // 先获取当前状态
+    let current_state = get_state(executor.clone(), state_id).await?;
+    
+    // 如果状态不存在，创建一个新的
+    if current_state.is_none() {
+        let new_state = WorkflowState {
+            state_id: state_id.to_string(),
+            run_id: String::new(), // 这些字段会在后续更新中设置
+            shard_id: 0,
+            state_name: String::new(),
+            state_type: String::new(),
+            status: String::new(),
+            input: None,
+            output: None,
+            error: None,
+            error_details: None,
+            started_at: None,
+            completed_at: None,
+            created_at: Utc::now().naive_utc(),
+            updated_at: Utc::now().naive_utc(),
+            version: 1,
+        };
+        create_state(executor.clone(), &new_state).await?;
+    }
+
+    // 构建更新查询
     let mut query = QueryBuilder::new("UPDATE workflow_states SET ");
     let mut has_fields = false;
 

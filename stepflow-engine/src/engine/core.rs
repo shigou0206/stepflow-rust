@@ -13,11 +13,32 @@ use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 use tokio::sync::mpsc;
 use crate::signal::handler::apply_signal;
+use uuid;
 
 use super::{
     dispatch::dispatch_command,
     types::{StateExecutionResult, StepOutcome, WorkflowMode},
 };
+
+/// 状态执行状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StateStatus {
+    Started,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl StateStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StateStatus::Started => "STARTED",
+            StateStatus::Completed => "COMPLETED",
+            StateStatus::Failed => "FAILED",
+            StateStatus::Cancelled => "CANCELLED",
+        }
+    }
+}
 
 pub type SignalSender = mpsc::UnboundedSender<ExecutionSignal>;
 pub type SignalReceiver = mpsc::UnboundedReceiver<ExecutionSignal>;
@@ -319,6 +340,53 @@ impl WorkflowEngine {
         }
     }
 
+    /// 更新状态记录
+    async fn update_state_status(
+        &self,
+        state_name: &str,
+        status: StateStatus,
+        output: Option<Value>,
+        error: Option<String>,
+    ) -> Result<(), String> {
+        // 使用 run_id 和 state_name 组合作为 state_id
+        let state_id = format!("{}:{}", self.run_id, state_name);
+        let now = Utc::now().naive_utc();
+
+        // 获取状态类型
+        let state_type = match self.state_def() {
+            State::Task(_) => "Task",
+            State::Choice(_) => "Choice",
+            State::Pass(_) => "Pass",
+            State::Wait(_) => "Wait",
+            State::Fail(_) => "Fail",
+            State::Succeed(_) => "Succeed",
+            State::Parallel(_) => "Parallel",
+            State::Map(_) => "Map",
+        };
+
+        // 更新 workflow_states 表
+        self.persistence
+            .update_state(
+                &state_id,
+                &stepflow_storage::entities::workflow_state::UpdateStoredWorkflowState {
+                    state_name: Some(state_name.to_string()),
+                    state_type: Some(state_type.to_string()),
+                    status: Some(status.as_str().to_string()),
+                    input: Some(Some(self.context.clone())),
+                    output: Some(output),
+                    error: Some(error),
+                    error_details: None,
+                    started_at: Some(Some(self.updated_at.naive_utc())),
+                    completed_at: Some(Some(now)),
+                    version: Some(1),
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
     // ------------------ 单步执行 -------------------------------
 
     async fn advance_once(&mut self) -> Result<StepOutcome, String> {
@@ -339,7 +407,7 @@ impl WorkflowEngine {
         let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
         debug!("[{}] step_once => {:?} @ {}", self.run_id, cmd.kind(), self.current_state);
 
-        let (outcome, next_state_opt, _raw_out,_metadata) = dispatch_command(
+        let (outcome, next_state_opt, _raw_out, _metadata) = dispatch_command(
             &cmd,
             self.state_def(),
             &self.context,
@@ -359,6 +427,24 @@ impl WorkflowEngine {
             context_snapshot: Some(Some(self.context.clone())),
             ..Default::default()
         };
+
+        // 先记录当前状态的完成情况
+        self.update_state_status(
+            &self.current_state,
+            if outcome.should_continue { StateStatus::Completed } else { StateStatus::Failed },
+            Some(self.context.clone()),
+            None,
+        )
+        .await?;
+
+        // 发送 NodeExit 事件
+        self.dispatch_event(EngineEvent::NodeExit {
+            run_id: self.run_id.clone(),
+            state_name: self.current_state.clone(),
+            status: if outcome.should_continue { "success".to_string() } else { "failed".to_string() },
+            duration_ms: Some((Utc::now() - self.updated_at).num_milliseconds() as u64),
+        })
+        .await;
 
         if outcome.should_continue {
             let next = next_state_opt.ok_or_else(|| {
