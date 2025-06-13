@@ -1,23 +1,25 @@
-//! workflow_engine.rs
-//! 统一持久层类型（DynPM），移除显式事务，并保持原有业务逻辑一致。
-
 use crate::command::step_once;
 use crate::mapping::MappingPipeline;
 use chrono::{DateTime, Utc};
-use log::debug;
+use log::{debug, warn};
 use serde_json::Value;
 use std::sync::Arc;
 use stepflow_dsl::{State, WorkflowDSL};
 use stepflow_hook::{EngineEventDispatcher};
 use stepflow_dto::dto::engine_event::EngineEvent;
+use stepflow_dto::dto::signal::ExecutionSignal;
 use stepflow_match::service::MatchService;
 use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
+use tokio::sync::mpsc;
 
 use super::{
     dispatch::dispatch_command,
     types::{StateExecutionResult, StepOutcome, WorkflowMode},
 };
+
+pub type SignalSender = mpsc::UnboundedSender<ExecutionSignal>;
+pub type SignalReceiver = mpsc::UnboundedReceiver<ExecutionSignal>;
 
 pub struct WorkflowEngine {
     pub run_id: String,
@@ -32,6 +34,10 @@ pub struct WorkflowEngine {
 
     pub finished: bool,
     pub updated_at: DateTime<Utc>,
+    
+    // Signal handling
+    signal_sender: Option<SignalSender>,
+    signal_receiver: Option<SignalReceiver>,
 }
 
 impl WorkflowEngine {
@@ -44,6 +50,8 @@ impl WorkflowEngine {
         persistence: DynPM,
         match_service: Arc<dyn MatchService>,
     ) -> Self {
+        let (signal_sender, signal_receiver) = mpsc::unbounded_channel();
+        
         Self {
             run_id,
             current_state: dsl.start_at.clone(),
@@ -55,6 +63,108 @@ impl WorkflowEngine {
             match_service,
             finished: false,
             updated_at: Utc::now(),
+            signal_sender: Some(signal_sender),
+            signal_receiver: Some(signal_receiver),
+        }
+    }
+
+    // Signal handling methods
+    pub fn get_signal_sender(&self) -> Option<SignalSender> {
+        self.signal_sender.clone()
+    }
+
+    pub fn set_signal_channel(&mut self, sender: SignalSender, receiver: SignalReceiver) {
+        self.signal_sender = Some(sender);
+        self.signal_receiver = Some(receiver);
+    }
+
+    async fn handle_next_signal(&mut self) -> Result<bool, String> {
+        let receiver = match &mut self.signal_receiver {
+            Some(rx) => rx,
+            None => return Ok(false),
+        };
+
+        match receiver.try_recv() {
+            Ok(signal) => {
+                self.apply_signal(signal).await?;
+                Ok(true)
+            }
+            Err(mpsc::error::TryRecvError::Empty) => Ok(false),
+            Err(mpsc::error::TryRecvError::Disconnected) => {
+                warn!("Signal channel disconnected for run_id: {}", self.run_id);
+                self.signal_receiver = None;
+                Ok(false)
+            }
+        }
+    }
+
+    async fn apply_signal(&mut self, signal: ExecutionSignal) -> Result<(), String> {
+        match signal {
+            ExecutionSignal::TaskCompleted {
+                run_id,
+                state_name,
+                output,
+            } => {
+                if run_id != self.run_id || state_name != self.current_state {
+                    return Err("Signal mismatch: wrong run_id or state_name".into());
+                }
+
+                let state = self.state_def();
+                let State::Task(task_state) = state else {
+                    return Err("TaskCompleted signal applied to non-Task state".into());
+                };
+
+                let pipeline = MappingPipeline {
+                    input_mapping: task_state.base.input_mapping.as_ref(),
+                    output_mapping: task_state.base.output_mapping.as_ref(),
+                };
+
+                self.context = pipeline
+                    .apply_output(&output, &self.context)
+                    .map_err(|e| format!("output mapping failed: {e}"))?;
+
+                // Only send NodeSuccess event, NodeEnter is handled by advance_once
+                self.dispatch_event(EngineEvent::NodeSuccess {
+                    run_id,
+                    state_name,
+                    output: output.clone(),
+                }).await;
+                Ok(())
+            }
+
+            ExecutionSignal::TaskFailed {
+                run_id,
+                state_name,
+                error,
+            } => {
+                if run_id != self.run_id || state_name != self.current_state {
+                    return Err("Signal mismatch: wrong run_id or state_name".into());
+                }
+
+                self.dispatch_event(EngineEvent::NodeFailed {
+                    run_id,
+                    state_name,
+                    error: error.clone(),
+                }).await;
+
+                // Immediately return error to stop signal processing
+                Err(format!("Task failed: {}", error))
+            }
+
+            ExecutionSignal::TaskCancelled { .. } => {
+                warn!("TaskCancelled signal not yet supported");
+                Err("TaskCancelled signal not yet supported".into())
+            }
+
+            ExecutionSignal::TimerFired { .. } => {
+                warn!("TimerFired signal not yet supported");
+                Err("TimerFired signal not yet supported".into())
+            }
+
+            ExecutionSignal::Heartbeat { .. } => {
+                warn!("Heartbeat signal not yet supported");
+                Err("Heartbeat signal not yet supported".into())
+            }
         }
     }
 
@@ -104,6 +214,8 @@ impl WorkflowEngine {
             "COMPLETED" | "FAILED" | "TERMINATED" | "PAUSED" | "SUSPENDED"
         );
 
+        let (signal_sender, signal_receiver) = mpsc::unbounded_channel();
+
         Ok(Self {
             run_id,
             current_state,
@@ -118,6 +230,8 @@ impl WorkflowEngine {
                 .close_time
                 .unwrap_or_else(|| execution.start_time)
                 .and_utc(),
+            signal_sender: Some(signal_sender),
+            signal_receiver: Some(signal_receiver),
         })
     }
 
@@ -181,6 +295,11 @@ impl WorkflowEngine {
             // ---- 处理 task 完成/失败的情况 ----
             if self.check_deferred().await? {
                 break;
+            }
+
+            // Handle any pending signals at the end of each loop
+            if let Err(e) = self.handle_next_signal().await {
+                return Err(e);
             }
         }
         debug!("🔚 loop exit | run_id={} | state={}", self.run_id, self.current_state);
