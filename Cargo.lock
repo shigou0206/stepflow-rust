@@ -3343,6 +3343,7 @@ dependencies = [
  "stepflow-dsl",
  "stepflow-dto",
  "stepflow-engine",
+ "stepflow-eventbus",
  "stepflow-hook",
  "stepflow-match",
  "stepflow-sqlite",

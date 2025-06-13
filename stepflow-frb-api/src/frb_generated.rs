@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.9.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1070449999;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1030206672;
 
 // Section: executor
 
@@ -46,42 +46,6 @@ flutter_rust_bridge::frb_generated_default_handler!();
 
 // Section: wire_funcs
 
-fn wire__crate__frb_api__deleteExecution_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "deleteExecution",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_run_id = <String>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| async move {
-                transform_result_sse::<_, String>(
-                    (move || async move {
-                        let output_ok = crate::frb_api::deleteExecution(api_run_id).await?;
-                        Ok(output_ok)
-                    })()
-                    .await,
-                )
-            }
-        },
-    )
-}
 fn wire__crate__execution_api__delete_execution_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -139,7 +103,7 @@ fn wire__crate__execution_api__delete_execution_impl(
         },
     )
 }
-fn wire__crate__frb_api__getExecution_impl(
+fn wire__crate__frb_api__delete_execution_request_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -147,7 +111,7 @@ fn wire__crate__frb_api__getExecution_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "getExecution",
+            debug_name: "delete_execution_request",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -166,7 +130,8 @@ fn wire__crate__frb_api__getExecution_impl(
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok = crate::frb_api::getExecution(api_run_id).await?;
+                        let output_ok =
+                            crate::frb_api::delete_execution_request(api_run_id).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -224,6 +189,42 @@ fn wire__crate__execution_api__get_execution_impl(
                         let output_ok =
                             crate::execution_api::get_execution(&*api_svc_guard, api_run_id)
                                 .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__frb_api__get_execution_by_id_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_execution_by_id",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_run_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::frb_api::get_execution_by_id(api_run_id).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -296,79 +297,6 @@ fn wire__crate__init__init_app_state_impl(
                         let output_ok = Result::<_, ()>::Ok({
                             crate::init::init_app_state(&api_db_path).await;
                         })?;
-                        Ok(output_ok)
-                    })()
-                    .await,
-                )
-            }
-        },
-    )
-}
-fn wire__crate__frb_api__listExecutions_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "listExecutions",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_req = <crate::execution_types::FrbListRequest>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| async move {
-                transform_result_sse::<_, String>(
-                    (move || async move {
-                        let output_ok = crate::frb_api::listExecutions(api_req).await?;
-                        Ok(output_ok)
-                    })()
-                    .await,
-                )
-            }
-        },
-    )
-}
-fn wire__crate__frb_api__listExecutionsByStatus_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "listExecutionsByStatus",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_req =
-                <crate::execution_types::FrbListByStatusRequest>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| async move {
-                transform_result_sse::<_, String>(
-                    (move || async move {
-                        let output_ok = crate::frb_api::listExecutionsByStatus(api_req).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -493,7 +421,7 @@ fn wire__crate__execution_api__list_executions_by_status_impl(
         },
     )
 }
-fn wire__crate__frb_api__startExecution_impl(
+fn wire__crate__frb_api__list_executions_by_status_request_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -501,7 +429,7 @@ fn wire__crate__frb_api__startExecution_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "startExecution",
+            debug_name: "list_executions_by_status_request",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -516,12 +444,49 @@ fn wire__crate__frb_api__startExecution_impl(
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_req =
-                <crate::execution_types::FrbStartExecutionRequest>::sse_decode(&mut deserializer);
+                <crate::execution_types::FrbListByStatusRequest>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok = crate::frb_api::startExecution(api_req).await?;
+                        let output_ok =
+                            crate::frb_api::list_executions_by_status_request(api_req).await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__frb_api__list_executions_request_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "list_executions_request",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_req = <crate::execution_types::FrbListRequest>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::frb_api::list_executions_request(api_req).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -587,7 +552,7 @@ fn wire__crate__execution_api__start_execution_impl(
         },
     )
 }
-fn wire__crate__frb_api__updateExecution_impl(
+fn wire__crate__frb_api__start_execution_request_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -595,7 +560,7 @@ fn wire__crate__frb_api__updateExecution_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "updateExecution",
+            debug_name: "start_execution_request",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -609,15 +574,13 @@ fn wire__crate__frb_api__updateExecution_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_run_id = <String>::sse_decode(&mut deserializer);
             let api_req =
-                <crate::execution_types::FrbExecUpdateRequest>::sse_decode(&mut deserializer);
+                <crate::execution_types::FrbStartExecutionRequest>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok =
-                            crate::frb_api::updateExecution(api_run_id, api_req).await?;
+                        let output_ok = crate::frb_api::start_execution_request(api_req).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -680,6 +643,45 @@ fn wire__crate__execution_api__update_execution_impl(
                             api_req,
                         )
                         .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__frb_api__update_execution_request_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "update_execution_request",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_run_id = <String>::sse_decode(&mut deserializer);
+            let api_req =
+                <crate::execution_types::FrbExecUpdateRequest>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok =
+                            crate::frb_api::update_execution_request(api_run_id, api_req).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -886,25 +888,32 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        1 => wire__crate__frb_api__deleteExecution_impl(port, ptr, rust_vec_len, data_len),
-        2 => wire__crate__execution_api__delete_execution_impl(port, ptr, rust_vec_len, data_len),
-        3 => wire__crate__frb_api__getExecution_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__execution_api__get_execution_impl(port, ptr, rust_vec_len, data_len),
+        1 => wire__crate__execution_api__delete_execution_impl(port, ptr, rust_vec_len, data_len),
+        2 => wire__crate__frb_api__delete_execution_request_impl(port, ptr, rust_vec_len, data_len),
+        3 => wire__crate__execution_api__get_execution_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__crate__frb_api__get_execution_by_id_impl(port, ptr, rust_vec_len, data_len),
         5 => wire__crate__init__get_execution_svc_impl(port, ptr, rust_vec_len, data_len),
         6 => wire__crate__init__init_app_state_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__frb_api__listExecutions_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__frb_api__listExecutionsByStatus_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__execution_api__list_executions_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__execution_api__list_executions_by_status_impl(
+        7 => wire__crate__execution_api__list_executions_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__execution_api__list_executions_by_status_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        11 => wire__crate__frb_api__startExecution_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__execution_api__start_execution_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__frb_api__updateExecution_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__execution_api__update_execution_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__frb_api__list_executions_by_status_request_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        10 => wire__crate__frb_api__list_executions_request_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__execution_api__start_execution_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__frb_api__start_execution_request_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__execution_api__update_execution_impl(port, ptr, rust_vec_len, data_len),
+        14 => {
+            wire__crate__frb_api__update_execution_request_impl(port, ptr, rust_vec_len, data_len)
+        }
         _ => unreachable!(),
     }
 }

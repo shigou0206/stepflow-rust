@@ -28,6 +28,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use stepflow_dto::dto as dto;
 use std::str::FromStr;
+use stepflow_eventbus::impls::local::LocalEventBus;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -172,11 +173,14 @@ async fn main() -> anyhow::Result<()> {
         persistent_match.clone(), // persistent 组件
     );
 
+    let event_bus = Arc::new(LocalEventBus::new(100));
+
     let state = AppState { 
         persist, 
         engines: Default::default(),
         event_dispatcher,
         match_service,
+        event_bus,
     };
 
     // -------- router -------

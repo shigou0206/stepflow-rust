@@ -3,7 +3,7 @@ use crate::core::bus::EventBus;
 use crate::error::EventBusError;
 use stepflow_dto::dto::event_envelope::EventEnvelope;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LocalEventBus {
     sender: Sender<EventEnvelope>,
 }
