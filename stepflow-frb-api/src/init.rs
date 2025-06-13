@@ -16,6 +16,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::SqlitePool;
 use stepflow_eventbus::impls::local::LocalEventBus;
 use stepflow_eventbus::core::bus::EventBus;
+use stepflow_engine::signal::manager::SignalManager;
+
 static EXECUTION_SVC: OnceCell<ExecutionSqlxSvc> = OnceCell::new();
 static GLOBAL_EVENT_BUS: OnceCell<Arc<dyn EventBus>> = OnceCell::new();
 
@@ -49,6 +51,7 @@ pub async fn init_app_state(db_path: &str) {
         event_dispatcher,
         match_service,
         event_bus,
+        signal_manager: SignalManager::new(),
     };
 
     let svc = ExecutionSqlxSvc::new(Arc::new(state));

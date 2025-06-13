@@ -16,6 +16,7 @@ use stepflow_hook::{EngineEventDispatcher,
 use stepflow_match::service::{MemoryMatchService, HybridMatchService, PersistentMatchService};
 use stepflow_match::queue::PersistentStore;
 use stepflow_storage::traits::{WorkflowStorage, StateStorage, EventStorage};
+use stepflow_engine::signal::manager::SignalManager;
 use sqlx::SqlitePool;
 use tower_http::{
     trace::TraceLayer,
@@ -185,6 +186,7 @@ async fn main() -> anyhow::Result<()> {
         event_dispatcher,
         match_service,
         event_bus,
+        signal_manager: SignalManager::new(),
     };
 
     // -------- router -------

@@ -2,9 +2,6 @@ use flutter_rust_bridge::frb;
 use crate::execution_api::*;
 use crate::execution_types::*;
 use crate::init::get_execution_svc;
-use crate::init::get_event_bus;
-use tokio::sync::broadcast::Receiver;
-use stepflow_dto::dto::event_envelope::EventEnvelope;
 
 #[frb]
 pub async fn start_execution_request(req: FrbStartExecutionRequest) -> Result<FrbExecutionResult, String> {
@@ -36,8 +33,8 @@ pub async fn list_executions_by_status_request(req: FrbListByStatusRequest) -> R
     list_executions_by_status(get_execution_svc(), req).await
 }
 
-#[frb(streaming)]
-/// Flutter 端调用后会得到一个 `Stream<FrbEventEnvelope>`，每收到一条就 UI 更新一次
-pub fn subscribe_events() -> Receiver<EventEnvelope> {
-    get_event_bus().subscribe()
-}
+// #[frb(streaming)]
+// /// Flutter 端调用后会得到一个 `Stream<FrbEventEnvelope>`，每收到一条就 UI 更新一次
+// pub fn subscribe_events() -> Receiver<EventEnvelope> {
+//     get_event_bus().subscribe()
+// }

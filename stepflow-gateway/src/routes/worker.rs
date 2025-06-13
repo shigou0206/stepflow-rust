@@ -4,7 +4,8 @@ use axum::{
     extract::State,
 };
 
-use stepflow_dto::dto::worker::{PollRequest, PollResponse, UpdateRequest};
+use stepflow_dto::dto::worker::{PollRequest, PollResponse, UpdateRequest, TaskStatus};
+use stepflow_dto::dto::signal::ExecutionSignal;
 
 use crate::{
     error::{AppResult, AppError},
@@ -111,21 +112,43 @@ pub async fn update_task_status(
             "✅ Engine found"
         );
 
-        engine.context = req.result.clone();
-        debug!(context = ?engine.context, "📦 Updated engine context");
+        // Get signal sender from engine
+        let signal_sender = match engine.get_signal_sender() {
+            Some(sender) => sender,
+            None => {
+                error!(run_id = %req.run_id, "❌ No signal sender available");
+                return Err(AppError::Anyhow(anyhow::anyhow!("No signal sender available")));
+            }
+        };
 
-        match engine.advance_until_blocked().await {
-            Ok(_) => {
-                info!(run_id = %req.run_id, "🎯 Engine advanced");
-            }
-            Err(e) => {
-                error!(run_id = %req.run_id, error = %e, "❌ Engine advancement failed");
-                return Err(AppError::Anyhow(anyhow::anyhow!(
-                    "Failed to advance engine: {e}"
-                )));
-            }
+        // Create appropriate signal based on task status
+        let signal = match req.status {
+            TaskStatus::SUCCEEDED => ExecutionSignal::TaskCompleted {
+                run_id: req.run_id.clone(),
+                state_name: req.state_name.clone(),
+                output: req.result.clone(),
+            },
+            TaskStatus::FAILED => ExecutionSignal::TaskFailed {
+                run_id: req.run_id.clone(),
+                state_name: req.state_name.clone(),
+                error: req.result.to_string(),
+            },
+            TaskStatus::CANCELLED => ExecutionSignal::TaskCancelled {
+                run_id: req.run_id.clone(),
+                state_name: req.state_name.clone(),
+                reason: Some(req.result.to_string()),
+            },
+        };
+
+        // Send signal to engine
+        if let Err(e) = signal_sender.send(signal) {
+            error!(run_id = %req.run_id, error = %e, "❌ Failed to send signal");
+            return Err(AppError::Anyhow(anyhow::anyhow!("Failed to send signal: {}", e)));
         }
 
+        info!(run_id = %req.run_id, "📤 Signal sent to engine");
+
+        // Check if engine is finished after signal processing
         if engine.finished {
             info!(run_id = %req.run_id, "🏁 Workflow finished, engine removed");
             engines.remove(&req.run_id);

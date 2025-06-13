@@ -46,6 +46,8 @@ pub enum TaskStatus {
     SUCCEEDED,
     /// 执行失败
     FAILED,
+    /// 任务被取消
+    CANCELLED,
 }
 
 /// Worker 上报任务状态更新的结构
