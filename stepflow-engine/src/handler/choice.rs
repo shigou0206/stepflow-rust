@@ -5,20 +5,14 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tracing::{debug, warn};
 
-use std::sync::Arc;
-
 use stepflow_dsl::{
     logic::ChoiceRule,
     state::choice::ChoiceState,
 };
-use stepflow_hook::EngineEventDispatcher;
-use stepflow_storage::db::DynPM;           
-use crate::engine::WorkflowMode;      
-
+  
 use crate::logic::choice_eval::eval_choice_logic;
 use super::{
-    StateExecutionContext, StateExecutionResult,
-    StateHandler,
+    StateExecutionScope, StateExecutionResult, StateHandler,
 };
 
 /// ---------------------------------------------------------------------
@@ -76,7 +70,7 @@ impl<'a> ChoiceHandler<'a> {
 impl<'a> StateHandler for ChoiceHandler<'a> {
     async fn handle(
         &self,
-        _ctx: &StateExecutionContext<'_>,
+        _scope: &StateExecutionScope<'_>,
         input: &Value,
     ) -> Result<StateExecutionResult, String> {
         let next_state = self.evaluate_choice(input).await?;
@@ -85,38 +79,11 @@ impl<'a> StateHandler for ChoiceHandler<'a> {
             output: input.clone(), // Choice 不修改上下文
             next_state,
             should_continue: true,
+            metadata: None,
         })
     }
 
     fn state_type(&self) -> &'static str {
         "choice"
     }
-}
-
-/// ---------------------------------------------------------------------
-/// 兼容旧调用方式的薄包装函数
-/// ---------------------------------------------------------------------
-pub async fn handle_choice(
-    state_name: &str,
-    state: &ChoiceState,
-    input: &Value,
-    run_id: &str,
-    event_dispatcher: &Arc<EngineEventDispatcher>,
-    persistence: &DynPM,                   // ✅ 统一使用 DynPM
-) -> Result<Value, String> {
-    // 构造执行上下文
-    let ctx = StateExecutionContext::new(
-        run_id,
-        state_name,
-        "choice",
-        WorkflowMode::Inline,              // Choice 无需区分模式
-        event_dispatcher,
-        persistence,
-    );
-
-    // 调用通用执行流程
-    let handler = ChoiceHandler::new(state);
-    let result = handler.execute(&ctx, input).await?;
-
-    Ok(result.output)
 }

@@ -1,11 +1,9 @@
 use chrono::Utc;
 use serde_json::Value;
 use stepflow_dsl::state::task::TaskState;
-use stepflow_storage::db::DynPM;
 use crate::engine::WorkflowMode;
 use stepflow_match::service::MatchService;
 use stepflow_dto::dto::queue_task::QueueTaskDto;
-use stepflow_dto::dto::tool::ToolInputPayload;
 use stepflow_tool::common::context::ToolContext;
 use stepflow_tool::registry::globals::GLOBAL_TOOL_REGISTRY;
 
@@ -13,7 +11,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::{debug, warn};
 
-use super::{StateHandler, StateExecutionContext, StateExecutionResult};
+use super::{StateHandler, StateExecutionScope, StateExecutionResult};
 
 fn extract_priority_and_timeout(
     state: &TaskState,
@@ -73,35 +71,6 @@ fn build_queue_task(
     }
 }
 
-pub async fn handle_task(
-    mode: WorkflowMode,
-    run_id: &str,
-    state_name: &str,
-    state: &TaskState,
-    input: &Value,
-    match_service: Arc<dyn MatchService>,
-    persistence_for_handlers: &DynPM,
-) -> Result<Value, String> {
-    use tracing::debug;
-
-    debug!("handle_task - mapped input: {:?}", input);
-
-    let service_task = build_queue_task(run_id, state_name, state, &input);
-
-    match_service
-        .enqueue_task(&state.resource, service_task)
-        .await
-        .map_err(|e| format!("enqueue failed: {e}"))?;
-
-    if mode == WorkflowMode::Inline {
-        match_service
-            .wait_for_completion(run_id, state_name, &input, persistence_for_handlers)
-            .await
-    } else {
-        Ok(input.clone())
-    }
-}
-
 pub struct TaskHandler<'a> {
     match_service: Arc<dyn MatchService>,
     state: &'a TaskState,
@@ -147,22 +116,25 @@ impl<'a> TaskHandler<'a> {
 
     async fn handle_deferred(
         &self,
-        ctx: &StateExecutionContext<'_>,
+        scope: &StateExecutionScope<'_>,
         input: &Value,
-    ) -> Result<Value, String> {
+    ) -> Result<(Value, Value), String> {
         debug!(
             "Creating deferred task for resource: {} via MatchService",
             self.state.resource
         );
 
-        let task = build_queue_task(ctx.run_id, ctx.state_name, self.state, &input);
+        let task = build_queue_task(scope.run_id, scope.state_name, self.state, &input);
 
         self.match_service
-            .enqueue_task(&self.state.resource, task)
+            .enqueue_task(&self.state.resource, task.clone())
             .await
             .map_err(|e| format!("Failed to enqueue task via MatchService: {}", e))?;
 
-        Ok(input.clone())
+        let metadata = serde_json::to_value(&task)
+            .map_err(|e| format!("Failed to serialize task metadata: {}", e))?;
+
+        Ok((input.clone(), metadata))
     }
 }
 
@@ -170,22 +142,26 @@ impl<'a> TaskHandler<'a> {
 impl<'a> StateHandler for TaskHandler<'a> {
     async fn handle(
         &self,
-        ctx: &StateExecutionContext<'_>,
+        scope: &StateExecutionScope<'_>,
         input: &Value,
     ) -> Result<StateExecutionResult, String> {
-        let output = match ctx.mode {
-            WorkflowMode::Inline => self.handle_inline(input).await?,
-            WorkflowMode::Deferred => self.handle_deferred(ctx, input).await?,
+        let (output, metadata) = match scope.mode {
+            WorkflowMode::Inline => (self.handle_inline(input).await?, None),
+            WorkflowMode::Deferred => {
+                let (out, meta) = self.handle_deferred(scope, input).await?;
+                (out, Some(meta))
+            }
         };
 
         Ok(StateExecutionResult {
             output,
             next_state: self.state.base.next.clone(),
             should_continue: true,
+            metadata,
         })
     }
 
     fn state_type(&self) -> &'static str {
         "task"
     }
-}
+}        

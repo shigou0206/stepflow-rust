@@ -23,6 +23,7 @@ use tower_http::{
     compression::CompressionLayer,
 };
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
@@ -133,10 +134,13 @@ async fn main() -> anyhow::Result<()> {
     //     "&busy_timeout=5000"       // 冲突时最多等 5 s
     // );
     
-    let db_options = SqliteConnectOptions::from_str("sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db")?
-    .create_if_missing(true)
-    .journal_mode(SqliteJournalMode::Wal) // ← 设置 WAL 模式
-    .busy_timeout(std::time::Duration::from_secs(5)); // ← 设置 busy_timeout
+    let db_path = PathBuf::from("data/stepflow.db");
+    let db_url = format!("sqlite://{}", db_path.to_string_lossy());
+
+    let db_options = SqliteConnectOptions::from_str(&db_url)?
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5));
 
     let pool = SqlitePool::connect_with(db_options).await?;
     let persist = std::sync::Arc::new(SqliteStorageManager::new(pool.clone()));

@@ -1,23 +1,15 @@
-//! dispatch.rs  —— 统一 DynPM 持久层别名，去除显式事务依赖
+//! dispatch.rs —— 纯粹状态执行器，不负责事件、不做副作用。
 use crate::{command::Command, handler, mapping::MappingPipeline};
-use log::error;
 use serde_json::Value;
-use std::sync::Arc;                       // ✅ 只保留 Arc
-use async_trait::async_trait;             // ✅ 补充宏的导入
+use std::sync::Arc;
 use stepflow_dsl::{state::base::BaseState, State};
-use stepflow_hook::EngineEventDispatcher;
-use stepflow_dto::dto::engine_event::EngineEvent;
-use stepflow_match::service::{MatchService};    
+use stepflow_match::service::MatchService;
 use stepflow_storage::db::DynPM;
-use thiserror::Error;
-use tracing::info;
-
 use super::types::{StepOutcome, WorkflowMode};
+use crate::handler::traits::StateHandler;
 
-/// ------------------------------------------------------------
-/// Error 定义
-/// ------------------------------------------------------------
-#[derive(Error, Debug)]
+/// 调度失败类型
+#[derive(thiserror::Error, Debug)]
 pub enum DispatchError {
     #[error("Task execution failed: {0}")]
     TaskError(String),
@@ -33,230 +25,17 @@ impl From<String> for DispatchError {
     }
 }
 
+impl From<DispatchError> for String {
+    fn from(err: DispatchError) -> Self {
+        err.to_string()
+    }
+}
+
+/// 调度返回值类型
 type DispatchResult<T> = Result<T, DispatchError>;
 
-/// ------------------------------------------------------------
-/// 事件包装器
-/// ------------------------------------------------------------
-struct EventContext<'a> {
-    run_id: &'a str,
-    state_name: &'a str,
-    dispatcher: &'a Arc<EngineEventDispatcher>,
-}
-
-impl<'a> EventContext<'a> {
-    fn new(run_id: &'a str, state_name: &'a str, dispatcher: &'a Arc<EngineEventDispatcher>) -> Self {
-        Self {
-            run_id,
-            state_name,
-            dispatcher,
-        }
-    }
-
-    async fn enter(&self, input: &Value) {
-        self.dispatcher
-            .dispatch(EngineEvent::NodeEnter {
-                run_id: self.run_id.to_string(),
-                state_name: self.state_name.to_string(),
-                input: input.clone(),
-            })
-            .await;
-    }
-
-    async fn success(&self, output: &Value) {
-        self.dispatcher
-            .dispatch(EngineEvent::NodeSuccess {
-                run_id: self.run_id.to_string(),
-                state_name: self.state_name.to_string(),
-                output: output.clone(),
-            })
-            .await;
-    }
-
-    async fn fail(&self, error: &str) {
-        self.dispatcher
-            .dispatch(EngineEvent::NodeFailed {
-                run_id: self.run_id.to_string(),
-                state_name: self.state_name.to_string(),
-                error: error.to_string(),
-            })
-            .await;
-    }
-}
-
-/// ------------------------------------------------------------
-/// StateTransition trait —— 给 State 枚举扩展 execute
-/// ------------------------------------------------------------
-#[async_trait]  
-trait StateTransition {
-    async fn execute(
-        &self,
-        state_name: &str,
-        input: &Value,
-        run_id: &str,
-        mode: WorkflowMode,
-        match_service: Arc<dyn MatchService>,
-        persistence: &DynPM,
-        event_dispatcher: &Arc<EngineEventDispatcher>,
-        persistence_for_handlers: &DynPM,
-    ) -> DispatchResult<(Value, Option<String>)>;
-}
-
-#[async_trait]                      // ✅ 使用补充的宏
-impl StateTransition for State {
-    async fn execute(
-        &self,
-        state_name: &str,
-        input: &Value,
-        run_id: &str,
-        mode: WorkflowMode,
-        match_service: Arc<dyn MatchService>,
-        persistence: &DynPM,
-        event_dispatcher: &Arc<EngineEventDispatcher>,
-        persistence_for_handlers: &DynPM,
-    ) -> DispatchResult<(Value, Option<String>)> {
-        let evt_ctx = EventContext::new(run_id, state_name, event_dispatcher);
-        evt_ctx.enter(input).await;
-
-        info!("🔥 executing state: {:?}", self);
-
-        let result = match self {
-            State::Task(t) => match handler::handle_task(
-                mode,
-                run_id,
-                state_name,
-                t,
-                input,
-                match_service,
-                persistence,
-            )
-            .await
-            {
-                Ok(out) => {
-                    evt_ctx.success(&out).await;
-                    Ok((out, t.base.next.clone()))
-                }
-                Err(e) => {
-                    evt_ctx.fail(&e).await;
-                    Err(DispatchError::TaskError(e))
-                }
-            },
-
-            State::Wait(w) => match handler::handle_wait(
-                state_name,
-                w,
-                input,
-                mode,
-                run_id,
-                persistence_for_handlers,
-                event_dispatcher,
-            )
-            .await
-            {
-                Ok(out) => {
-                    evt_ctx.success(&out).await;
-                    Ok((out, w.base.next.clone()))
-                }
-                Err(e) => {
-                    evt_ctx.fail(&e).await;
-                    Err(DispatchError::StateError(e))
-                }
-            },
-
-            State::Pass(p) => match handler::handle_pass(
-                state_name,
-                p,
-                input,
-                run_id,
-                event_dispatcher,
-                persistence,
-            )
-            .await
-            {
-                Ok(out) => {
-                    evt_ctx.success(&out).await;
-                    Ok((out, p.base.next.clone()))
-                }
-                Err(e) => {
-                    evt_ctx.fail(&e).await;
-                    Err(DispatchError::StateError(e))
-                }
-            },
-
-            State::Choice(c) => match handler::handle_choice(
-                state_name,
-                c,
-                input,
-                run_id,
-                event_dispatcher,
-                persistence,
-            )
-            .await
-            {
-                Ok(out) => {
-                    evt_ctx.success(&out).await;
-                    Ok((out, None))
-                }
-                Err(e) => {
-                    evt_ctx.fail(&e).await;
-                    Err(DispatchError::StateError(e.to_string()))
-                }
-            },
-
-            State::Succeed(s) => match handler::handle_succeed(
-                state_name,
-                s,
-                input,
-                run_id,
-                event_dispatcher,
-                persistence,
-            )
-            .await
-            {
-                Ok(out) => {
-                    evt_ctx.success(&out).await;
-                    Ok((out, None))
-                }
-                Err(e) => {
-                    evt_ctx.fail(&e).await;
-                    Err(DispatchError::StateError(e))
-                }
-            },
-
-            State::Fail(f) => match handler::handle_fail(
-                state_name,
-                f,
-                input,
-                run_id,
-                event_dispatcher,
-                persistence,
-            )
-            .await
-            {
-                Ok(out) => {
-                    evt_ctx.success(&out).await;
-                    Ok((out, None))
-                }
-                Err(e) => {
-                    evt_ctx.fail(&e).await;
-                    Err(DispatchError::StateError(e))
-                }
-            },
-
-            _ => {
-                let err = "Parallel / Map not yet supported".to_string();
-                evt_ctx.fail(&err).await;
-                Err(DispatchError::StateError(err))
-            }
-        }?;
-
-        Ok(result)
-    }
-}
-
-/// ------------------------------------------------------------
-/// dispatch_command —— WorkflowEngine 调用的统一入口
-/// ------------------------------------------------------------
+/// WorkflowEngine 调用的统一状态执行入口（无事件）
+/// 返回：(StepOutcome, Option<next_state>, raw_output, metadata)
 pub(crate) async fn dispatch_command(
     cmd: &Command,
     state_enum: &State,
@@ -265,11 +44,10 @@ pub(crate) async fn dispatch_command(
     mode: WorkflowMode,
     match_service: Arc<dyn MatchService>,
     persistence: &DynPM,
-    event_dispatcher: Arc<EngineEventDispatcher>,
-    persistence_for_handlers: DynPM,
-) -> Result<(StepOutcome, Option<String>), String> {
+) -> Result<(StepOutcome, Option<String>, Value, Option<Value>), String> {
     let state_name = cmd.state_name().to_string();
 
+    // ---------- 1. 提取基础状态定义 ----------
     let base: &BaseState = match state_enum {
         State::Task(s) => &s.base,
         State::Wait(s) => &s.base,
@@ -282,47 +60,97 @@ pub(crate) async fn dispatch_command(
         }
     };
 
-    // ---------- 输入映射 ----------
+    // ---------- 2. 执行输入映射 ----------
     let pipeline = MappingPipeline {
         input_mapping: base.input_mapping.as_ref(),
         output_mapping: base.output_mapping.as_ref(),
     };
+
     let exec_in = pipeline
         .apply_input(context)
-        .map_err(|e| format!("apply_input failed: {:?}", e))?;
+        .map_err(|e| format!("apply_input failed: {e:?}"))?;
 
-    // ---------- 执行状态 ----------
-    let (raw_out, mut logical_next) = state_enum
-        .execute(
-            &state_name,
-            &exec_in,
-            run_id,
-            mode,
-            match_service,
-            persistence,
-            &event_dispatcher,
-            &persistence_for_handlers,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+    // ---------- 3. 执行状态本体 ----------
+    let (raw_out, logical_next, metadata): (Value, Option<String>, Option<Value>) = match state_enum {
+        State::Task(t) => {
+            let handler = handler::TaskHandler::new(match_service.clone(), t);
+            let scope = handler::StateExecutionScope::new(
+                run_id, &state_name, "task", mode, None, persistence,
+            );
+            let result = handler.handle(&scope, &exec_in).await.map_err(|e| DispatchError::TaskError(e.to_string()))?;
+            (result.output, result.next_state, result.metadata)
+        }
 
-    // Choice 特殊处理
-    if let (Command::Choice { next_state, .. }, State::Choice(_)) = (cmd, state_enum) {
-        logical_next = Some(next_state.clone());
-    }
+        State::Wait(w) => {
+            let handler = handler::WaitHandler::new(w);
+            let scope = handler::StateExecutionScope::new(
+                run_id, &state_name, "wait", mode, None, persistence,
+            );
+            let result = handler.handle(&scope, &exec_in).await.map_err(|e| DispatchError::StateError(e.to_string()))?;
+            (result.output, result.next_state, result.metadata)
+        }
 
-    // ---------- 输出映射 ----------
+        State::Pass(p) => {
+            let handler = handler::PassHandler::new(p);
+            let scope = handler::StateExecutionScope::new(
+                run_id, &state_name, "pass", mode, None, persistence,
+            );
+            let result = handler.handle(&scope, &exec_in).await.map_err(|e| DispatchError::StateError(e.to_string()))?;
+            (result.output, result.next_state, result.metadata)
+        }
+
+        State::Choice(c) => {
+            let handler = handler::ChoiceHandler::new(c);
+            let scope = handler::StateExecutionScope::new(
+                run_id, &state_name, "choice", mode, None, persistence,
+            );
+            let result = handler.handle(&scope, &exec_in).await.map_err(|e| DispatchError::StateError(e.to_string()))?;
+            (result.output, result.next_state, result.metadata)
+        }
+
+        State::Succeed(s) => {
+            let handler = handler::SucceedHandler::new(s);
+            let scope = handler::StateExecutionScope::new(
+                run_id, &state_name, "succeed", mode, None, persistence,
+            );
+            let result = handler.handle(&scope, &exec_in).await.map_err(|e| DispatchError::StateError(e.to_string()))?;
+            (result.output, result.next_state, result.metadata)
+        }
+
+        State::Fail(f) => {
+            let handler = handler::FailHandler::new(f);
+            let scope = handler::StateExecutionScope::new(
+                run_id, &state_name, "fail", mode, None, persistence,
+            );
+            let result = handler.handle(&scope, &exec_in).await.map_err(|e| DispatchError::StateError(e.to_string()))?;
+            (result.output, result.next_state, result.metadata)
+        }
+
+        _ => {
+            let err = "Parallel / Map not supported".to_string();
+            return Err(DispatchError::StateError(err).to_string());
+        }
+    };
+
+    // ---------- 4. Choice 特殊处理 ----------
+    let logical_next = if let (Command::Choice { next_state, .. }, State::Choice(_)) = (cmd, state_enum) {
+        Some(next_state.clone())
+    } else {
+        logical_next
+    };
+
+    // ---------- 5. 执行输出映射 ----------
     let new_ctx = pipeline
         .apply_output(&raw_out, context)
-        .map_err(|e| DispatchError::MappingError(e.to_string()))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| DispatchError::MappingError(e.to_string()))?;
 
-
-    Ok((
+    Ok( (
         StepOutcome {
             should_continue: logical_next.is_some(),
             updated_context: new_ctx,
         },
         logical_next,
+        raw_out,
+        metadata,
     ))
 }

@@ -4,7 +4,7 @@
 use crate::command::step_once;
 use crate::mapping::MappingPipeline;
 use chrono::{DateTime, Utc};
-use log::{debug, warn};
+use log::debug;
 use serde_json::Value;
 use std::sync::Arc;
 use stepflow_dsl::{State, WorkflowDSL};
@@ -123,10 +123,10 @@ impl WorkflowEngine {
 
     // --------------------- 调度辅助 -----------------------------
 
-    async fn dispatch_event(&self, ev: EngineEvent) {
+    pub(crate) async fn dispatch_event(&self, ev: EngineEvent) {
         self.event_dispatcher.dispatch(ev).await;
     }
-    fn state_def(&self) -> &State {
+    pub(crate) fn state_def(&self) -> &State {
         &self.dsl.states[&self.current_state]
     }
     fn deferred_task(&self) -> bool {
@@ -145,6 +145,7 @@ impl WorkflowEngine {
             output: out,
             next_state: Some(self.current_state.clone()),
             should_continue: !self.finished,
+            metadata: None,
         })
     }
 
@@ -285,7 +286,7 @@ impl WorkflowEngine {
         let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
         debug!("[{}] step_once => {:?} @ {}", self.run_id, cmd.kind(), self.current_state);
 
-        let (outcome, next_state_opt) = dispatch_command(
+        let (outcome, next_state_opt, _raw_out,_metadata) = dispatch_command(
             &cmd,
             self.state_def(),
             &self.context,
@@ -293,8 +294,6 @@ impl WorkflowEngine {
             self.mode,
             self.match_service.clone(),
             &self.persistence,
-            self.event_dispatcher.clone(),
-            self.persistence.clone(),
         )
         .await?;
 

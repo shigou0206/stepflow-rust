@@ -1,6 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
-use std::sync::Arc;
+use serde_json::Value;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
@@ -10,15 +9,15 @@ use thiserror::Error;
 use stepflow_dsl::state::wait::WaitState;
 use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::timer::StoredTimer;
-use stepflow_hook::EngineEventDispatcher;
-use stepflow_dto::dto::engine_event::EngineEvent;
-
+use stepflow_dto::dto::timer::TimerDto;
 
 use crate::{
     engine::WorkflowMode,
     mapping::MappingPipeline,
 };
-use super::{StateHandler, StateExecutionContext, StateExecutionResult};
+use super::{StateHandler, StateExecutionScope, StateExecutionResult};
+
+use chrono::DateTime;
 
 const MAX_INLINE_WAIT_SECONDS: u64 = 300;
 
@@ -53,16 +52,16 @@ impl<'a> WaitHandler<'a> {
 
     async fn handle_deferred(
         &self,
-        ctx: &StateExecutionContext<'_>,
+        scope: &StateExecutionScope<'_>,
         secs: u64,
-    ) -> Result<(), String> {
+    ) -> Result<Value, String> {
         let now = Utc::now().naive_utc();
         let fire_at = now + chrono::Duration::seconds(secs as i64);
 
         let timer = StoredTimer {
             timer_id: Uuid::new_v4().to_string(),
-            run_id: ctx.run_id.to_string(),
-            state_name: Some(ctx.state_name.to_string()),
+            run_id: scope.run_id.to_string(),
+            state_name: Some(scope.state_name.to_string()),
             fire_at,
             shard_id: 0,
             version: 1,
@@ -72,46 +71,56 @@ impl<'a> WaitHandler<'a> {
             updated_at: now,
         };
 
-        ctx.dispatcher.dispatch(EngineEvent::NodeDispatched {
-            run_id: ctx.run_id.to_string(),
-            state_name: ctx.state_name.to_string(),
-            context: json!({
-                "timer_id": timer.timer_id,
-                "fire_at": fire_at,
-                "mode": "deferred"
-            }),
-        }).await;
-
-        ctx.persistence
+        scope.persistence
             .create_timer(&timer)
             .await
             .map_err(|e| WaitError::DatabaseError(e.to_string()).to_string())?;
 
         info!("🕒 Deferred timer created to fire at {}", fire_at);
-        Ok(())
+
+        let metadata = serde_json::to_value(&TimerDto {
+            timer_id: timer.timer_id,
+            run_id: timer.run_id,
+            shard_id: timer.shard_id,
+            fire_at: DateTime::<Utc>::from_utc(timer.fire_at, Utc),
+            status: timer.status,
+            version: timer.version,
+            state_name: timer.state_name,
+            payload: timer.payload,
+            created_at: DateTime::<Utc>::from_utc(timer.created_at, Utc),
+            updated_at: DateTime::<Utc>::from_utc(timer.updated_at, Utc),
+        }).map_err(|e| format!("Failed to serialize timer metadata: {e}"))?;
+
+        Ok(metadata)
     }
 
     async fn process_wait(
         &self,
-        ctx: &StateExecutionContext<'_>,
+        scope: &StateExecutionScope<'_>,
         _exec_input: &Value,
-    ) -> Result<(), String> {
+    ) -> Result<Option<Value>, String> {
         if let Some(secs) = self.state.seconds {
             if secs == 0 {
                 debug!("⏩ Wait = 0s, skipping wait");
-                return Ok(());
+                return Ok(None);
             }
 
-            match ctx.mode {
-                WorkflowMode::Inline => self.handle_inline(secs).await?,
-                WorkflowMode::Deferred => self.handle_deferred(ctx, secs).await?,
+            match scope.mode {
+                WorkflowMode::Inline => {
+                    self.handle_inline(secs).await?;
+                    Ok(None)
+                },
+                WorkflowMode::Deferred => {
+                    let metadata = self.handle_deferred(scope, secs).await?;
+                    Ok(Some(metadata))
+                },
             }
         } else if self.state.timestamp.is_some() {
             warn!("Timestamp wait specified, but not supported yet");
-            return Err(WaitError::TimestampNotSupported.to_string());
+            Err(WaitError::TimestampNotSupported.to_string())
+        } else {
+            Ok(None)
         }
-
-        Ok(())
     }
 }
 
@@ -119,7 +128,7 @@ impl<'a> WaitHandler<'a> {
 impl<'a> StateHandler for WaitHandler<'a> {
     async fn handle(
         &self,
-        ctx: &StateExecutionContext<'_>,
+        scope: &StateExecutionScope<'_>,
         input: &Value,
     ) -> Result<StateExecutionResult, String> {
         let pipeline = MappingPipeline {
@@ -131,7 +140,7 @@ impl<'a> StateHandler for WaitHandler<'a> {
 
         debug!("WaitHandler input mapped: {}", exec_input);
 
-        self.process_wait(ctx, &exec_input).await?;
+        let metadata = self.process_wait(scope, &exec_input).await?;
 
         let final_output = pipeline.apply_output(&exec_input, input)?;
 
@@ -141,6 +150,7 @@ impl<'a> StateHandler for WaitHandler<'a> {
             output: final_output,
             next_state: self.state.base.next.clone(),
             should_continue: true,
+            metadata,
         })
     }
 
@@ -156,18 +166,17 @@ pub async fn handle_wait(
     mode: WorkflowMode,
     run_id: &str,
     persistence: &DynPM,
-    event_dispatcher: &Arc<EngineEventDispatcher>,
 ) -> Result<Value, String> {
-    let ctx = StateExecutionContext::new(
+    let scope = StateExecutionScope::new(
         run_id,
         state_name,
         "wait",
         mode,
-        event_dispatcher,
+        None,
         persistence,
     );
 
     let handler = WaitHandler::new(state);
-    let result = handler.execute(&ctx, input).await?;
+    let result = handler.handle(&scope, input).await?;
     Ok(result.output)
 }

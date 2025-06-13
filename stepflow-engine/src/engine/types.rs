@@ -13,4 +13,4 @@ pub struct StepOutcome {
 } 
 
 // Re-export StateExecutionResult from handler
-pub use crate::handler::context::StateExecutionResult; 
+pub use crate::handler::execution_scope::StateExecutionResult; 

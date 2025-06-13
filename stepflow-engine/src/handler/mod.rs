@@ -1,4 +1,4 @@
-pub mod context;
+pub mod execution_scope;
 pub mod traits;
 pub mod task;
 pub mod pass;
@@ -7,11 +7,11 @@ pub mod choice;
 pub mod succeed;
 pub mod fail;
 
+pub use execution_scope::{StateExecutionScope, StateExecutionResult};
 pub use traits::StateHandler;
-pub use context::{StateExecutionContext, StateExecutionResult};
-pub use task::handle_task;
-pub use pass::handle_pass;
-pub use wait::handle_wait;
-pub use choice::handle_choice;
-pub use succeed::handle_succeed;
-pub use fail::handle_fail;
+pub use task::TaskHandler;
+pub use pass::PassHandler;
+pub use wait::WaitHandler;
+pub use choice::ChoiceHandler;
+pub use succeed::SucceedHandler;
+pub use fail::FailHandler;

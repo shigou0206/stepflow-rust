@@ -8,10 +8,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tracing::{error, debug};
 use stepflow_dsl::state::fail::FailState;
-use super::{StateHandler, StateExecutionContext, StateExecutionResult};
-use std::sync::Arc;
-use stepflow_hook::EngineEventDispatcher;
-use stepflow_storage::db::DynPM;
+use super::{StateHandler, StateExecutionScope, StateExecutionResult};
 
 pub struct FailHandler<'a> {
     state: &'a FailState,
@@ -34,7 +31,7 @@ impl<'a> FailHandler<'a> {
 impl<'a> StateHandler for FailHandler<'a> {
     async fn handle(
         &self,
-        _ctx: &StateExecutionContext<'_>,
+        _scope: &StateExecutionScope<'_>,
         _input: &Value,
     ) -> Result<StateExecutionResult, String> {
         error!(
@@ -50,34 +47,11 @@ impl<'a> StateHandler for FailHandler<'a> {
             output,
             next_state: None,              // Fail 状态是终止状态
             should_continue: false,       // 工作流将终止
+            metadata: None,
         })
     }
 
     fn state_type(&self) -> &'static str {
         "fail"
     }
-}
-
-// ✅ 兼容性函数，使用新的 StateExecutionContext 构造方式
-pub async fn handle_fail(
-    state_name: &str,
-    state: &FailState,
-    input: &Value,
-    run_id: &str,
-    event_dispatcher: &Arc<EngineEventDispatcher>,
-    persistence: &DynPM,
-) -> Result<Value, String> {
-    let ctx = StateExecutionContext::new(
-        run_id,
-        state_name,
-        "fail", // ✅ 添加 state_type
-        crate::engine::WorkflowMode::Inline,
-        event_dispatcher,
-        persistence,
-    );
-
-    let handler = FailHandler::new(state);
-    let result = handler.execute(&ctx, input).await?;
-
-    Ok(result.output)
 }
