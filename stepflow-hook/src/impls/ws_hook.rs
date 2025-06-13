@@ -39,6 +39,13 @@ impl EngineEventHandler for WsHook {
                 payload: json!({ "error": error }),
             }),
 
+            EngineEvent::NodeCancelled { run_id, state_name, reason } => Some(UiEvent {
+                event_type: "node_cancelled".into(),
+                run_id,
+                state_name: Some(state_name),
+                payload: json!({ "reason": reason }),
+            }),
+
             EngineEvent::WorkflowFinished { run_id, result } => Some(UiEvent {
                 event_type: "workflow_finished".into(),
                 run_id,

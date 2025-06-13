@@ -12,6 +12,7 @@ use stepflow_match::service::MatchService;
 use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 use tokio::sync::mpsc;
+use crate::signal::handler::apply_signal;
 
 use super::{
     dispatch::dispatch_command,
@@ -26,6 +27,7 @@ pub struct WorkflowEngine {
     pub dsl: WorkflowDSL,
     pub context: Value,
     pub current_state: String,
+    pub last_task_state: Option<String>,  // 记录上一个 Task 状态
 
     pub mode: WorkflowMode,
     pub event_dispatcher: Arc<EngineEventDispatcher>,
@@ -55,6 +57,7 @@ impl WorkflowEngine {
         Self {
             run_id,
             current_state: dsl.start_at.clone(),
+            last_task_state: None,  // 初始化为 None
             dsl,
             context: input,
             mode,
@@ -78,7 +81,7 @@ impl WorkflowEngine {
         self.signal_receiver = Some(receiver);
     }
 
-    async fn handle_next_signal(&mut self) -> Result<bool, String> {
+    pub async fn handle_next_signal(&mut self) -> Result<bool, String> {
         let receiver = match &mut self.signal_receiver {
             Some(rx) => rx,
             None => return Ok(false),
@@ -86,7 +89,7 @@ impl WorkflowEngine {
 
         match receiver.try_recv() {
             Ok(signal) => {
-                self.apply_signal(signal).await?;
+                apply_signal(self, signal).await?;
                 Ok(true)
             }
             Err(mpsc::error::TryRecvError::Empty) => Ok(false),
@@ -94,76 +97,6 @@ impl WorkflowEngine {
                 warn!("Signal channel disconnected for run_id: {}", self.run_id);
                 self.signal_receiver = None;
                 Ok(false)
-            }
-        }
-    }
-
-    async fn apply_signal(&mut self, signal: ExecutionSignal) -> Result<(), String> {
-        match signal {
-            ExecutionSignal::TaskCompleted {
-                run_id,
-                state_name,
-                output,
-            } => {
-                if run_id != self.run_id || state_name != self.current_state {
-                    return Err("Signal mismatch: wrong run_id or state_name".into());
-                }
-
-                let state = self.state_def();
-                let State::Task(task_state) = state else {
-                    return Err("TaskCompleted signal applied to non-Task state".into());
-                };
-
-                let pipeline = MappingPipeline {
-                    input_mapping: task_state.base.input_mapping.as_ref(),
-                    output_mapping: task_state.base.output_mapping.as_ref(),
-                };
-
-                self.context = pipeline
-                    .apply_output(&output, &self.context)
-                    .map_err(|e| format!("output mapping failed: {e}"))?;
-
-                // Only send NodeSuccess event, NodeEnter is handled by advance_once
-                self.dispatch_event(EngineEvent::NodeSuccess {
-                    run_id,
-                    state_name,
-                    output: output.clone(),
-                }).await;
-                Ok(())
-            }
-
-            ExecutionSignal::TaskFailed {
-                run_id,
-                state_name,
-                error,
-            } => {
-                if run_id != self.run_id || state_name != self.current_state {
-                    return Err("Signal mismatch: wrong run_id or state_name".into());
-                }
-
-                self.dispatch_event(EngineEvent::NodeFailed {
-                    run_id,
-                    state_name,
-                    error: error.clone(),
-                }).await;
-
-                // Immediately return error to stop signal processing
-                Err(format!("Task failed: {}", error))
-            }
-
-            ExecutionSignal::TaskCancelled { .. } => {
-                warn!("TaskCancelled signal not yet supported");
-                Err("TaskCancelled signal not yet supported".into())
-            }
-
-            ExecutionSignal::TimerFired { .. } => {
-                warn!("TimerFired signal not yet supported");
-                Err("TimerFired signal not yet supported".into())
-            }
-
-            ExecutionSignal::Heartbeat { .. } => {
-                warn!("Heartbeat signal not yet supported");
-                Err("Heartbeat signal not yet supported".into())
             }
         }
     }
@@ -219,6 +152,7 @@ impl WorkflowEngine {
         Ok(Self {
             run_id,
             current_state,
+            last_task_state: None,
             dsl,
             context,
             mode,
@@ -286,10 +220,10 @@ impl WorkflowEngine {
                 break;          // End 节点
             }
         
-            // ---- 如果刚才执行的就是 Task 状态，说明任务已写入队列；挂起 ----
+            // ---- 如果刚才执行的就是 Task 状态，说明任务已写入队列；立即挂起 ----
             if is_task_state && self.mode == WorkflowMode::Deferred {
                 debug!("⏸ task scheduled, engine suspend");
-                break;
+                break;  // 立即退出，等待外部 worker 通过 /update 触发信号处理
             }
         
             // ---- 处理 task 完成/失败的情况 ----
@@ -430,6 +364,12 @@ impl WorkflowEngine {
             let next = next_state_opt.ok_or_else(|| {
                 format!("state {} should continue but next_state is None", self.current_state)
             })?;
+            
+            // 如果当前状态是 Task，记录它
+            if matches!(self.state_def(), State::Task(_)) {
+                self.last_task_state = Some(self.current_state.clone());
+            }
+            
             self.current_state = next.clone();
             exec_update.current_state_name = Some(Some(next));
         } else {

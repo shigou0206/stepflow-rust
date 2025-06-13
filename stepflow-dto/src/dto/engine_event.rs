@@ -28,6 +28,11 @@ pub enum EngineEvent {
         state_name: String,
         error: String,
     },
+    NodeCancelled {
+        run_id: String,
+        state_name: String,
+        reason: String,
+    },
     NodeExit {
         run_id: String,
         state_name: String,

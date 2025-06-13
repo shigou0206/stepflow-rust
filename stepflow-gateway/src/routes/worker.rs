@@ -121,21 +121,21 @@ pub async fn update_task_status(
             }
         };
 
-        // Create appropriate signal based on task status
+        // Create appropriate signal based on task status, using task's state name
         let signal = match req.status {
             TaskStatus::SUCCEEDED => ExecutionSignal::TaskCompleted {
                 run_id: req.run_id.clone(),
-                state_name: req.state_name.clone(),
+                state_name: req.state_name.clone(),  // 使用任务状态名
                 output: req.result.clone(),
             },
             TaskStatus::FAILED => ExecutionSignal::TaskFailed {
                 run_id: req.run_id.clone(),
-                state_name: req.state_name.clone(),
+                state_name: req.state_name.clone(),  // 使用任务状态名
                 error: req.result.to_string(),
             },
             TaskStatus::CANCELLED => ExecutionSignal::TaskCancelled {
                 run_id: req.run_id.clone(),
-                state_name: req.state_name.clone(),
+                state_name: req.state_name.clone(),  // 使用任务状态名
                 reason: Some(req.result.to_string()),
             },
         };
@@ -147,6 +147,18 @@ pub async fn update_task_status(
         }
 
         info!(run_id = %req.run_id, "📤 Signal sent to engine");
+
+        // 处理信号并推进引擎
+        if let Err(e) = engine.handle_next_signal().await {
+            error!(run_id = %req.run_id, error = %e, "❌ Failed to handle signal");
+            return Err(AppError::Anyhow(anyhow::anyhow!("Failed to handle signal: {}", e)));
+        }
+
+        // 推进引擎直到下一个阻塞点
+        if let Err(e) = engine.advance_until_blocked().await {
+            error!(run_id = %req.run_id, error = %e, "❌ Failed to advance engine");
+            return Err(AppError::Anyhow(anyhow::anyhow!("Failed to advance engine: {}", e)));
+        }
 
         // Check if engine is finished after signal processing
         if engine.finished {

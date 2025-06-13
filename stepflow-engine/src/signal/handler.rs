@@ -2,6 +2,9 @@ use stepflow_dsl::State;
 use stepflow_dto::dto::signal::ExecutionSignal;
 use crate::engine::WorkflowEngine;
 use crate::handler::execution_scope::StateExecutionResult;
+use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
+use chrono::Utc;
+use serde_json::json;
 
 /// 应用信号并推进引擎，返回 StepExecutionResult
 pub async fn apply_signal(
@@ -14,11 +17,28 @@ pub async fn apply_signal(
             state_name,
             output,
         } => {
-            if run_id != engine.run_id || state_name != engine.current_state {
-                return Err("Signal mismatch: wrong run_id or state_name".into());
+            // 只验证 run_id
+            if run_id != engine.run_id {
+                return Err("Signal mismatch: wrong run_id".into());
             }
 
-            let state = engine.state_def();
+            // 验证 state_name 是否是当前状态或上一个 Task 状态
+            if state_name != engine.current_state && Some(state_name.clone()) != engine.last_task_state {
+                return Err(format!(
+                    "Signal state_name '{}' does not match current state '{}' or last task state {:?}",
+                    state_name, engine.current_state, engine.last_task_state
+                ));
+            }
+
+            // 获取状态定义 - 优先使用 last_task_state 如果当前状态不是 Task
+            let state = if matches!(engine.state_def(), State::Task(_)) {
+                engine.state_def()
+            } else if let Some(last_task) = &engine.last_task_state {
+                &engine.dsl.states[last_task]
+            } else {
+                return Err("No Task state found for signal".into());
+            };
+
             let State::Task(task_state) = state else {
                 return Err("TaskCompleted signal applied to non-Task state".into());
             };
@@ -59,8 +79,17 @@ pub async fn apply_signal(
             state_name,
             error,
         } => {
-            if run_id != engine.run_id || state_name != engine.current_state {
-                return Err("Signal mismatch: wrong run_id or state_name".into());
+            // 只验证 run_id
+            if run_id != engine.run_id {
+                return Err("Signal mismatch: wrong run_id".into());
+            }
+
+            // 验证 state_name 是否是当前状态或上一个 Task 状态
+            if state_name != engine.current_state && Some(state_name.clone()) != engine.last_task_state {
+                return Err(format!(
+                    "Signal state_name '{}' does not match current state '{}' or last task state {:?}",
+                    state_name, engine.current_state, engine.last_task_state
+                ));
             }
 
             engine.dispatch_event(stepflow_dto::dto::engine_event::EngineEvent::NodeFailed {
@@ -72,8 +101,62 @@ pub async fn apply_signal(
             Err(format!("Task failed: {}", error))
         }
 
-        ExecutionSignal::TaskCancelled { .. } => {
-            Err("TaskCancelled signal not yet supported".into())
+        ExecutionSignal::TaskCancelled {
+            run_id,
+            state_name,
+            reason,
+        } => {
+            // 只验证 run_id
+            if run_id != engine.run_id {
+                return Err("Signal mismatch: wrong run_id".into());
+            }
+
+            // 验证 state_name 是否是当前状态或上一个 Task 状态
+            if state_name != engine.current_state && Some(state_name.clone()) != engine.last_task_state {
+                return Err(format!(
+                    "Signal state_name '{}' does not match current state '{}' or last task state {:?}",
+                    state_name, engine.current_state, engine.last_task_state
+                ));
+            }
+
+            // 获取状态定义 - 优先使用 last_task_state 如果当前状态不是 Task
+            let state = if matches!(engine.state_def(), State::Task(_)) {
+                engine.state_def()
+            } else if let Some(last_task) = &engine.last_task_state {
+                &engine.dsl.states[last_task]
+            } else {
+                return Err("No Task state found for signal".into());
+            };
+
+            let State::Task(_task_state) = state else {
+                return Err("TaskCancelled signal applied to non-Task state".into());
+            };
+
+            // 更新任务状态为 cancelled
+            engine.persistence
+                .update_execution(
+                    &run_id,
+                    &UpdateStoredWorkflowExecution {
+                        status: Some("CANCELLED".into()),
+                        close_time: Some(Some(Utc::now().naive_utc())),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+
+            // 发送节点取消事件
+            engine.dispatch_event(stepflow_dto::dto::engine_event::EngineEvent::NodeCancelled {
+                run_id: run_id.clone(),
+                state_name: state_name.clone(),
+                reason: reason.clone().unwrap_or_else(|| "Task cancelled".to_string()),
+            }).await;
+
+            // 标记引擎为已完成
+            engine.finished = true;
+
+            // 返回带有取消元数据的结果
+            Err(format!("Task cancelled: {}", reason.unwrap_or_else(|| "Task cancelled".to_string())))
         }
 
         ExecutionSignal::TimerFired { .. } => {
