@@ -9,3 +9,4 @@ pub trait EventBus: Send + Sync + Debug {
     fn emit(&self, event: EventEnvelope) -> Result<(), EventBusError>;
     fn subscribe(&self) -> Receiver<EventEnvelope>;
 }
+

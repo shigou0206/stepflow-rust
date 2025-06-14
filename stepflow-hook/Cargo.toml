@@ -7,6 +7,7 @@ edition = "2024"
 stepflow-dto = { path = "../stepflow-dto" }
 stepflow-sqlite = { path = "../stepflow-sqlite" }
 stepflow-storage = { path = "../stepflow-storage" }
+stepflow-eventbus = { path = "../stepflow-eventbus" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 prometheus = "0.14"

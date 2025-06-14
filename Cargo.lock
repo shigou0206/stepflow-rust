@@ -3227,6 +3227,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "stepflow-core"
+version = "0.1.0"
+
+[[package]]
 name = "stepflow-dsl"
 version = "0.1.0"
 dependencies = [
@@ -3310,6 +3314,7 @@ version = "0.1.0"
 dependencies = [
  "flutter_rust_bridge",
  "flutter_rust_bridge_macros",
+ "futures-core",
  "once_cell",
  "prometheus",
  "serde",
@@ -3324,6 +3329,7 @@ dependencies = [
  "stepflow-sqlite",
  "stepflow-storage",
  "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -3372,6 +3378,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "stepflow-dto",
+ "stepflow-eventbus",
  "stepflow-sqlite",
  "stepflow-storage",
  "tokio",
@@ -3795,6 +3802,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

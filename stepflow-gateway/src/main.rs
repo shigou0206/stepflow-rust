@@ -16,7 +16,6 @@ use stepflow_hook::{EngineEventDispatcher,
 use stepflow_match::service::{MemoryMatchService, HybridMatchService, PersistentMatchService};
 use stepflow_match::queue::PersistentStore;
 use stepflow_storage::traits::{WorkflowStorage, StateStorage, EventStorage};
-use stepflow_engine::signal::manager::SignalManager;
 use sqlx::SqlitePool;
 use tower_http::{
     trace::TraceLayer,
@@ -151,6 +150,8 @@ async fn main() -> anyhow::Result<()> {
     let state_store:    Arc<dyn StateStorage>    = persist.clone();
     let event_store:    Arc<dyn EventStorage>    = persist.clone();
 
+    let event_bus = Arc::new(LocalEventBus::new(100));
+
     let mut event_dispatcher = EngineEventDispatcher::new(vec![
         LogHook::new(),
         MetricsHook::new(&Registry::new()),
@@ -161,7 +162,7 @@ async fn main() -> anyhow::Result<()> {
         ),
         // 如果有 WebSocket 推送：
         // WsHook::new(ws_sender.clone()),
-    ]);
+    ], event_bus.clone());
     // 可选：批量异步刷写，每秒或 100 条
     event_dispatcher = event_dispatcher.enable_batch_processing(100, Duration::from_secs(1));
     let event_dispatcher = Arc::new(event_dispatcher);
@@ -178,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
         persistent_match.clone(), // persistent 组件
     );
 
-    let event_bus = Arc::new(LocalEventBus::new(100));
+ 
 
     let state = AppState { 
         persist, 
@@ -186,8 +187,21 @@ async fn main() -> anyhow::Result<()> {
         event_dispatcher,
         match_service,
         event_bus,
-        signal_manager: SignalManager::new(),
     };
+
+    let mut bus_rx = state.subscribe_events();
+    tokio::spawn(async move {
+        while let Ok(envelope) = bus_rx.recv().await {
+            tracing::debug!(event = ?envelope, "🔔 got envelope from EventBus");
+
+            // —— 交给前端桥接 ——  
+            // ui_bridge::push_to_flutter(envelope.clone()).await;
+
+            // —— 也可以交给 SignalManager、监控、不阻塞……  
+            // state.signal_manager.handle_envelope(envelope.clone()).await;
+        }
+        tracing::warn!("🚧 EventBus subscription closed");
+    });
 
     // -------- router -------
     let app = Router::new()

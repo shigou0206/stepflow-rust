@@ -1,4 +1,5 @@
 pub use stepflow_gateway::service::execution::ExecutionSqlxSvc;
+pub use stepflow_eventbus::EventBus;
 
 use crate::execution_types::*;
 use stepflow_dto::dto::execution::ExecStart;

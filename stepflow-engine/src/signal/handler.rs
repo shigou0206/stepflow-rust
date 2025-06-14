@@ -4,7 +4,6 @@ use crate::engine::WorkflowEngine;
 use crate::handler::execution_scope::StateExecutionResult;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 use chrono::Utc;
-use serde_json::json;
 
 /// 应用信号并推进引擎，返回 StepExecutionResult
 pub async fn apply_signal(

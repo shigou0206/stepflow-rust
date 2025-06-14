@@ -32,9 +32,3 @@ pub async fn delete_execution_request(run_id: String) -> Result<(), String> {
 pub async fn list_executions_by_status_request(req: FrbListByStatusRequest) -> Result<Vec<FrbExecutionResult>, String> {
     list_executions_by_status(get_execution_svc(), req).await
 }
-
-// #[frb(streaming)]
-// /// Flutter 端调用后会得到一个 `Stream<FrbEventEnvelope>`，每收到一条就 UI 更新一次
-// pub fn subscribe_events() -> Receiver<EventEnvelope> {
-//     get_event_bus().subscribe()
-// }

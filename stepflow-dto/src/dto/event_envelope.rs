@@ -8,6 +8,6 @@ use crate::dto::engine_event::EngineEvent;
 pub struct EventEnvelope {
     pub event_id: Uuid,
     pub timestamp: DateTime<Utc>,
-    pub workflow_id: String,
+    pub run_id: String,
     pub event: EngineEvent,
 }

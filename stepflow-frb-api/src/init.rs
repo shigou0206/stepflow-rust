@@ -16,7 +16,6 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::SqlitePool;
 use stepflow_eventbus::impls::local::LocalEventBus;
 use stepflow_eventbus::core::bus::EventBus;
-use stepflow_engine::signal::manager::SignalManager;
 
 static EXECUTION_SVC: OnceCell<ExecutionSqlxSvc> = OnceCell::new();
 static GLOBAL_EVENT_BUS: OnceCell<Arc<dyn EventBus>> = OnceCell::new();
@@ -30,11 +29,13 @@ pub async fn init_app_state(db_path: &str) {
     let pool = SqlitePool::connect_with(db_options).await.unwrap();
     let persist = Arc::new(SqliteStorageManager::new(pool.clone()));
 
+    let event_bus = Arc::new(LocalEventBus::new(100));
+
     let dispatcher = EngineEventDispatcher::new(vec![
         LogHook::new(),
         MetricsHook::new(&Registry::new()),
         PersistHook::new(persist.clone(), persist.clone(), persist.clone()),
-    ])
+    ], event_bus.clone())
     .enable_batch_processing(100, Duration::from_secs(1));
     let event_dispatcher = Arc::new(dispatcher);
 
@@ -43,7 +44,7 @@ pub async fn init_app_state(db_path: &str) {
     let persistent_match = PersistentMatchService::new(persistent_store.clone(), persist.clone());
     let match_service = HybridMatchService::new(memory_match, persistent_match);
 
-    let event_bus = Arc::new(LocalEventBus::new(100));
+
 
     let state = AppState {
         persist,
@@ -51,7 +52,6 @@ pub async fn init_app_state(db_path: &str) {
         event_dispatcher,
         match_service,
         event_bus,
-        signal_manager: SignalManager::new(),
     };
 
     let svc = ExecutionSqlxSvc::new(Arc::new(state));

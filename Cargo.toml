@@ -13,7 +13,8 @@ members = [
     "stepflow-worker",
     "stepflow-postgres", 
     "stepflow-eventbus", 
-    "stepflow-frb-api",
+    "stepflow-frb-api", 
+    "stepflow-core",
 ]
 resolver = "2"
 
