@@ -8,7 +8,7 @@ use tracing::debug;
 use crate::service::interface::{DynPM, MatchService};
 use stepflow_dto::dto::queue_task::QueueTaskDto;
 
-/// 把内存队列与持久化队列“混合”在一起的 Service
+/// 把内存队列与持久化队列"混合"在一起的 Service
 pub struct HybridMatchService {
     memory_service:     Arc<dyn MatchService>,
     persistent_service: Arc<dyn MatchService>,
@@ -112,6 +112,19 @@ impl MatchService for HybridMatchService {
     ) -> Result<Value, String> {
         self.memory_service
             .wait_for_completion(run_id, state_name, input, pm)
+            .await
+    }
+
+    /// 更新任务状态 - 只更新持久化层
+    async fn update_task_status(
+        &self,
+        run_id: &str,
+        state_name: &str,
+        new_status: &str,
+        result: &Value,
+    ) -> Result<(), String> {
+        self.persistent_service
+            .update_task_status(run_id, state_name, new_status, result)
             .await
     }
 }

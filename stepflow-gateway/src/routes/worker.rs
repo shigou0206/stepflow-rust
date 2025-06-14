@@ -1,20 +1,21 @@
 use axum::{
+    extract::State,
     routing::post,
     Json, Router,
-    extract::State,
 };
 
-use stepflow_dto::dto::worker::{PollRequest, PollResponse, UpdateRequest, TaskStatus};
 use stepflow_dto::dto::signal::ExecutionSignal;
+use stepflow_dto::dto::worker::{PollRequest, PollResponse, TaskStatus, UpdateRequest};
 
 use crate::{
-    error::{AppResult, AppError},
     app_state::AppState,
+    error::{AppError, AppResult},
 };
-use std::time::Duration;
-use tracing::{info, warn, error, debug};
 
-/// Worker 轮询任务
+use std::time::Duration;
+use tracing::{debug, error, info, warn};
+
+/// --------------------------- /v1/worker/poll ---------------------------
 #[utoipa::path(
     post,
     path = "/v1/worker/poll",
@@ -58,7 +59,7 @@ pub async fn poll_task(
                 state_name: Some(task.state_name),
                 input: task.task_payload,
                 tool_type: Some(task.resource),
-                task_id: Some(task.task_id.clone()),
+                task_id: Some(task.task_id),
             }))
         }
         None => {
@@ -78,7 +79,7 @@ pub async fn poll_task(
     }
 }
 
-/// Worker 更新任务状态
+/// --------------------------- /v1/worker/update --------------------------
 #[utoipa::path(
     post,
     path = "/v1/worker/update",
@@ -102,84 +103,103 @@ pub async fn update_task_status(
         "📥 Received task update from worker."
     );
 
+    /* ------------------------------------------------------------------
+     * ① **补写 queue_tasks 表**：将 processing → completed/failed/cancelled
+     * ------------------------------------------------------------------ */
+    let persist_result = state
+        .match_service
+        .update_task_status(
+            &req.run_id,
+            &req.state_name,
+            match req.status {
+                TaskStatus::SUCCEEDED => "completed",
+                TaskStatus::FAILED    => "failed",
+                TaskStatus::CANCELLED => "cancelled",
+            },
+            &req.result,
+        )
+        .await;
+
+    if let Err(e) = persist_result {
+        // 持久化失败仅告警，不要阻断后续的 signal / 引擎推进
+        warn!(
+            run_id = %req.run_id,
+            task_state = %req.state_name,
+            "⚠️ Failed to persist task status: {e}"
+        );
+    }
+
+    /* ------------------------- ② 后面的逻辑保持不变 ----------------------- */
     let mut engines = state.engines.lock().await;
     debug!("🧠 Current engine count: {}", engines.len());
 
-    if let Some(engine) = engines.get_mut(&req.run_id) {
+    let engine = engines
+        .get_mut(&req.run_id)
+        .ok_or(AppError::NotFound)?;
+
+    info!(
+        run_id = %req.run_id,
+        current_state = %engine.current_state,
+        "✅ Engine found"
+    );
+
+    // --- 构造 ExecutionSignal ---
+    let signal = match req.status {
+        TaskStatus::SUCCEEDED => ExecutionSignal::TaskCompleted {
+            run_id: req.run_id.clone(),
+            state_name: req.state_name.clone(),
+            output: req.result.clone(),
+        },
+        TaskStatus::FAILED => ExecutionSignal::TaskFailed {
+            run_id: req.run_id.clone(),
+            state_name: req.state_name.clone(),
+            error: req.result.to_string(),
+        },
+        TaskStatus::CANCELLED => ExecutionSignal::TaskCancelled {
+            run_id: req.run_id.clone(),
+            state_name: req.state_name.clone(),
+            reason: Some(req.result.to_string()),
+        },
+    };
+
+    // --- 发送 signal ---
+    if let Some(sender) = engine.get_signal_sender() {
+        sender
+            .send(signal)
+            .map_err(|e| AppError::Anyhow(anyhow::anyhow!("Failed to send signal: {}", e)))?;
+        info!(run_id = %req.run_id, "📤 Signal sent to engine");
+    } else {
+        error!(run_id = %req.run_id, "❌ No signal sender available");
+        return Err(AppError::Anyhow(anyhow::anyhow!("No signal sender available")));
+    }
+
+    // --- 处理 signal 并推进引擎 ---
+    engine.handle_next_signal().await.map_err(|e| {
+        error!(run_id = %req.run_id, error = %e, "❌ Failed to handle signal");
+        AppError::Anyhow(anyhow::anyhow!("Failed to handle signal: {}", e))
+    })?;
+
+    engine.advance_until_blocked().await.map_err(|e| {
+        error!(run_id = %req.run_id, error = %e, "❌ Failed to advance engine");
+        AppError::Anyhow(anyhow::anyhow!("Failed to advance engine: {}", e))
+    })?;
+
+    // --- 结束判断 ---
+    if engine.finished {
+        info!(run_id = %req.run_id, "🏁 Workflow finished, engine removed");
+        engines.remove(&req.run_id);
+    } else {
         info!(
             run_id = %req.run_id,
             current_state = %engine.current_state,
-            "✅ Engine found"
+            "🔄 Workflow not finished"
         );
-
-        // Get signal sender from engine
-        let signal_sender = match engine.get_signal_sender() {
-            Some(sender) => sender,
-            None => {
-                error!(run_id = %req.run_id, "❌ No signal sender available");
-                return Err(AppError::Anyhow(anyhow::anyhow!("No signal sender available")));
-            }
-        };
-
-        // Create appropriate signal based on task status, using task's state name
-        let signal = match req.status {
-            TaskStatus::SUCCEEDED => ExecutionSignal::TaskCompleted {
-                run_id: req.run_id.clone(),
-                state_name: req.state_name.clone(),  // 使用任务状态名
-                output: req.result.clone(),
-            },
-            TaskStatus::FAILED => ExecutionSignal::TaskFailed {
-                run_id: req.run_id.clone(),
-                state_name: req.state_name.clone(),  // 使用任务状态名
-                error: req.result.to_string(),
-            },
-            TaskStatus::CANCELLED => ExecutionSignal::TaskCancelled {
-                run_id: req.run_id.clone(),
-                state_name: req.state_name.clone(),  // 使用任务状态名
-                reason: Some(req.result.to_string()),
-            },
-        };
-
-        // Send signal to engine
-        if let Err(e) = signal_sender.send(signal) {
-            error!(run_id = %req.run_id, error = %e, "❌ Failed to send signal");
-            return Err(AppError::Anyhow(anyhow::anyhow!("Failed to send signal: {}", e)));
-        }
-
-        info!(run_id = %req.run_id, "📤 Signal sent to engine");
-
-        // 处理信号并推进引擎
-        if let Err(e) = engine.handle_next_signal().await {
-            error!(run_id = %req.run_id, error = %e, "❌ Failed to handle signal");
-            return Err(AppError::Anyhow(anyhow::anyhow!("Failed to handle signal: {}", e)));
-        }
-
-        // 推进引擎直到下一个阻塞点
-        if let Err(e) = engine.advance_until_blocked().await {
-            error!(run_id = %req.run_id, error = %e, "❌ Failed to advance engine");
-            return Err(AppError::Anyhow(anyhow::anyhow!("Failed to advance engine: {}", e)));
-        }
-
-        // Check if engine is finished after signal processing
-        if engine.finished {
-            info!(run_id = %req.run_id, "🏁 Workflow finished, engine removed");
-            engines.remove(&req.run_id);
-        } else {
-            info!(
-                run_id = %req.run_id,
-                current_state = %engine.current_state,
-                "🔄 Workflow not finished"
-            );
-        }
-    } else {
-        warn!(run_id = %req.run_id, "❌ Engine not found");
-        return Err(AppError::NotFound);
     }
 
     Ok(())
 }
 
-/// Worker 路由
+/// --------------------------- 路由组合 ----------------------------------
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/poll", post(poll_task))

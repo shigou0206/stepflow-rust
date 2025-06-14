@@ -238,3 +238,131 @@ where
         .await?;
     Ok(())
 }
+
+// ────────────────────────────────────────────────────────────────
+// 6. get_task_by_run_state  (run_id + state_name 应该唯一)
+// ────────────────────────────────────────────────────────────────
+pub async fn get_task_by_run_state<'e, E>(
+    executor: E,
+    run_id: &str,
+    state_name: &str,
+) -> Result<Option<QueueTask>>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    sqlx::query_as!(
+        QueueTask,
+        r#"
+        SELECT
+            task_id              AS "task_id!",
+            run_id               AS "run_id!",
+            state_name           AS "state_name!",
+            resource             AS "resource!",
+            task_payload,
+            status               AS "status!",
+            attempts             AS "attempts!",
+            max_attempts         AS "max_attempts!",
+            priority,
+            timeout_seconds,
+            error_message,
+            last_error_at,
+            next_retry_at,
+            queued_at            AS "queued_at!",
+            processing_at,
+            completed_at,
+            failed_at,
+            created_at           AS "created_at!",
+            updated_at           AS "updated_at!"
+        FROM queue_tasks
+        WHERE run_id = ? AND state_name = ?
+        "#,
+        run_id,
+        state_name
+    )
+    .fetch_optional(executor)
+    .await
+}
+
+// ────────────────────────────────────────────────────────────────
+// 7. update_task_by_run_state
+//    • 如果 expected_status = Some("processing") 之类 → 乐观校验
+//    • 返回 rows_affected 方便调用方校验是否真的更新到 1 行
+// ────────────────────────────────────────────────────────────────
+pub async fn update_task_by_run_state<'e, E>(
+    executor: E,
+    run_id: &str,
+    state_name: &str,
+    expected_status: Option<&str>,
+    changes: &UpdateQueueTask,
+) -> Result<u64>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    // 和 update_task 一样动态拼 SET
+    let mut sets = Vec::new();
+    if changes.status.is_some()         { sets.push("status = ?"); }
+    if changes.attempts.is_some()       { sets.push("attempts = ?"); }
+    if changes.priority.is_some()       { sets.push("priority = ?"); }
+    if changes.timeout_seconds.is_some(){ sets.push("timeout_seconds = ?"); }
+    macro_rules! opt {
+        ($f:ident) => {
+            if let Some(ref opt) = changes.$f {
+                if opt.is_some() { sets.push(concat!(stringify!($f), " = ?")); }
+                else             { sets.push(concat!(stringify!($f), " = NULL")); }
+            }
+        };
+    }
+    opt!(task_payload);
+    opt!(error_message);
+    opt!(last_error_at);
+    opt!(next_retry_at);
+    opt!(processing_at);
+    opt!(completed_at);
+    opt!(failed_at);
+
+    // 必填字段
+    sets.push("updated_at = CURRENT_TIMESTAMP");
+
+    if sets.is_empty() {
+        return Ok(0);        // Nothing to do
+    }
+
+    // WHERE 条件（带乐观锁）
+    let mut sql = format!(
+        "UPDATE queue_tasks SET {} WHERE run_id = ? AND state_name = ?",
+        sets.join(", ")
+    );
+    if expected_status.is_some() {
+        sql.push_str(" AND status = ?");
+    }
+    debug!("update_task_by_run_state SQL = {sql}");
+
+    // 绑定
+    let mut q = sqlx::query(&sql);
+    if let Some(v) = &changes.status           { q = q.bind(v); }
+    if let Some(v) = &changes.attempts         { q = q.bind(v); }
+    if let Some(v) = &changes.priority         { q = q.bind(v); }
+    if let Some(v) = &changes.timeout_seconds  { q = q.bind(v); }
+    macro_rules! bind_opt { ($f:ident) => {
+        if let Some(ref opt) = changes.$f {
+            if let Some(val) = opt { q = q.bind(val); }
+        }
+    }; }
+    bind_opt!(task_payload);
+    bind_opt!(error_message);
+    bind_opt!(last_error_at);
+    bind_opt!(next_retry_at);
+    bind_opt!(processing_at);
+    bind_opt!(completed_at);
+    bind_opt!(failed_at);
+
+    // WHERE
+    q = q.bind(run_id).bind(state_name);
+    if let Some(expect) = expected_status {
+        q = q.bind(expect);
+    }
+
+    // 执行并把 rows_affected 返给上层
+    let res = q.execute(executor).await?;
+    Ok(res.rows_affected())
+}

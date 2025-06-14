@@ -44,4 +44,13 @@ pub trait MatchService: Send + Sync {
         input: &Value,
         pm: &DynPM,              
     ) -> Result<Value, String>;
+
+    /// 更新任务状态
+    async fn update_task_status(
+        &self,
+        run_id: &str,
+        state_name: &str,
+        new_status: &str,
+        result: &Value,
+    ) -> Result<(), String>;
 }

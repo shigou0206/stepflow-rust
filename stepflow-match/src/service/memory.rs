@@ -125,4 +125,15 @@ impl MatchService for MemoryMatchService {
     ) -> Result<Value, String> {
         Ok(input.clone())
     }
+
+    /// 更新任务状态 - 内存层无需额外操作
+    async fn update_task_status(
+        &self,
+        _run_id: &str,
+        _state_name: &str,
+        _new_status: &str,
+        _result: &Value,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }

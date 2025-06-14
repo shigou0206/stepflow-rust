@@ -145,4 +145,14 @@ impl QueueTaskPersistence {
         .map_err(StorageError::from)?;
         Ok(models.into_iter().map(Self::to_entity).collect())
     }
+
+    pub async fn get_task_by_run_state(&self, run_id: &str, state_name: &str) -> Result<Option<StoredQueueTask>, StorageError> {
+        let model_opt = queue_task_crud::get_task_by_run_state(&self.pool, run_id, state_name).await.map_err(StorageError::from)?;
+        Ok(model_opt.map(Self::to_entity))
+    }
+
+    pub async fn update_task_by_run_state(&self, run_id: &str, state_name: &str, expected_status: Option<&str>, changes: &UpdateStoredQueueTask) -> Result<u64, StorageError> {
+        let model_update = Self::to_model_update(changes);
+        queue_task_crud::update_task_by_run_state(&self.pool, run_id, state_name, expected_status, &model_update).await.map_err(StorageError::from)
+    }
 }
