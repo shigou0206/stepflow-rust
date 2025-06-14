@@ -76,6 +76,7 @@ impl WorkflowStatePersistence {
 
     pub async fn create_state(&self, state: &StoredWorkflowState) -> Result<(), StorageError> {
         let model = Self::to_model(state);
+        tracing::debug!("create_state state_id={} run_id={}", model.state_id, model.run_id);
         workflow_state_crud::create_state(&self.pool, &model).await.map_err(StorageError::from)
     }
 

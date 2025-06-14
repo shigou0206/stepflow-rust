@@ -7,6 +7,7 @@ pub async fn create_state<'e, E>(executor: E, state: &WorkflowState) -> Result<(
 where
     E: Executor<'e, Database = Sqlite>,
 {
+    tracing::debug!("INSERT state_id={} run_id={}", state.state_id, state.run_id);
     sqlx::query!(
         r#"
         INSERT INTO workflow_states (
@@ -79,69 +80,58 @@ where
     .await
 }
 
-// 部分更新状态（避免空更新）
-pub async fn update_state<'e, E>(executor: E, state_id: &str, changes: &UpdateWorkflowState) -> Result<()>
+pub async fn update_state<'e, E>(
+    executor: E,
+    state_id: &str,
+    changes: &UpdateWorkflowState,
+) -> Result<()>
 where
     E: Executor<'e, Database = Sqlite> + Clone,
 {
-    // 先获取当前状态
-    let current_state = get_state(executor.clone(), state_id).await?;
-    
-    // 如果状态不存在，创建一个新的
-    if current_state.is_none() {
-        let new_state = WorkflowState {
-            state_id: state_id.to_string(),
-            run_id: String::new(), // 这些字段会在后续更新中设置
-            shard_id: 0,
-            state_name: String::new(),
-            state_type: String::new(),
-            status: String::new(),
-            input: None,
-            output: None,
-            error: None,
-            error_details: None,
-            started_at: None,
-            completed_at: None,
-            created_at: Utc::now().naive_utc(),
-            updated_at: Utc::now().naive_utc(),
-            version: 1,
-        };
-        create_state(executor.clone(), &new_state).await?;
+    // ① 先确认该 state 存在；不存在就报错，让调用方先 create_state
+    if get_state(executor.clone(), state_id).await?.is_none() {
+        // 用 sqlx 的 RowNotFound 最合适，外层可 map_err
+        return Err(sqlx::Error::RowNotFound.into());
     }
 
-    // 构建更新查询
-    let mut query = QueryBuilder::new("UPDATE workflow_states SET ");
-    let mut has_fields = false;
+    // ② 动态拼 SET 子句
+    use sqlx::QueryBuilder;
+    let mut qb = QueryBuilder::new("UPDATE workflow_states SET ");
+    let mut first = true;
 
-    macro_rules! set_field {
+    macro_rules! set_opt {
         ($field:ident) => {
-            if let Some(val) = &changes.$field {
-                if has_fields { query.push(", "); }
-                query.push(stringify!($field)).push(" = ").push_bind(val);
-                has_fields = true;
+            if let Some(ref val) = changes.$field {
+                if !first { qb.push(", "); }
+                qb.push(concat!(stringify!($field), " = ")).push_bind(val);
+                first = false;
             }
         };
     }
 
-    set_field!(state_name);
-    set_field!(state_type);
-    set_field!(status);
-    set_field!(input);
-    set_field!(output);
-    set_field!(error);
-    set_field!(error_details);
-    set_field!(started_at);
-    set_field!(completed_at);
-    set_field!(version);
+    set_opt!(state_name);
+    set_opt!(state_type);
+    set_opt!(status);
+    set_opt!(input);
+    set_opt!(output);
+    set_opt!(error);
+    set_opt!(error_details);
+    set_opt!(started_at);
+    set_opt!(completed_at);
+    set_opt!(version);
 
-    if !has_fields {
-        return Ok(()); // 无需更新
+    // 如果什么都没改，就返回
+    if first {
+        return Ok(());
     }
 
-    query.push(", updated_at = ").push_bind(Utc::now().naive_utc());
-    query.push(" WHERE state_id = ").push_bind(state_id);
+    // ③ 总是更新时间戳
+    qb.push(", updated_at = ").push_bind(Utc::now().naive_utc());
 
-    query.build().execute(executor).await?;
+    // ④ WHERE
+    qb.push(" WHERE state_id = ").push_bind(state_id);
+
+    qb.build().execute(executor).await?;
     Ok(())
 }
 

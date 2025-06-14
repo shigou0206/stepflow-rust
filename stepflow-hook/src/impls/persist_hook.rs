@@ -9,7 +9,6 @@ use stepflow_storage::entities::{
 use chrono::Utc;
 use std::sync::Arc;
 use serde_json::json;
-
 pub struct PersistHook {
     workflow: Arc<dyn WorkflowStorage>,
     state: Arc<dyn StateStorage>,
@@ -76,6 +75,7 @@ impl EngineEventHandler for PersistHook {
             }
 
             EngineEvent::NodeEnter { run_id, state_name, input } => {
+                tracing::debug!("PersistHook NodeEnter run_id={}", run_id);
                 let state = StoredWorkflowState {
                     state_id: format!("{run_id}:{state_name}"),
                     run_id: run_id.clone(),
