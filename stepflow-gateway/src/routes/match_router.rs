@@ -1,20 +1,23 @@
+//! routes/match.rs  —— 适配新版 MatchService
+
 use axum::{
-    routing::{get, post},
     extract::State,
+    routing::{get, post},
     Json, Router,
 };
 use std::time::Duration;
 
-use crate::app_state::AppState;
-use crate::error::{AppError, AppResult};
-use stepflow_dto::dto::match_stats::*;
+use crate::{app_state::AppState, error::{AppError, AppResult}};
+use stepflow_dto::dto::{
+    match_stats::{EnqueueRequest, MatchStats, PollRequest, PollResponse},
+};
 
-/// 添加任务到匹配队列
+/// ① 任务入队
 #[utoipa::path(
     post,
-    path = "/v1/match/enqueue",
+    path        = "/v1/match/enqueue",
     request_body = EnqueueRequest,
-    tag = "match",
+    tag          = "match",
     responses(
         (status = 200, description = "任务已入队"),
         (status = 500, description = "服务器内部错误")
@@ -31,12 +34,13 @@ pub async fn enqueue_task(
     Ok(())
 }
 
-/// 拉取任务（worker poll）
+/// ② worker 长轮询取任务  
+///    对齐 **take_task(queue, worker_id, timeout)** 接口
 #[utoipa::path(
     post,
-    path = "/v1/match/poll",
+    path        = "/v1/match/poll",
     request_body = PollRequest,
-    tag = "match",
+    tag          = "match",
     responses(
         (status = 200, description = "返回任务", body = PollResponse),
         (status = 500, description = "服务器内部错误")
@@ -46,8 +50,9 @@ pub async fn poll_task(
     State(app): State<AppState>,
     Json(payload): Json<PollRequest>,
 ) -> AppResult<Json<PollResponse>> {
-    let task = app.match_service
-        .poll_task(
+    let task_opt = app
+        .match_service
+        .take_task(
             &payload.queue,
             &payload.worker_id,
             Duration::from_secs(payload.timeout_secs.unwrap_or(10)),
@@ -55,32 +60,29 @@ pub async fn poll_task(
         .await;
 
     Ok(Json(PollResponse {
-        has_task: task.is_some(),
-        task,
+        has_task: task_opt.is_some(),
+        task:     task_opt,
     }))
 }
 
-/// 查看队列状态
+/// ③ 查询队列统计
 #[utoipa::path(
     get,
     path = "/v1/match/stats",
-    tag = "match",
+    tag  = "match",
     responses(
         (status = 200, description = "返回队列统计", body = [MatchStats]),
         (status = 500, description = "服务器内部错误")
     )
 )]
-pub async fn get_stats(
-    State(app): State<AppState>,
-) -> AppResult<Json<Vec<MatchStats>>> {
-    let stats = app.match_service.queue_stats().await;
-    Ok(Json(stats))
+pub async fn get_stats(State(app): State<AppState>) -> AppResult<Json<Vec<MatchStats>>> {
+    Ok(Json(app.match_service.queue_stats().await))
 }
 
-/// 组合路由，挂载在 `/v1/match` 下
+/// ④ 组合路由
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/enqueue", post(enqueue_task))
-        .route("/poll", post(poll_task))
-        .route("/stats", get(get_stats))
+        .route("/poll",    post(poll_task))
+        .route("/stats",   get(get_stats))
 }

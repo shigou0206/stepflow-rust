@@ -65,3 +65,32 @@ pub struct UpdateQueueTaskDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failed_at: Option<Option<DateTime<Utc>>>,
 }
+
+/// worker 汇报结果时用这个
+#[derive(Debug, Clone)]
+pub struct TaskResultDto {
+    pub status: String,                  // "completed" | "failed" | "cancelled"
+    pub output: Option<Value>,           // 成功时带输出
+    pub error_message: Option<String>,   // 失败/取消时带原因
+    pub finished_at: DateTime<Utc>,      // 统一记录完成时间
+}
+
+impl From<TaskResultDto> for UpdateQueueTaskDto {
+    fn from(r: TaskResultDto) -> Self {
+        match r.status.as_str() {
+            "completed" => Self {
+                status:         Some(r.status),
+                task_payload:   Some(Some(r.output.unwrap_or(Value::Null))), // 覆盖为输出
+                completed_at:   Some(Some(r.finished_at)),
+                ..Default::default()
+            },
+            "failed" | "cancelled" => Self {
+                status:         Some(r.status),
+                error_message:  Some(Some(r.error_message.unwrap_or_default())),
+                failed_at:      Some(Some(r.finished_at)),
+                ..Default::default()
+            },
+            _ => Default::default(),
+        }
+    }
+}

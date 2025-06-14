@@ -23,4 +23,10 @@ pub trait QueueStorage: Send + Sync {
         before: chrono::NaiveDateTime,
         limit: i64,
     ) -> Result<Vec<StoredQueueTask>, StorageError>;
+
+    async fn find_queue_task_by_run_state(
+        &self,
+        run_id: &str,
+        state_name: &str,
+    ) -> Result<Option<StoredQueueTask>, StorageError>;
 } 

@@ -1,14 +1,15 @@
 use crate::EngineEventHandler;
+use chrono::Utc;
+use serde_json::json;
+use std::sync::Arc;
 use stepflow_dto::dto::engine_event::EngineEvent;
-use stepflow_storage::traits::{WorkflowStorage, StateStorage, EventStorage};
 use stepflow_storage::entities::{
+    workflow_event::StoredWorkflowEvent,
     workflow_execution::{StoredWorkflowExecution, UpdateStoredWorkflowExecution},
     workflow_state::{StoredWorkflowState, UpdateStoredWorkflowState},
-    workflow_event::StoredWorkflowEvent,
 };
-use chrono::Utc;
-use std::sync::Arc;
-use serde_json::json;
+use stepflow_storage::traits::{EventStorage, StateStorage, WorkflowStorage};
+use tracing::error;
 
 pub struct PersistHook {
     workflow: Arc<dyn WorkflowStorage>,
@@ -22,7 +23,11 @@ impl PersistHook {
         state: Arc<dyn StateStorage>,
         event: Arc<dyn EventStorage>,
     ) -> Arc<Self> {
-        Arc::new(Self { workflow, state, event })
+        Arc::new(Self {
+            workflow,
+            state,
+            event,
+        })
     }
 
     async fn record_event(&self, run_id: &str, event_type: &str, message: &str) {
@@ -75,7 +80,11 @@ impl EngineEventHandler for PersistHook {
                 let _ = self.workflow.create_execution(&exec).await;
             }
 
-            EngineEvent::NodeEnter { run_id, state_name, input } => {
+            EngineEvent::NodeEnter {
+                run_id,
+                state_name,
+                input,
+            } => {
                 let state = StoredWorkflowState {
                     state_id: format!("{run_id}:{state_name}"),
                     run_id: run_id.clone(),
@@ -94,10 +103,19 @@ impl EngineEventHandler for PersistHook {
                     version: 1,
                 };
                 let _ = self.state.create_state(&state).await;
-                self.record_event(&run_id, "NodeEnter", &format!("Entered state: {}", state_name)).await;
+                self.record_event(
+                    &run_id,
+                    "NodeEnter",
+                    &format!("Entered state: {}", state_name),
+                )
+                .await;
             }
 
-            EngineEvent::NodeSuccess { run_id, state_name, output } => {
+            EngineEvent::NodeSuccess {
+                run_id,
+                state_name,
+                output,
+            } => {
                 let state_id = format!("{run_id}:{state_name}");
                 let update = UpdateStoredWorkflowState {
                     state_name: None,
@@ -114,7 +132,11 @@ impl EngineEventHandler for PersistHook {
                 let _ = self.state.update_state(&state_id, &update).await;
             }
 
-            EngineEvent::NodeFailed { run_id, state_name, error } => {
+            EngineEvent::NodeFailed {
+                run_id,
+                state_name,
+                error,
+            } => {
                 let state_id = format!("{run_id}:{state_name}");
                 let update = UpdateStoredWorkflowState {
                     state_name: None,
@@ -129,6 +151,42 @@ impl EngineEventHandler for PersistHook {
                     version: None,
                 };
                 let _ = self.state.update_state(&state_id, &update).await;
+            }
+
+            EngineEvent::NodeExit {
+                run_id,
+                state_name,
+                status,
+                duration_ms,
+            } => {
+                // 1) 先照旧写事件
+                self.record_event(
+                    &run_id,
+                    "NodeExit",
+                    &json!({
+                        "state": state_name,
+                        "status": status,            // "success" / "failed"
+                        "duration_ms": duration_ms,  // Option<u64>
+                    })
+                    .to_string(),
+                )
+                .await;
+            
+                // 2) 再把 state 表的 status 和 completed_at 更新一下
+                let state_id = format!("{run_id}:{state_name}");
+                let update = UpdateStoredWorkflowState {
+                    status: Some(match status.as_str() {
+                        "success" => "COMPLETED".to_string(),
+                        "failed"  => "FAILED".to_string(),
+                        other     => other.to_uppercase(),
+                    }),
+                    completed_at: Some(Some(Utc::now().naive_utc())),
+                    // 其余字段保持不变
+                    ..Default::default()
+                };
+                if let Err(e) = self.state.update_state(&state_id, &update).await {
+                    error!("failed to update state on NodeExit: {}", e);
+                }
             }
 
             EngineEvent::WorkflowFinished { run_id, result } => {
@@ -166,13 +224,13 @@ mod tests {
     use async_trait::async_trait;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
-    use stepflow_storage::traits::{WorkflowStorage, StateStorage, EventStorage};
     use stepflow_storage::entities::{
+        workflow_event::StoredWorkflowEvent,
         workflow_execution::{StoredWorkflowExecution, UpdateStoredWorkflowExecution},
         workflow_state::{StoredWorkflowState, UpdateStoredWorkflowState},
-        workflow_event::StoredWorkflowEvent,
     };
     use stepflow_storage::error::StorageError;
+    use stepflow_storage::traits::{EventStorage, StateStorage, WorkflowStorage};
 
     #[derive(Default)]
     struct MockPersistence {
@@ -189,13 +247,31 @@ mod tests {
             self.created_states.lock().unwrap().push(state.clone());
             Ok(())
         }
-        async fn get_state(&self, _: &str) -> Result<Option<StoredWorkflowState>, StorageError> { Ok(None) }
-        async fn find_states_by_run_id(&self, _: &str, _: i64, _: i64) -> Result<Vec<StoredWorkflowState>, StorageError> { Ok(vec![]) }
-        async fn update_state(&self, state_id: &str, update: &UpdateStoredWorkflowState) -> Result<(), StorageError> {
-            self.updated_states.lock().unwrap().push((state_id.to_string(), update.clone()));
+        async fn get_state(&self, _: &str) -> Result<Option<StoredWorkflowState>, StorageError> {
+            Ok(None)
+        }
+        async fn find_states_by_run_id(
+            &self,
+            _: &str,
+            _: i64,
+            _: i64,
+        ) -> Result<Vec<StoredWorkflowState>, StorageError> {
+            Ok(vec![])
+        }
+        async fn update_state(
+            &self,
+            state_id: &str,
+            update: &UpdateStoredWorkflowState,
+        ) -> Result<(), StorageError> {
+            self.updated_states
+                .lock()
+                .unwrap()
+                .push((state_id.to_string(), update.clone()));
             Ok(())
         }
-        async fn delete_state(&self, _: &str) -> Result<(), StorageError> { Ok(()) }
+        async fn delete_state(&self, _: &str) -> Result<(), StorageError> {
+            Ok(())
+        }
     }
     #[async_trait]
     impl EventStorage for MockPersistence {
@@ -203,27 +279,78 @@ mod tests {
             self.created_events.lock().unwrap().push(event.clone());
             Ok(1)
         }
-        async fn get_event(&self, _: i64) -> Result<Option<StoredWorkflowEvent>, StorageError> { Ok(None) }
-        async fn find_events_by_run_id(&self, _: &str, _: i64, _: i64) -> Result<Vec<StoredWorkflowEvent>, StorageError> { Ok(vec![]) }
-        async fn update_event(&self, _: i64, _: &stepflow_storage::entities::workflow_event::UpdateStoredWorkflowEvent) -> Result<(), StorageError> { Ok(()) }
-        async fn archive_event(&self, _: i64) -> Result<(), StorageError> { Ok(()) }
-        async fn delete_event(&self, _: i64) -> Result<(), StorageError> { Ok(()) }
-        async fn delete_events_by_run_id(&self, _: &str) -> Result<u64, StorageError> { Ok(0) }
+        async fn get_event(&self, _: i64) -> Result<Option<StoredWorkflowEvent>, StorageError> {
+            Ok(None)
+        }
+        async fn find_events_by_run_id(
+            &self,
+            _: &str,
+            _: i64,
+            _: i64,
+        ) -> Result<Vec<StoredWorkflowEvent>, StorageError> {
+            Ok(vec![])
+        }
+        async fn update_event(
+            &self,
+            _: i64,
+            _: &stepflow_storage::entities::workflow_event::UpdateStoredWorkflowEvent,
+        ) -> Result<(), StorageError> {
+            Ok(())
+        }
+        async fn archive_event(&self, _: i64) -> Result<(), StorageError> {
+            Ok(())
+        }
+        async fn delete_event(&self, _: i64) -> Result<(), StorageError> {
+            Ok(())
+        }
+        async fn delete_events_by_run_id(&self, _: &str) -> Result<u64, StorageError> {
+            Ok(0)
+        }
     }
     #[async_trait]
     impl WorkflowStorage for MockPersistence {
-        async fn create_execution(&self, exec: &StoredWorkflowExecution) -> Result<(), StorageError> {
+        async fn create_execution(
+            &self,
+            exec: &StoredWorkflowExecution,
+        ) -> Result<(), StorageError> {
             self.created_executions.lock().unwrap().push(exec.clone());
             Ok(())
         }
-        async fn get_execution(&self, _: &str) -> Result<Option<StoredWorkflowExecution>, StorageError> { Ok(None) }
-        async fn find_executions(&self, _: i64, _: i64) -> Result<Vec<StoredWorkflowExecution>, StorageError> { Ok(vec![]) }
-        async fn find_executions_by_status(&self, _: &str, _: i64, _: i64) -> Result<Vec<StoredWorkflowExecution>, StorageError> { Ok(vec![]) }
-        async fn update_execution(&self, run_id: &str, update: &UpdateStoredWorkflowExecution) -> Result<(), StorageError> {
-            self.updated_executions.lock().unwrap().push((run_id.to_string(), update.clone()));
+        async fn get_execution(
+            &self,
+            _: &str,
+        ) -> Result<Option<StoredWorkflowExecution>, StorageError> {
+            Ok(None)
+        }
+        async fn find_executions(
+            &self,
+            _: i64,
+            _: i64,
+        ) -> Result<Vec<StoredWorkflowExecution>, StorageError> {
+            Ok(vec![])
+        }
+        async fn find_executions_by_status(
+            &self,
+            _: &str,
+            _: i64,
+            _: i64,
+        ) -> Result<Vec<StoredWorkflowExecution>, StorageError> {
+            Ok(vec![])
+        }
+        async fn update_execution(
+            &self,
+            run_id: &str,
+            update: &UpdateStoredWorkflowExecution,
+        ) -> Result<(), StorageError> {
+            self.updated_executions
+                .lock()
+                .unwrap()
+                .push((run_id.to_string(), update.clone()));
             Ok(())
         }
-        async fn delete_execution(&self, _: &str) -> Result<(), StorageError> { Ok(()) }
+        async fn delete_execution(&self, _: &str) -> Result<(), StorageError> {
+            Ok(())
+        }
     }
 
     #[tokio::test]
@@ -239,7 +366,8 @@ mod tests {
             run_id: run_id.to_string(),
             state_name: state_name.to_string(),
             input: input.clone(),
-        }).await;
+        })
+        .await;
 
         // 验证 state 被创建
         let states = mock.created_states.lock().unwrap();

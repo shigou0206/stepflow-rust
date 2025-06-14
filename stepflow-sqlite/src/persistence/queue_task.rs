@@ -109,6 +109,11 @@ impl QueueTaskPersistence {
         Ok(models.into_iter().map(Self::to_entity).collect())
     }
 
+    pub async fn find_queue_task_by_run_state(&self, run_id: &str, state_name: &str) -> Result<Option<StoredQueueTask>, StorageError> {
+        let model_opt = queue_task_crud::find_task_by_run_state(&self.pool, run_id, state_name).await.map_err(StorageError::from)?;
+        Ok(model_opt.map(Self::to_entity))
+    }
+
     pub async fn find_queue_tasks_to_retry(&self, before: NaiveDateTime, limit: i64) -> Result<Vec<StoredQueueTask>, StorageError> {
         let models = sqlx::query_as!(
             QueueTask,

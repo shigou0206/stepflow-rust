@@ -238,3 +238,51 @@ where
         .await?;
     Ok(())
 }
+
+/// 6. find_task_by_run_state
+///
+/// 根据 `(run_id, state_name)` 查询**最新一条**队列任务；
+/// 若同一节点产生多条重试记录，取 `queued_at` 最近的一条。
+pub async fn find_task_by_run_state<'e, E>(
+    executor: E,
+    run_id: &str,
+    state_name: &str,
+) -> Result<Option<QueueTask>>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    sqlx::query_as!(
+        QueueTask,
+        r#"
+        SELECT
+            task_id              AS "task_id!",
+            run_id               AS "run_id!",
+            state_name           AS "state_name!",
+            resource             AS "resource!",
+            task_payload,
+            status               AS "status!",
+            attempts             AS "attempts!",
+            max_attempts         AS "max_attempts!",
+            priority,
+            timeout_seconds,
+            error_message,
+            last_error_at,
+            next_retry_at,
+            queued_at            AS "queued_at!",
+            processing_at,
+            completed_at,
+            failed_at,
+            created_at           AS "created_at!",
+            updated_at           AS "updated_at!"
+        FROM queue_tasks
+        WHERE run_id = ?        -- ① 精确 run_id
+          AND state_name = ?    -- ② 精确节点名
+        ORDER BY queued_at DESC  -- ③ 若有重试，取最新
+        LIMIT 1
+        "#,
+        run_id,
+        state_name
+    )
+    .fetch_optional(executor)
+    .await
+}

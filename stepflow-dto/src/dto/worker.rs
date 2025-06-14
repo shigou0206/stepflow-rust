@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
-
+use crate::dto::queue_task::QueueTaskDto;
 /// Worker 请求任务的结构
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PollRequest {
@@ -36,6 +36,20 @@ pub struct PollResponse {
     /// 任务 ID（可用于追踪或重试，后续扩展）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_id: Option<String>,
+}
+
+impl PollResponse {
+    /// 无任务时的空响应
+    pub fn empty() -> Self {
+        Self {
+            has_task:  false,
+            run_id:    None,
+            state_name:None,
+            tool_type: None,
+            input:     None,
+            task_id:   None,
+        }
+    }
 }
 
 /// Worker 上报状态的枚举（执行结果）

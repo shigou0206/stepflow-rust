@@ -1,47 +1,53 @@
-//! service/interface.rs  —— 最终版 MatchService Trait
+//! service/interface.rs
 
 use async_trait::async_trait;
 use serde_json::Value;
 use std::{any::Any, sync::Arc, time::Duration};
 
-use stepflow_dto::dto::{match_stats::MatchStats, queue_task::QueueTaskDto};
-use stepflow_storage::{
-    db::DbBackend,                        // 👈 统一后端
-    persistence_manager::PersistenceManager,
+use stepflow_dto::dto::{
+    match_stats::MatchStats,
+    queue_task::{QueueTaskDto, UpdateQueueTaskDto},   // ← 就这俩
 };
+use stepflow_storage::{db::DbBackend, persistence_manager::PersistenceManager};
 
-/// 方便书写的别名
 pub type DynPM = Arc<dyn PersistenceManager<DB = DbBackend> + Send + Sync>;
 
 #[async_trait]
 pub trait MatchService: Send + Sync {
-    /// 允许向下转型
     fn as_any(&self) -> &dyn Any;
 
-    /// 每个队列的实时统计（可选实现，默认空）
     async fn queue_stats(&self) -> Vec<MatchStats> { Vec::new() }
 
-    /// worker 取任务
-    async fn poll_task(
+    // ---------------- lifecycle ----------------
+
+    /// 入队，返回 task_id
+    async fn enqueue_task(&self, queue: &str, task: QueueTaskDto) -> Result<String, String>;
+
+    /// worker 取任务；取到即标记为 processing
+    async fn take_task(
         &self,
         queue: &str,
         worker_id: &str,
         timeout: Duration,
     ) -> Option<QueueTaskDto>;
 
-    /// push 任务到队列
-    // async fn enqueue_task(&self, queue: &str, task: QueueTaskDto) -> Result<(), String>;
-    async fn enqueue_task(&self, queue: &str, task: QueueTaskDto) -> Result<String, String>;
+    /// 任务结束（完成 / 失败 / 取消）
+    ///
+    /// *用 `(run_id, state_name)` 双键定位任务*，同时带上 **局部 patch**。
+    async fn finish_task(
+        &self,
+        run_id:     &str,
+        state_name: &str,
+        patch:      UpdateQueueTaskDto,
+    ) -> Result<(), String>;
 
-    /// 标记任务为 processing
-    async fn mark_task_processing(&self, queue: &str, task_id: &str) -> Result<(), String>;
+    // ---------------- Engine 专用 ----------------
 
-    /// 等待任务完成
     async fn wait_for_completion(
         &self,
         run_id: &str,
         state_name: &str,
         input: &Value,
-        pm: &DynPM,              
+        pm: &DynPM,
     ) -> Result<Value, String>;
 }

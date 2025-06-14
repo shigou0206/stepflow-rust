@@ -74,6 +74,7 @@ impl QueueStorage for DummyPersistence {
     async fn delete_queue_task(&self, _id: &str) -> Result<(), StorageError> { unimplemented!() }
     async fn find_queue_tasks_by_status(&self, _status: &str, _limit: i64, _offset: i64) -> Result<Vec<StoredQueueTask>, StorageError> { unimplemented!() }
     async fn find_queue_tasks_to_retry(&self, _before: NaiveDateTime, _limit: i64) -> Result<Vec<StoredQueueTask>, StorageError> { unimplemented!() }
+    async fn find_queue_task_by_run_state(&self, _run_id: &str, _state_name: &str) -> Result<Option<StoredQueueTask>, StorageError> { unimplemented!() }
 }
 // #[async_trait]
 // impl TransactionManager for DummyPersistence {
