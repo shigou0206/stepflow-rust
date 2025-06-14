@@ -13,7 +13,6 @@ use stepflow_match::service::MatchService;
 use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 use tokio::sync::mpsc;
-use uuid;
 
 use super::{
     dispatch::dispatch_command,
@@ -341,55 +340,6 @@ impl WorkflowEngine {
         } else {
             Ok(false)
         }
-    }
-
-    /// 更新状态记录
-    async fn update_state_status(
-        &self,
-        state_name: &str,
-        status: StateStatus,
-        output: Option<Value>,
-        error: Option<String>,
-    ) -> Result<(), String> {
-        let state_id = format!("{}:{}", self.run_id, state_name);
-        let now = Utc::now().naive_utc();
-
-        let state_type = match self.state_def() {
-            State::Task(_) => "Task",
-            State::Choice(_) => "Choice",
-            State::Pass(_) => "Pass",
-            State::Wait(_) => "Wait",
-            State::Fail(_) => "Fail",
-            State::Succeed(_) => "Succeed",
-            State::Parallel(_) => "Parallel",
-            State::Map(_) => "Map",
-        };
-
-        // 🔑 只有 STARTED 时才写 input
-        let input_field = if status == StateStatus::Started {
-            Some(Some(self.context.clone()))
-        } else {
-            None // 不再动 input，保留进入节点时的快照
-        };
-
-        self.persistence
-            .update_state(
-                &state_id,
-                &stepflow_storage::entities::workflow_state::UpdateStoredWorkflowState {
-                    state_name: Some(state_name.to_string()),
-                    state_type: Some(state_type.to_string()),
-                    status: Some(status.as_str().to_string()),
-                    input: input_field,
-                    output: Some(output),
-                    error: Some(error),
-                    error_details: None,
-                    started_at: Some(Some(self.updated_at.naive_utc())),
-                    completed_at: Some(Some(now)),
-                    version: Some(1),
-                },
-            )
-            .await
-            .map_err(|e| e.to_string())
     }
 
     // ---- 只在首次进入节点时写 input ---------------------------------

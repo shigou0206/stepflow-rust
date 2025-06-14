@@ -125,14 +125,6 @@ async fn main() -> anyhow::Result<()> {
     )
     .with_target(true) // ✅ 打印模块名
     .init();
-
-    // -------- infra (stub) --
-    // let db_url = concat!(
-    //     "sqlite:/Users/sryu/projects/stepflow-rust/stepflow-sqlite/data/data.db",
-    //     "?mode=rwc",               // 读写并创建
-    //     "&journal_mode=WAL",       // 打开 WAL
-    //     "&busy_timeout=5000"       // 冲突时最多等 5 s
-    // );
     
     let db_path = PathBuf::from("data/stepflow.db");
     let db_url = format!("sqlite://{}", db_path.to_string_lossy());

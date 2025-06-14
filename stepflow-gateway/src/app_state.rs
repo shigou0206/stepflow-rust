@@ -20,21 +20,21 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(
-        persist: DynPM,
-        event_dispatcher: Arc<EngineEventDispatcher>,
-        match_service: Arc<dyn MatchService>,
-        event_bus: Arc<dyn EventBus>,
-    ) -> Self {
-        Self {
-            persist,
-            engines: Arc::new(Mutex::new(HashMap::new())),
-            event_dispatcher,
-            match_service,
-            event_bus,
-            // signal_manager: SignalManager::new(),
-        }
-    }
+    // pub fn new(
+    //     persist: DynPM,
+    //     event_dispatcher: Arc<EngineEventDispatcher>,
+    //     match_service: Arc<dyn MatchService>,
+    //     event_bus: Arc<dyn EventBus>,
+    // ) -> Self {
+    //     Self {
+    //         persist,
+    //         engines: Arc::new(Mutex::new(HashMap::new())),
+    //         event_dispatcher,
+    //         match_service,
+    //         event_bus,
+    //         // signal_manager: SignalManager::new(),
+    //     }
+    // }
 
     /// 给外部或内部组件获取一个新的订阅者，
     /// 用来接收所有发往 EventBus 的 EventEnvelope。

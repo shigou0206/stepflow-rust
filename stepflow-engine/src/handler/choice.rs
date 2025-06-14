@@ -1,6 +1,3 @@
-//! Choice handler – 只负责判断分支是否命中，
-//! 并返回【未经修改】的上下文 JSON。
-
 use async_trait::async_trait;
 use serde_json::Value;
 use tracing::{debug, warn};

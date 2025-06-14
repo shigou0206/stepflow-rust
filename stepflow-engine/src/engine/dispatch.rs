@@ -31,9 +31,6 @@ impl From<DispatchError> for String {
     }
 }
 
-/// 调度返回值类型
-type DispatchResult<T> = Result<T, DispatchError>;
-
 /// WorkflowEngine 调用的统一状态执行入口（无事件）
 /// 返回：(StepOutcome, Option<next_state>, raw_output, metadata)
 pub(crate) async fn dispatch_command(

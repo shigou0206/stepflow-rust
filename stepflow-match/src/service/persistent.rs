@@ -6,7 +6,6 @@ use std::{any::Any, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::Value;
-use tracing::warn;
 
 use stepflow_storage::{
     db::DynPM,
@@ -15,7 +14,7 @@ use stepflow_storage::{
 
 use crate::{
     queue::{PersistentStore, TaskStore},
-    service::interface::{DynPM as _, MatchService},   // ← 记得引入最新 trait
+    service::interface::MatchService, 
 };
 
 use stepflow_dto::dto::{

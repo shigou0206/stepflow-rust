@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
-use crate::dto::queue_task::QueueTaskDto;
 /// Worker 请求任务的结构
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PollRequest {
