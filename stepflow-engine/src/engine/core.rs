@@ -1,18 +1,18 @@
 use crate::command::step_once;
 use crate::mapping::MappingPipeline;
+use crate::signal::handler::apply_signal;
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
 use serde_json::Value;
 use std::sync::Arc;
 use stepflow_dsl::{State, WorkflowDSL};
-use stepflow_hook::{EngineEventDispatcher};
 use stepflow_dto::dto::engine_event::EngineEvent;
 use stepflow_dto::dto::signal::ExecutionSignal;
+use stepflow_hook::EngineEventDispatcher;
 use stepflow_match::service::MatchService;
 use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 use tokio::sync::mpsc;
-use crate::signal::handler::apply_signal;
 use uuid;
 
 use super::{
@@ -48,7 +48,7 @@ pub struct WorkflowEngine {
     pub dsl: WorkflowDSL,
     pub context: Value,
     pub current_state: String,
-    pub last_task_state: Option<String>,  // 记录上一个 Task 状态
+    pub last_task_state: Option<String>, // 记录上一个 Task 状态
 
     pub mode: WorkflowMode,
     pub event_dispatcher: Arc<EngineEventDispatcher>,
@@ -57,7 +57,7 @@ pub struct WorkflowEngine {
 
     pub finished: bool,
     pub updated_at: DateTime<Utc>,
-    
+
     // Signal handling
     signal_sender: Option<SignalSender>,
     signal_receiver: Option<SignalReceiver>,
@@ -74,11 +74,11 @@ impl WorkflowEngine {
         match_service: Arc<dyn MatchService>,
     ) -> Self {
         let (signal_sender, signal_receiver) = mpsc::unbounded_channel();
-        
+
         Self {
             run_id,
             current_state: dsl.start_at.clone(),
-            last_task_state: None,  // 初始化为 None
+            last_task_state: None, // 初始化为 None
             dsl,
             context: input,
             mode,
@@ -229,24 +229,26 @@ impl WorkflowEngine {
             if self.finished {
                 break;
             }
-        
+
             // 记录当前 state 是否是 Task（SendData 之类）
             let is_task_state = matches!(self.state_def(), State::Task(_));
-        
+
             let step_out = self.advance_once().await?;
-            debug!("🔁 advance_once done | should_continue={} | new_state={}",
-                    step_out.should_continue, self.current_state);
-        
+            debug!(
+                "🔁 advance_once done | should_continue={} | new_state={}",
+                step_out.should_continue, self.current_state
+            );
+
             if !step_out.should_continue {
-                break;          // End 节点
+                break; // End 节点
             }
-        
+
             // ---- 如果刚才执行的就是 Task 状态，说明任务已写入队列；立即挂起 ----
             if is_task_state && self.mode == WorkflowMode::Deferred {
                 debug!("⏸ task scheduled, engine suspend");
-                break;  // 立即退出，等待外部 worker 通过 /update 触发信号处理
+                break; // 立即退出，等待外部 worker 通过 /update 触发信号处理
             }
-        
+
             // ---- 处理 task 完成/失败的情况 ----
             if self.check_deferred().await? {
                 break;
@@ -257,7 +259,10 @@ impl WorkflowEngine {
                 return Err(e);
             }
         }
-        debug!("🔚 loop exit | run_id={} | state={}", self.run_id, self.current_state);
+        debug!(
+            "🔚 loop exit | run_id={} | state={}",
+            self.run_id, self.current_state
+        );
         Ok(self.context.clone())
     }
     // ------------------ Deferred 轮询 ---------------------------
@@ -311,9 +316,7 @@ impl WorkflowEngine {
                     Ok(true)
                 }
                 "failed" => {
-                    let err_msg = t
-                        .error_message
-                        .unwrap_or_else(|| "Task failed".to_string());
+                    let err_msg = t.error_message.unwrap_or_else(|| "Task failed".to_string());
                     self.persistence
                         .update_execution(
                             &self.run_id,
@@ -348,11 +351,9 @@ impl WorkflowEngine {
         output: Option<Value>,
         error: Option<String>,
     ) -> Result<(), String> {
-        // 使用 run_id 和 state_name 组合作为 state_id
         let state_id = format!("{}:{}", self.run_id, state_name);
         let now = Utc::now().naive_utc();
 
-        // 获取状态类型
         let state_type = match self.state_def() {
             State::Task(_) => "Task",
             State::Choice(_) => "Choice",
@@ -364,7 +365,13 @@ impl WorkflowEngine {
             State::Map(_) => "Map",
         };
 
-        // 更新 workflow_states 表
+        // 🔑 只有 STARTED 时才写 input
+        let input_field = if status == StateStatus::Started {
+            Some(Some(self.context.clone()))
+        } else {
+            None // 不再动 input，保留进入节点时的快照
+        };
+
         self.persistence
             .update_state(
                 &state_id,
@@ -372,7 +379,7 @@ impl WorkflowEngine {
                     state_name: Some(state_name.to_string()),
                     state_type: Some(state_type.to_string()),
                     status: Some(status.as_str().to_string()),
-                    input: Some(Some(self.context.clone())),
+                    input: input_field,
                     output: Some(output),
                     error: Some(error),
                     error_details: None,
@@ -382,14 +389,72 @@ impl WorkflowEngine {
                 },
             )
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())
+    }
 
-        Ok(())
+    // ---- 只在首次进入节点时写 input ---------------------------------
+    async fn record_state_started(&self) -> Result<(), String> {
+        use stepflow_storage::entities::workflow_state::UpdateStoredWorkflowState;
+
+        let state_id = format!("{}:{}", self.run_id, self.current_state);
+        let state_type = match self.state_def() {
+            State::Task(_) => "Task",
+            State::Choice(_) => "Choice",
+            State::Pass(_) => "Pass",
+            State::Wait(_) => "Wait",
+            State::Fail(_) => "Fail",
+            State::Succeed(_) => "Succeed",
+            State::Parallel(_) => "Parallel",
+            State::Map(_) => "Map",
+        };
+
+        self.persistence
+            .update_state(
+                &state_id,
+                &UpdateStoredWorkflowState {
+                    state_name: Some(self.current_state.clone()),
+                    state_type: Some(state_type.into()),
+                    status: Some("STARTED".into()),
+                    input: Some(Some(self.context.clone())), // ✅ 只在这里写入
+                    started_at: Some(Some(Utc::now().naive_utc())),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    // ---- 完成 / 失败时，只更新 output & status ------------------------
+    async fn record_state_finished(
+        &self,
+        success: bool,
+        output: Option<Value>,
+        error: Option<String>,
+    ) -> Result<(), String> {
+        use stepflow_storage::entities::workflow_state::UpdateStoredWorkflowState;
+
+        let state_id = format!("{}:{}", self.run_id, self.current_state);
+
+        self.persistence
+            .update_state(
+                &state_id,
+                &UpdateStoredWorkflowState {
+                    status: Some(if success { "COMPLETED" } else { "FAILED" }.into()),
+                    output: Some(output),
+                    error: Some(error),
+                    completed_at: Some(Some(Utc::now().naive_utc())),
+                    // ⛔ 不触碰 input
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())
     }
 
     // ------------------ 单步执行 -------------------------------
 
     async fn advance_once(&mut self) -> Result<StepOutcome, String> {
+        // 已结束就直接返回
         if self.finished {
             return Ok(StepOutcome {
                 should_continue: false,
@@ -397,6 +462,7 @@ impl WorkflowEngine {
             });
         }
 
+        // —— ① NodeEnter & 记录 STARTED ——
         self.dispatch_event(EngineEvent::NodeEnter {
             run_id: self.run_id.clone(),
             state_name: self.current_state.clone(),
@@ -404,10 +470,19 @@ impl WorkflowEngine {
         })
         .await;
 
-        let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
-        debug!("[{}] step_once => {:?} @ {}", self.run_id, cmd.kind(), self.current_state);
+        // ⚠️ 只在首次进入时插入，避免后续覆盖 input
+        self.record_state_started().await?;
 
-        let (outcome, next_state_opt, _raw_out, _metadata) = dispatch_command(
+        // —— ② 真正执行当前节点 ——
+        let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
+        debug!(
+            "[{}] step_once => {:?} @ {}",
+            self.run_id,
+            cmd.kind(),
+            self.current_state
+        );
+
+        let (outcome, next_state_opt, _raw_out, _meta) = dispatch_command(
             &cmd,
             self.state_def(),
             &self.context,
@@ -418,44 +493,51 @@ impl WorkflowEngine {
         )
         .await?;
 
-        // ---- 更新本地状态 -------------------------------------
+        // 更新本地 context
         self.context = outcome.updated_context.clone();
         self.updated_at = Utc::now();
 
-        // ---- 写回 DB ------------------------------------------
+        // —— ③ 记录 COMPLETED/FAILED，只更新 output/status ——
+        self.record_state_finished(
+            /* success */ outcome.should_continue,
+            /* output  */ Some(self.context.clone()),
+            /* error   */ None,
+        )
+        .await?;
+
+        // 发送 NodeExit
+        self.dispatch_event(EngineEvent::NodeExit {
+            run_id: self.run_id.clone(),
+            state_name: self.current_state.clone(),
+            status: if outcome.should_continue {
+                "success"
+            } else {
+                "failed"
+            }
+            .into(),
+            duration_ms: Some((Utc::now() - self.updated_at).num_milliseconds() as u64),
+        })
+        .await;
+
+        // —— ④ 推进游标 or 结束工作流 ——
         let mut exec_update = UpdateStoredWorkflowExecution {
             context_snapshot: Some(Some(self.context.clone())),
             ..Default::default()
         };
 
-        // 先记录当前状态的完成情况
-        self.update_state_status(
-            &self.current_state,
-            if outcome.should_continue { StateStatus::Completed } else { StateStatus::Failed },
-            Some(self.context.clone()),
-            None,
-        )
-        .await?;
-
-        // 发送 NodeExit 事件
-        self.dispatch_event(EngineEvent::NodeExit {
-            run_id: self.run_id.clone(),
-            state_name: self.current_state.clone(),
-            status: if outcome.should_continue { "success".to_string() } else { "failed".to_string() },
-            duration_ms: Some((Utc::now() - self.updated_at).num_milliseconds() as u64),
-        })
-        .await;
-
         if outcome.should_continue {
             let next = next_state_opt.ok_or_else(|| {
-                format!("state {} should continue but next_state is None", self.current_state)
+                format!(
+                    "state {} should continue but next_state is None",
+                    self.current_state
+                )
             })?;
-            
-            // 如果当前状态是 Task，记录它
+
+            // Task 节点：记下 “上一个 task”
             if matches!(self.state_def(), State::Task(_)) {
                 self.last_task_state = Some(self.current_state.clone());
             }
-            
+
             self.current_state = next.clone();
             exec_update.current_state_name = Some(Some(next));
         } else {
@@ -469,6 +551,7 @@ impl WorkflowEngine {
             .await;
         }
 
+        // 写 execution 表
         self.persistence
             .update_execution(&self.run_id, &exec_update)
             .await

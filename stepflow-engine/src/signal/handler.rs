@@ -52,12 +52,12 @@ pub async fn apply_signal(
                 .apply_output(&output, &engine.context)
                 .map_err(|e| format!("output mapping failed: {e}"))?;
 
-            // ✅ 先补发 NodeEnter（为了持久化/日志一致）
-            engine.dispatch_event(stepflow_dto::dto::engine_event::EngineEvent::NodeEnter {
-                run_id: run_id.clone(),
-                state_name: state_name.clone(),
-                input: output.clone(),
-            }).await;
+            // // ✅ 先补发 NodeEnter（为了持久化/日志一致）
+            // engine.dispatch_event(stepflow_dto::dto::engine_event::EngineEvent::NodeEnter {
+            //     run_id: run_id.clone(),
+            //     state_name: state_name.clone(),
+            //     input: output.clone(),
+            // }).await;
 
             // ✅ 再发送 NodeSuccess
             engine.dispatch_event(stepflow_dto::dto::engine_event::EngineEvent::NodeSuccess {
