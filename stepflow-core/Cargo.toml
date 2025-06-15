@@ -13,7 +13,7 @@ thiserror = "1.0"
 sqlx = { version="0.7", features=["sqlite","runtime-tokio-rustls"] } 
 anyhow    = "1.0"
 prometheus = "0.14" 
-
+tracing = "0.1"
 stepflow-dto = { path = "../stepflow-dto" }
 stepflow-common = { path = "../stepflow-common" }
 stepflow-engine  = { path = "../stepflow-engine" }

@@ -3254,6 +3254,7 @@ dependencies = [
  "stepflow-storage",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3328,16 +3329,20 @@ dependencies = [
 name = "stepflow-eventbus"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "once_cell",
  "stepflow-dto",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
 name = "stepflow-frb-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "flutter_rust_bridge",
  "flutter_rust_bridge_macros",
  "futures-core",
@@ -3356,8 +3361,10 @@ dependencies = [
  "stepflow-match",
  "stepflow-sqlite",
  "stepflow-storage",
+ "stepflow-worker",
  "tokio",
  "tokio-stream",
+ "tracing",
 ]
 
 [[package]]

@@ -10,6 +10,8 @@ use tracing_subscriber::EnvFilter;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use stepflow_common::config::StepflowConfig;
+use stepflow_core::event_runner::start_event_runner;
+use stepflow_common::config::StepflowMode;
 
 
 #[derive(OpenApi)]
@@ -95,9 +97,9 @@ use stepflow_common::config::StepflowConfig;
     )
 )]
 struct ApiDoc;
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // 日志初始化
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("debug".parse()?))
         .with_target(true)
@@ -109,22 +111,29 @@ async fn main() -> anyhow::Result<()> {
     // ② 构造 AppState
     let app_state: AppState = build_app_state(&config).await?;
 
-    // ③ 启动事件总线监听
+    // ③ 设置全局事件总线
+    stepflow_eventbus::global::set_global_event_bus(app_state.event_bus.clone())?;
+
+    // ④ 启动事件驱动模式（仅在 EventDriven 模式下）
+    if config.mode == StepflowMode::EventDriven {
+        start_event_runner(app_state.clone());
+    }
+
+    // ⑤ 后台监听事件总线（调试用途）
     let mut bus_rx = app_state.subscribe_events();
     tokio::spawn({
         let _state = app_state.clone();
         async move {
             while let Ok(envelope) = bus_rx.recv().await {
                 tracing::debug!(?envelope, "🔔 Got EventEnvelope from EventBus");
-                // 这里可以调用 ui_bridge / signal_manager / metrics 分发等
+                // 可添加：ui_bridge、signal_manager、metrics 推送等
             }
             tracing::warn!("⚠️ EventBus subscription closed");
         }
     });
 
+    // ⑥ 启动 HTTP 服务
     let cloned_state = app_state.clone();
-
-    // ④ 启动 HTTP 服务
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(routes::new(app_state))
@@ -132,10 +141,10 @@ async fn main() -> anyhow::Result<()> {
         .layer(CorsLayer::permissive())
         .layer(CompressionLayer::new());
 
-        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-        tracing::info!("🚀 gateway listen on http://{}", addr);
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, app.with_state(cloned_state)).await?;
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    tracing::info!("🚀 Gateway listening at http://{}", addr);
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app.with_state(cloned_state)).await?;
 
     Ok(())
 }

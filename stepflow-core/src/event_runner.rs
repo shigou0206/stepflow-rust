@@ -1,6 +1,6 @@
 use tracing::{debug, error, info};
 
-use stepflow_core::app_state::AppState;
+use crate::app_state::AppState;
 use stepflow_dto::dto::engine_event::EngineEvent;
 use stepflow_dto::dto::signal::ExecutionSignal;
 

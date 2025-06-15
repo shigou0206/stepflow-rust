@@ -32,7 +32,7 @@ impl StepflowConfig {
     /// 用于构建第 `index` 个 Worker 配置
     pub fn from_env(index: usize) -> Result<Self> {
         let mode = StepflowMode::from_str(
-            &env::var("STEPFLOW_MODE").unwrap_or_else(|_| "poll".to_string())
+            &env::var("STEPFLOW_MODE").unwrap_or_else(|_| "event".to_string())
         )?;
 
         let db_path = env::var("STEPFLOW_DB_PATH").unwrap_or_else(|_| "data/stepflow.db".into());
