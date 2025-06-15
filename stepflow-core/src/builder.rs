@@ -1,6 +1,6 @@
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use sqlx::{sqlite::{SqliteConnectOptions, SqliteJournalMode}, SqlitePool};
 use stepflow_eventbus::impls::local::LocalEventBus;
 use stepflow_hook::{

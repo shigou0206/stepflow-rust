@@ -1,17 +1,7 @@
 mod routes;
 mod service;
-use stepflow_core::app_state::AppState;
-use stepflow_core::builder::build_app_state;
-use axum::Router;
-use std::net::SocketAddr;
 use stepflow_dto::dto;
-use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
-use tracing_subscriber::EnvFilter;
 use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
-use stepflow_common::config::StepflowConfig;
-use stepflow_core::event_runner::start_event_runner;
-use stepflow_common::config::StepflowMode;
 
 
 #[derive(OpenApi)]

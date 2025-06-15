@@ -33,7 +33,7 @@ pub async fn execute_task(
         .execute(&task.tool_type, task.parameters.clone())
         .await;
 
-    let (status, output) = match exec_result {
+    let (_status, output) = match exec_result {
         Ok(ok) => {
             info!(%run_id, "✅ Task succeeded");
             (TaskStatus::SUCCEEDED, ok.output)

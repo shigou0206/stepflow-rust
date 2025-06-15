@@ -10,7 +10,7 @@ use crate::{
 };
 use stepflow_core::{
     app_state::AppState,
-    error::{AppError, AppResult},
+    error::AppResult,
 };
 pub fn router(svc: TemplateSvc) -> Router<AppState> {
     Router::new()
