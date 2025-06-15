@@ -12,10 +12,13 @@ axum            = { version = "0.7", features = ["ws", "macros"] }
 thiserror = "1.0"
 sqlx = { version="0.7", features=["sqlite","runtime-tokio-rustls"] } 
 anyhow    = "1.0"
+prometheus = "0.14" 
 
 stepflow-dto = { path = "../stepflow-dto" }
+stepflow-common = { path = "../stepflow-common" }
 stepflow-engine  = { path = "../stepflow-engine" }
 stepflow-match   = { path = "../stepflow-match" }
 stepflow-storage = { path = "../stepflow-storage" }
 stepflow-hook    = { path = "../stepflow-hook" }
 stepflow-eventbus = { path = "../stepflow-eventbus" }
+stepflow-sqlite  = { path = "../stepflow-sqlite" }
