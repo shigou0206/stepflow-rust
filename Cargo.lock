@@ -3346,6 +3346,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "stepflow-common",
  "stepflow-core",
  "stepflow-dto",
  "stepflow-engine",
