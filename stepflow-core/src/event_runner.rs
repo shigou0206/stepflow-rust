@@ -1,10 +1,9 @@
 use tracing::{debug, error, info};
-
 use crate::app_state::AppState;
 use stepflow_dto::dto::engine_event::EngineEvent;
 use stepflow_dto::dto::signal::ExecutionSignal;
 
-/// 启动事件驱动的执行器 —— 监听 EventBus 上的 TaskFinished 并推进流程
+/// 启动事件驱动执行器
 pub fn start_event_runner(app: AppState) {
     let mut rx = app.subscribe_events();
 
@@ -16,53 +15,59 @@ pub fn start_event_runner(app: AppState) {
                     state_name,
                     output,
                 } => {
-                    info!(run_id, state_name, "📩 received TaskFinished event");
+                    info!(%run_id, %state_name, "📩 Received TaskFinished");
 
                     let mut engines = app.engines.lock().await;
                     let engine = match engines.get_mut(run_id) {
                         Some(e) => e,
                         None => {
-                            debug!(run_id, "⚠️ no active engine");
+                            debug!(%run_id, "⚠️ No active engine found");
                             continue;
                         }
                     };
 
-                    // 推送信号
                     let signal = ExecutionSignal::TaskCompleted {
                         run_id: run_id.clone(),
                         state_name: state_name.clone(),
                         output: output.clone(),
                     };
 
-                    if let Some(tx) = engine.get_signal_sender() {
-                        if let Err(e) = tx.send(signal) {
-                            error!(run_id, ?e, "❌ failed to send signal to engine");
+                    match engine.get_signal_sender() {
+                        Some(tx) => {
+                            if let Err(e) = tx.send(signal) {
+                                error!(%run_id, ?e, "❌ Failed to send signal");
+                                continue;
+                            }
+                        }
+                        None => {
+                            error!(%run_id, "❌ Missing signal sender");
                             continue;
                         }
-                    } else {
-                        error!(run_id, "❌ engine signal sender missing");
-                        continue;
                     }
 
-                    // 尝试推进流程
+                    info!(%run_id, %state_name, "✅ Signal sent, advancing workflow...");
+
                     if let Err(e) = engine.handle_next_signal().await {
-                        error!(run_id, ?e, "❌ handle_next_signal failed");
+                        error!(%run_id, ?e, "❌ handle_next_signal failed");
                         continue;
                     }
 
                     if let Err(e) = engine.advance_until_blocked().await {
-                        error!(run_id, ?e, "❌ advance_until_blocked failed");
+                        error!(%run_id, ?e, "❌ advance_until_blocked failed");
                         continue;
                     }
 
+                    info!(%run_id, "✅ advance_until_blocked complete");
+
                     if engine.finished {
                         engines.remove(run_id);
-                        info!(run_id, "🏁 workflow finished, engine removed");
+                        info!(%run_id, "🏁 workflow finished, engine removed");
                     }
                 }
-                _ => {} // 忽略其他事件
+                _ => {} // ignore other events
             }
         }
-        debug!("🛑 event runner exiting");
+
+        debug!("🛑 Event runner exiting");
     });
 }

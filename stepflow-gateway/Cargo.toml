@@ -28,6 +28,7 @@ stepflow-hook    = { path = "../stepflow-hook" }
 stepflow-eventbus = { path = "../stepflow-eventbus" }
 stepflow-core = { path = "../stepflow-core" }
 stepflow-common = { path = "../stepflow-common" }
+stepflow-worker = { path = "../stepflow-worker" }
 sqlx = { version="0.7", features=["sqlite","runtime-tokio-rustls"] }
 thiserror = "1.0"
 anyhow    = "1.0"

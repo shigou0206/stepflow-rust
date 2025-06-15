@@ -10,7 +10,6 @@ use uuid::Uuid;
 use stepflow_common::config::StepflowConfig;
 use crate::event_worker::client::execute_task;
 
-/// 启动一个事件驱动的 Worker
 pub async fn start_event_worker(
     config: StepflowConfig,
     client: Arc<Client>,
@@ -33,7 +32,6 @@ pub async fn start_event_worker(
                 continue;
             }
 
-            // 构造 TaskDetails
             let task = TaskDetails {
                 run_id,
                 state_name,
@@ -41,16 +39,10 @@ pub async fn start_event_worker(
                 parameters: input.unwrap_or_default(),
             };
 
-            // 控制并发
-            let permit = match semaphore.clone().try_acquire_owned() {
-                Ok(p) => p,
-                Err(_) => {
-                    tracing::warn!("[{}] Worker is saturated, skipping task", config.worker_id);
-                    continue;
-                }
-            };
+            // ✅ 等待可用许可，而不是跳过任务
+            let permit = semaphore.clone().acquire_owned().await?;
 
-            // 克隆必要变量用于 tokio::spawn
+            // 克隆必要变量
             let client = client.clone();
             let config = config.clone();
             let registry = registry.clone();
@@ -58,7 +50,12 @@ pub async fn start_event_worker(
             tokio::spawn(async move {
                 let _permit = permit;
                 let task_id = Uuid::new_v4();
-                tracing::info!("🔧 Task {} executing: {}.{}", task_id, task.run_id, task.state_name);
+                tracing::info!(
+                    "🔧 Task {} executing: {}.{}",
+                    task_id,
+                    task.run_id,
+                    task.state_name
+                );
 
                 if let Err(e) = execute_task(&client, &config, &registry, task).await {
                     tracing::error!("❌ Task execution failed: {e:#}");

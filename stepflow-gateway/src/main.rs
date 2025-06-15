@@ -97,9 +97,24 @@ use stepflow_common::config::StepflowMode;
     )
 )]
 struct ApiDoc;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 日志初始化
+    use stepflow_common::config::{StepflowConfig, StepflowMode};
+    use stepflow_core::builder::build_app_state;
+    use stepflow_core::event_runner::start_event_runner;
+    use stepflow_eventbus::global::set_global_event_bus;
+    use stepflow_worker::launch_worker;
+
+    use axum::Router;
+    use std::net::SocketAddr;
+    use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
+    use tracing_subscriber::EnvFilter;
+    use utoipa::OpenApi;
+    use utoipa_swagger_ui::SwaggerUi;
+    use crate::routes;
+
+    // 初始化日志
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("debug".parse()?))
         .with_target(true)
@@ -108,31 +123,31 @@ async fn main() -> anyhow::Result<()> {
     // ① 加载配置
     let config = StepflowConfig::from_env_default()?;
 
-    // ② 构造 AppState
-    let app_state: AppState = build_app_state(&config).await?;
+    // ② 构建 AppState
+    let app_state = build_app_state(&config).await?;
 
-    // ③ 设置全局事件总线
-    stepflow_eventbus::global::set_global_event_bus(app_state.event_bus.clone())?;
+    // ③ 设置全局事件总线（给 Worker 使用）
+    set_global_event_bus(app_state.event_bus.clone())?;
 
-    // ④ 启动事件驱动模式（仅在 EventDriven 模式下）
+    // ④ 启动事件驱动模式（Engine 自身监听事件）
     if config.mode == StepflowMode::EventDriven {
+        tracing::info!("🔔 Starting engine event runner...");
         start_event_runner(app_state.clone());
     }
 
-    // ⑤ 后台监听事件总线（调试用途）
+    // ⑤ 启动事件总线监听（调试/开发用）
     let mut bus_rx = app_state.subscribe_events();
     tokio::spawn({
         let _state = app_state.clone();
         async move {
             while let Ok(envelope) = bus_rx.recv().await {
                 tracing::debug!(?envelope, "🔔 Got EventEnvelope from EventBus");
-                // 可添加：ui_bridge、signal_manager、metrics 推送等
             }
             tracing::warn!("⚠️ EventBus subscription closed");
         }
     });
 
-    // ⑥ 启动 HTTP 服务
+    // ⑥ 构造 HTTP 服务
     let cloned_state = app_state.clone();
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
@@ -141,10 +156,23 @@ async fn main() -> anyhow::Result<()> {
         .layer(CorsLayer::permissive())
         .layer(CompressionLayer::new());
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    tracing::info!("🚀 Gateway listening at http://{}", addr);
+    let addr: SocketAddr = config.gateway_bind.parse().unwrap_or(([127, 0, 0, 1], 3000).into());
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app.with_state(cloned_state)).await?;
+    tracing::info!("🚀 Gateway listening at http://{}", addr);
+
+    // ⑦ 同时运行 HTTP 和 Worker
+    tokio::select! {
+        res = axum::serve(listener, app.with_state(cloned_state)) => {
+            if let Err(e) = res {
+                tracing::error!("❌ HTTP server exited with error: {e:#}");
+            }
+        }
+        res = launch_worker() => {
+            if let Err(e) = res {
+                tracing::error!("❌ Worker exited with error: {e:#}");
+            }
+        }
+    }
 
     Ok(())
 }

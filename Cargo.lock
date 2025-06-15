@@ -3393,6 +3393,7 @@ dependencies = [
  "stepflow-sqlite",
  "stepflow-storage",
  "stepflow-tool",
+ "stepflow-worker",
  "thiserror 1.0.69",
  "tokio",
  "tower 0.4.13",
