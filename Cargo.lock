@@ -3345,6 +3345,11 @@ dependencies = [
 [[package]]
 name = "stepflow-exception"
 version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "serde",
+ "stepflow-dto",
+]
 
 [[package]]
 name = "stepflow-frb-api"
