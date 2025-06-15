@@ -1,4 +1,3 @@
-use crate::config::WorkerConfig;
 use anyhow::Result;
 use reqwest::Client;
 use stepflow_dto::dto::engine_event::EngineEvent;
@@ -8,12 +7,12 @@ use stepflow_tool::core::registry::ToolRegistry;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
-
+use stepflow_common::config::StepflowConfig;
 use crate::event_worker::client::execute_task;
 
 /// 启动一个事件驱动的 Worker
 pub async fn start_event_worker(
-    config: WorkerConfig,
+    config: StepflowConfig,
     client: Arc<Client>,
     registry: Arc<ToolRegistry>,
     bus: Arc<dyn EventBus>,

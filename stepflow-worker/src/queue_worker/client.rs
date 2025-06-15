@@ -1,4 +1,4 @@
-use crate::config::WorkerConfig;
+use stepflow_common::config::StepflowConfig;
 use stepflow_dto::dto::worker::*;
 use stepflow_tool::core::registry::ToolRegistry;
 use anyhow::{Context, Result};
@@ -8,7 +8,7 @@ use std::time::Instant;
 
 pub async fn poll_for_task(
     client: &Client,
-    config: &WorkerConfig,
+    config: &StepflowConfig,
 ) -> Result<Option<(String, TaskDetails)>> {
     let url = format!("{}/poll", config.gateway_server_url);
     let req = PollRequest {
@@ -56,7 +56,7 @@ pub async fn poll_for_task(
 
 pub async fn execute_task(
     client: &Client,
-    config: &WorkerConfig,
+    config: &StepflowConfig,
     registry: &ToolRegistry,
     task: TaskDetails,
 ) -> Result<()> {

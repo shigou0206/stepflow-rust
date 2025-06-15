@@ -3227,6 +3227,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "stepflow-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "stepflow-core"
 version = "0.1.0"
 
@@ -3494,6 +3501,7 @@ dependencies = [
  "reqwest 0.12.18",
  "serde",
  "serde_json",
+ "stepflow-common",
  "stepflow-dto",
  "stepflow-eventbus",
  "stepflow-tool",

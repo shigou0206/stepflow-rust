@@ -1,4 +1,3 @@
-pub mod config;
 pub mod queue_worker;
 pub mod event_worker;
 

@@ -14,7 +14,7 @@ members = [
     "stepflow-postgres", 
     "stepflow-eventbus", 
     "stepflow-frb-api", 
-    "stepflow-core",
+    "stepflow-core", "stepflow-common",
 ]
 resolver = "2"
 

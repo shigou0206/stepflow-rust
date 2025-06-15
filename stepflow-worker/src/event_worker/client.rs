@@ -4,11 +4,11 @@ use serde_json::json;
 use std::time::Instant;
 use stepflow_tool::core::registry::ToolRegistry;
 use stepflow_dto::dto::worker::{TaskDetails, TaskStatus, UpdateRequest};
-use crate::config::WorkerConfig;
+use stepflow_common::config::StepflowConfig;
 
 pub async fn execute_task(
     client: &Client,
-    config: &WorkerConfig,
+    config: &StepflowConfig,
     registry: &ToolRegistry,
     task: TaskDetails,
 ) -> Result<()> {

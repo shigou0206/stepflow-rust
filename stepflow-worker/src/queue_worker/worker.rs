@@ -1,5 +1,5 @@
 use crate::queue_worker::client;
-use crate::config::WorkerConfig;
+use stepflow_common::config::StepflowConfig;
 use anyhow::Result;
 use reqwest::Client;
 use stepflow_tool::core::registry::ToolRegistry;
@@ -9,7 +9,7 @@ use std::time::Duration;
 
 /// 启动基于轮询的 Worker
 pub async fn start_queue_worker(
-    config: WorkerConfig,
+    config: StepflowConfig,
     client: Arc<Client>,
     registry: Arc<ToolRegistry>,
     concurrency: usize,

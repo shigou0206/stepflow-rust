@@ -1,10 +1,11 @@
 use anyhow::Result;
+
+use stepflow_common::config::{StepflowConfig, StepflowMode};
 use tracing_subscriber::EnvFilter;
 use std::sync::Arc;
 use reqwest::Client;
 
 use stepflow_worker::{
-    config::{WorkerConfig, WorkerMode},
     start_queue_worker,
     start_event_worker,
 };
@@ -22,7 +23,7 @@ async fn main() -> Result<()> {
         .init();
 
     // —— 环境配置 ——
-    let config = WorkerConfig::from_env(0)?;
+    let config = StepflowConfig::from_env(0)?;
     let concurrency = DEFAULT_CONCURRENCY;
 
     // —— 公共依赖注入 ——
@@ -30,11 +31,11 @@ async fn main() -> Result<()> {
     let registry = GLOBAL_TOOL_REGISTRY.clone();
 
     match config.mode {
-        WorkerMode::Polling => {
+        StepflowMode::Polling => {
             tracing::info!("🚀 Starting in polling mode...");
             start_queue_worker(config, client, registry, concurrency).await?;
         }
-        WorkerMode::EventDriven => {
+        StepflowMode::EventDriven => {
             tracing::info!("🚀 Starting in event-driven mode...");
             let bus = Arc::new(LocalEventBus::new(100)); // 后期可注入远程 EventBus
             start_event_worker(config, client, registry, bus, concurrency).await?;
