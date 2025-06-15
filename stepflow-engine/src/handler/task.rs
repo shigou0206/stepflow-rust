@@ -26,9 +26,7 @@ impl TaskHandler {
         debug!("Executing task inline with resource: {}", state.resource);
 
         let tool = {
-            let registry = GLOBAL_TOOL_REGISTRY
-                .lock()
-                .map_err(|e| format!("Failed to lock tool registry: {}", e))?;
+            let registry = GLOBAL_TOOL_REGISTRY.clone();
 
             registry
                 .get(&state.resource)
