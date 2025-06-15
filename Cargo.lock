@@ -3410,6 +3410,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "stepflow-dto",
+ "stepflow-eventbus",
  "stepflow-storage",
  "thiserror 1.0.69",
  "tokio",

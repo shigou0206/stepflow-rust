@@ -8,6 +8,17 @@ use crate::dto::engine_event::EngineEvent;
 pub struct EventEnvelope {
     pub event_id: Uuid,
     pub timestamp: DateTime<Utc>,
-    pub run_id: String,
-    pub event: EngineEvent,
+    pub source: String,
+    pub payload: EngineEvent,
+}
+
+impl From<EngineEvent> for EventEnvelope {
+    fn from(event: EngineEvent) -> Self {
+        EventEnvelope {
+            event_id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            source: "engine".into(),
+            payload: event,
+        }
+    }
 }

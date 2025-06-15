@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 stepflow-storage = { path = "../stepflow-storage" }
 stepflow-dto = { path = "../stepflow-dto" }
+stepflow-eventbus = { path = "../stepflow-eventbus" }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"

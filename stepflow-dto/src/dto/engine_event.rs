@@ -55,13 +55,13 @@ pub enum EngineEvent {
         run_id: String,
         state_name: String,
     },
-    ActivityTaskDispatched {
+    TaskReady {
         run_id: String,
         state_name: String,
-        task_type: String,
-        input: Value,
+        resource: String,
+        input: Option<Value>,
     },
-    ActivityTaskCompleted {
+    TaskFinished {
         run_id: String,
         state_name: String,
         output: Value,
