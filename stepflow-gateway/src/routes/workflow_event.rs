@@ -6,10 +6,11 @@ use axum::{
 
 use stepflow_dto::dto::workflow_event::{WorkflowEventDto, RecordEventRequest, ListQuery};
 
-use crate::{
+use crate::service::WorkflowEventSvc;
+
+use stepflow_core::{
     app_state::AppState,
-    error::AppResult,
-    service::WorkflowEventSvc,
+    error::{AppError, AppResult},
 };
 
 pub fn router(svc: WorkflowEventSvc) -> Router<AppState> {
@@ -61,7 +62,7 @@ async fn get_event(
     Path(id): Path<i64>,
 ) -> AppResult<Json<WorkflowEventDto>> {
     let event = svc.get_event(id).await?
-        .ok_or_else(|| crate::error::AppError::NotFound)?;
+        .ok_or_else(|| AppError::NotFound)?;
     Ok(Json(event))
 }
 
@@ -127,7 +128,7 @@ async fn archive_event(
     Path(id): Path<i64>,
 ) -> AppResult<Json<WorkflowEventDto>> {
     let event = svc.archive_event(id).await?
-        .ok_or_else(|| crate::error::AppError::NotFound)?;
+        .ok_or_else(|| AppError::NotFound)?;
     Ok(Json(event))
 }
 

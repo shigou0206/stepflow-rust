@@ -1,8 +1,6 @@
-mod app_state;
-mod error;
 mod routes;
 mod service;
-use app_state::AppState;
+use stepflow_core::app_state::AppState;
 use axum::Router;
 use prometheus::Registry;
 use sqlx::SqlitePool;

@@ -7,7 +7,7 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use stepflow_eventbus::core::bus::EventBus;
 use stepflow_eventbus::impls::local::LocalEventBus;
-use stepflow_gateway::app_state::AppState;
+use stepflow_core::app_state::AppState;
 use stepflow_gateway::service::execution::ExecutionSqlxSvc;
 use stepflow_hook::EngineEventDispatcher;
 use stepflow_hook::impls::log_hook::LogHook;

@@ -1,10 +1,12 @@
-// gateway/src/service/execution_sqlx.rs
-use crate::app_state::AppState;
-use crate::error::{AppError, AppResult};
+
 use anyhow::{Context, Error};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;
+use stepflow_core::{
+    app_state::AppState,
+    error::{AppError, AppResult},
+};
 use stepflow_dto::dto::execution::*;
 use stepflow_engine::engine::{WorkflowEngine, WorkflowMode};
 use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;

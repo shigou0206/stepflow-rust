@@ -26,3 +26,4 @@ stepflow-storage = { path = "../stepflow-storage" }
 stepflow-match = { path = "../stepflow-match" }
 stepflow-hook = { path = "../stepflow-hook" }
 stepflow-engine = { path = "../stepflow-engine" }
+stepflow-core = { path = "../stepflow-core" }

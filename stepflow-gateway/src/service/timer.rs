@@ -2,8 +2,8 @@ use chrono::{Utc, DateTime};
 use std::sync::Arc;
 use stepflow_storage::entities::timer::{StoredTimer, UpdateStoredTimer};
 use stepflow_dto::dto::timer::{TimerDto, CreateTimerDto, UpdateTimerDto};
-use crate::{
-    error::{AppResult, AppError},
+use stepflow_core::{
+    error::{AppError, AppResult},
     app_state::AppState,
 };
 use anyhow::anyhow;

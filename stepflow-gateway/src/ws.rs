@@ -3,7 +3,7 @@ use axum::{
     response::Response,
 };
 use tokio::sync::broadcast;
-use crate::app_state::AppState;
+use stepflow_core::app_state::AppState;
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,

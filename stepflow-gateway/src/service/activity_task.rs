@@ -12,10 +12,9 @@ use stepflow_storage::{
     error::StorageError,
 };
 
-use crate::{
-    error::{AppError, AppResult},
-    service::ActivityTaskService,
-};
+use crate::service::ActivityTaskService;
+
+use stepflow_core::error::{AppError, AppResult};
 
 /// ------------------------------------------------------------
 /// 具体实现结构体

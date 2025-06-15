@@ -1,6 +1,6 @@
 pub mod template;
 
-use crate::error::AppResult;
+use stepflow_core::error::AppResult;
 use async_trait::async_trait;
 use stepflow_dto::dto::template::*;
 use serde_json::Value;

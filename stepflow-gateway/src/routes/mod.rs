@@ -8,7 +8,6 @@ pub mod queue_task;
 pub mod timer;
 pub mod match_router;
 use crate::{
-    app_state::AppState, 
     service::{
         template::TemplateSqlxSvc,
         execution::ExecutionSqlxSvc,
@@ -18,6 +17,7 @@ use crate::{
         timer::TimerSqlxSvc
     },
 };
+use stepflow_core::app_state::AppState;
 use std::sync::Arc;
 
 pub fn new(state: AppState) -> Router<AppState> {

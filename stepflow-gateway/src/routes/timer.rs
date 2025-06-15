@@ -7,9 +7,12 @@ use axum::{
 use stepflow_dto::dto::timer::{TimerDto, CreateTimerDto, UpdateTimerDto};
 
 use crate::{
-    app_state::AppState,
     service::{TimerSvc, TimerService},
-    error::AppResult,
+};
+
+use stepflow_core::{
+    app_state::AppState,
+    error::{AppError, AppResult},
 };
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -128,12 +131,12 @@ pub async fn find_before(
     Query(params): Query<HashMap<String, String>>,
 ) -> AppResult<Json<Vec<TimerDto>>> {
     let before_str = params.get("before").cloned().ok_or_else(|| {
-        crate::error::AppError::BadRequest("缺少 before 参数".into())
+        AppError::BadRequest("缺少 before 参数".into())
     })?;
 
     let before: DateTime<Utc> = before_str
         .parse()
-        .map_err(|e| crate::error::AppError::BadRequest(format!("时间格式错误: {}", e)))?;
+        .map_err(|e| AppError::BadRequest(format!("时间格式错误: {}", e)))?;
 
     let limit = params
         .get("limit")

@@ -4,3 +4,18 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+tokio           = { version = "1", features=["macros","rt-multi-thread"] }
+http            = "1.1"
+serde           = { version="1", features=["derive"] }
+serde_json      = "1.0"
+axum            = { version = "0.7", features = ["ws", "macros"] }
+thiserror = "1.0"
+sqlx = { version="0.7", features=["sqlite","runtime-tokio-rustls"] } 
+anyhow    = "1.0"
+
+stepflow-dto = { path = "../stepflow-dto" }
+stepflow-engine  = { path = "../stepflow-engine" }
+stepflow-match   = { path = "../stepflow-match" }
+stepflow-storage = { path = "../stepflow-storage" }
+stepflow-hook    = { path = "../stepflow-hook" }
+stepflow-eventbus = { path = "../stepflow-eventbus" }

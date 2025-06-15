@@ -9,7 +9,7 @@ use chrono::Utc;
 use std::time::Duration;
 use tracing::{debug, info};    
 
-use crate::{
+use stepflow_core::{
     app_state::AppState,
     error::{AppError, AppResult},
 };

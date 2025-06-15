@@ -7,8 +7,11 @@ use axum::{
 use stepflow_dto::dto::queue_task::{QueueTaskDto, UpdateQueueTaskDto};
 use crate::{
     service::{QueueTaskSvc, QueueTaskService},
-    error::AppResult,
+   
+};
+use stepflow_core::{
     app_state::AppState,
+    error::{AppError, AppResult},
 };
 use std::collections::HashMap;
 use chrono::NaiveDateTime;
@@ -159,10 +162,10 @@ pub async fn list_to_retry(
     Query(params): Query<HashMap<String, String>>,
 ) -> AppResult<Json<Vec<QueueTaskDto>>> {
     let before_str = params.get("before").cloned().ok_or_else(|| {
-        crate::error::AppError::BadRequest("missing 'before' param".into())
+        AppError::BadRequest("missing 'before' param".into())
     })?;
     let before = before_str.parse::<NaiveDateTime>()
-        .map_err(|e| crate::error::AppError::BadRequest(format!("invalid datetime: {e}")))?;
+        .map_err(|e| AppError::BadRequest(format!("invalid datetime: {e}")))?;
     let limit = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(50);
     let list = svc.list_tasks_to_retry(before, limit).await?;
     Ok(Json(list))

@@ -10,10 +10,11 @@ use stepflow_dto::dto::activity_task::{
     CompleteRequest, 
     FailRequest, 
     HeartbeatRequest};
-
-use crate::{
+use stepflow_core::{
     app_state::AppState,
     error::AppResult,
+};
+use crate::{
     service::{ActivityTaskService, ActivityTaskSvc},
 };
 

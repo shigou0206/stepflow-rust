@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use stepflow_dto::dto::queue_task::{QueueTaskDto, UpdateQueueTaskDto};
-use crate::error::{AppResult, AppError};
-use crate::app_state::AppState;
+use stepflow_core::{
+    app_state::AppState,
+    error::{AppError, AppResult},
+};
 use std::sync::Arc;
 use stepflow_storage::entities::queue_task::{StoredQueueTask, UpdateStoredQueueTask};
 use crate::service::QueueTaskService;

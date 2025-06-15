@@ -7,10 +7,11 @@ use stepflow_dto::dto::template::{TemplateUpsert, TemplateDto};
 
 use crate::{
     service::{TemplateSvc, TemplateService},
-    error::AppResult,
-    app_state::AppState,
 };
-
+use stepflow_core::{
+    app_state::AppState,
+    error::{AppError, AppResult},
+};
 pub fn router(svc: TemplateSvc) -> Router<AppState> {
     Router::new()
         .route("/", post(create).get(list))
