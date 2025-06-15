@@ -3343,6 +3343,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "stepflow-exception"
+version = "0.1.0"
+
+[[package]]
 name = "stepflow-frb-api"
 version = "0.1.0"
 dependencies = [
