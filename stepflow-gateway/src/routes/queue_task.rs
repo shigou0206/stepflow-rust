@@ -5,10 +5,7 @@ use axum::{
 };
 
 use stepflow_dto::dto::queue_task::{QueueTaskDto, UpdateQueueTaskDto};
-use crate::{
-    service::{QueueTaskSvc, QueueTaskService},
-   
-};
+use crate::service::{QueueTaskSvc, QueueTaskService};
 use stepflow_core::{
     app_state::AppState,
     error::{AppError, AppResult},

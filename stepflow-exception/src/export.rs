@@ -1,4 +1,4 @@
-use crate::registry::{ERROR_REGISTRY, ErrorDescriptor};
+use crate::registry::ERROR_REGISTRY;
 use serde::Serialize;
 
 /// 可序列化的导出结构
