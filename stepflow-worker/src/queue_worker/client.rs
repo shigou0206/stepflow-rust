@@ -3,7 +3,7 @@ use stepflow_dto::dto::worker::*;
 use stepflow_tool::core::registry::ToolRegistry;
 use anyhow::{Context, Result};
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::time::Instant;
 
 pub async fn poll_for_task(
@@ -52,14 +52,6 @@ pub async fn poll_for_task(
     } else {
         Ok(None)
     }
-}
-
-#[derive(Debug)]
-pub struct TaskDetails {
-    pub run_id: String,
-    pub state_name: String,
-    pub tool_type: String,
-    pub parameters: Value,
 }
 
 pub async fn execute_task(

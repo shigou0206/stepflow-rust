@@ -110,3 +110,11 @@ pub struct CompleteRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_id: Option<String>,
 }
+
+#[derive(Debug)]
+pub struct TaskDetails {
+    pub run_id: String,
+    pub state_name: String,
+    pub tool_type: String,
+    pub parameters: Value,
+}

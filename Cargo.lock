@@ -3495,10 +3495,12 @@ dependencies = [
  "serde",
  "serde_json",
  "stepflow-dto",
+ "stepflow-eventbus",
  "stepflow-tool",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
