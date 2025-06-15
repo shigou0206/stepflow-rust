@@ -71,7 +71,7 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
             mode,
             self.state.event_dispatcher.clone(),
             self.state.persist.clone(),
-            self.state.match_service.clone(),
+            self.state.state_handler_registry.clone(),
         );
 
         // ---------- ③ 先落库 execution(状态 RUNNING) 防止锁冲突 ----------

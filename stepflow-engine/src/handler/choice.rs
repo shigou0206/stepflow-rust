@@ -4,35 +4,32 @@ use tracing::{debug, warn};
 
 use stepflow_dsl::{
     logic::ChoiceRule,
-    state::choice::ChoiceState,
+    state::{choice::ChoiceState, State},
 };
-  
+
 use crate::logic::choice_eval::eval_choice_logic;
 use super::{
     StateExecutionScope, StateExecutionResult, StateHandler,
 };
 
 /// ---------------------------------------------------------------------
-/// ChoiceHandler
+/// ChoiceHandler（无状态，可注册为单例）
 /// ---------------------------------------------------------------------
-pub struct ChoiceHandler<'a> {
-    state: &'a ChoiceState,
-}
+pub struct ChoiceHandler;
 
-impl<'a> ChoiceHandler<'a> {
-    pub fn new(state: &'a ChoiceState) -> Self {
-        Self { state }
+impl ChoiceHandler {
+    pub fn new() -> Self {
+        Self
     }
 
     /// 真正的分支匹配逻辑
-    async fn evaluate_choice(&self, input: &Value) -> Result<Option<String>, String> {
+    async fn evaluate_choice(&self, state: &ChoiceState, input: &Value) -> Result<Option<String>, String> {
         debug!(
             "Evaluating choice rules with {} branches",
-            self.state.choices.len()
+            state.choices.len()
         );
 
-        // 1️⃣ 依次判断 DSL 中显式列出的 branches
-        for (idx, ChoiceRule { condition, next }) in self.state.choices.iter().enumerate() {
+        for (idx, ChoiceRule { condition, next }) in state.choices.iter().enumerate() {
             match eval_choice_logic(condition, input) {
                 Ok(true) => {
                     debug!("Branch {idx} matched");
@@ -48,29 +45,32 @@ impl<'a> ChoiceHandler<'a> {
             }
         }
 
-        // 2️⃣ 无命中但存在 default
-        if let Some(default_next) = &self.state.default_next {
+        if let Some(default_next) = &state.default_next {
             debug!("No branches matched – using default");
             return Ok(Some(default_next.clone()));
         }
 
-        // 3️⃣ 无命中且无 default
         warn!("No matching branch and no default");
         Err("No matching branch and no default branch provided".into())
     }
 }
 
 /// ---------------------------------------------------------------------
-/// StateHandler 实现
+/// 注册式 StateHandler 实现
 /// ---------------------------------------------------------------------
 #[async_trait]
-impl<'a> StateHandler for ChoiceHandler<'a> {
+impl StateHandler for ChoiceHandler {
     async fn handle(
         &self,
-        _scope: &StateExecutionScope<'_>,
+        scope: &StateExecutionScope<'_>,
         input: &Value,
     ) -> Result<StateExecutionResult, String> {
-        let next_state = self.evaluate_choice(input).await?;
+        let state = match scope.state_def {
+            State::Choice(ref s) => s,
+            _ => return Err("Invalid state type for ChoiceHandler".into()),
+        };
+
+        let next_state = self.evaluate_choice(state, input).await?;
 
         Ok(StateExecutionResult {
             output: input.clone(), // Choice 不修改上下文

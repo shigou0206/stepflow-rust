@@ -32,3 +32,18 @@ pub enum State {
     Parallel(ParallelState),
     Map(MapState),
 }
+
+impl State {
+    pub fn variant_name(&self) -> &'static str {
+        match self {
+            State::Task(_) => "task",
+            State::Pass(_) => "pass",
+            State::Wait(_) => "wait",
+            State::Choice(_) => "choice",
+            State::Succeed(_) => "succeed",
+            State::Fail(_) => "fail",
+            State::Parallel(_) => "parallel",
+            State::Map(_) => "map",
+        }
+    }
+}

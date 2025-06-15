@@ -6,7 +6,7 @@ pub mod wait;
 pub mod choice;
 pub mod succeed;
 pub mod fail;
-
+pub mod registry;
 pub use execution_scope::{StateExecutionScope, StateExecutionResult};
 pub use traits::StateHandler;
 pub use task::TaskHandler;

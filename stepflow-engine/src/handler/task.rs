@@ -1,6 +1,6 @@
 use chrono::Utc;
 use serde_json::Value;
-use stepflow_dsl::state::task::TaskState;
+use stepflow_dsl::state::{task::TaskState, State};
 use crate::engine::WorkflowMode;
 use stepflow_match::service::MatchService;
 use stepflow_dto::dto::queue_task::QueueTaskDto;
@@ -13,6 +13,101 @@ use tracing::{debug, warn};
 
 use super::{StateHandler, StateExecutionScope, StateExecutionResult};
 
+pub struct TaskHandler {
+    match_service: Arc<dyn MatchService>,
+}
+
+impl TaskHandler {
+    pub fn new(match_service: Arc<dyn MatchService>) -> Self {
+        Self { match_service }
+    }
+
+    async fn handle_inline(&self, state: &TaskState, input: &Value) -> Result<Value, String> {
+        debug!("Executing task inline with resource: {}", state.resource);
+
+        let tool = {
+            let registry = GLOBAL_TOOL_REGISTRY
+                .lock()
+                .map_err(|e| format!("Failed to lock tool registry: {}", e))?;
+
+            registry
+                .get(&state.resource)
+                .ok_or_else(|| format!("Tool not found: {}", state.resource))?
+                .clone()
+        };
+
+        let context = ToolContext::default();
+
+        tool.validate_input(&input, &context)
+            .map_err(|e| format!("Tool input validation failed: {}", e))?;
+
+        let result = tool
+            .execute(input.clone(), context)
+            .await
+            .map_err(|e| format!("Tool execution failed: {}", e))?;
+
+        Ok(result.output)
+    }
+
+    async fn handle_deferred(
+        &self,
+        scope: &StateExecutionScope<'_>,
+        state: &TaskState,
+        input: &Value,
+    ) -> Result<(Value, Value), String> {
+        debug!(
+            "Creating deferred task for resource: {} via MatchService",
+            state.resource
+        );
+
+        let task = build_queue_task(scope.run_id, scope.state_name, state, input);
+
+        self.match_service
+            .enqueue_task(&state.resource, task.clone())
+            .await
+            .map_err(|e| format!("Failed to enqueue task via MatchService: {}", e))?;
+
+        let metadata = serde_json::to_value(&task)
+            .map_err(|e| format!("Failed to serialize task metadata: {}", e))?;
+
+        Ok((input.clone(), metadata))
+    }
+}
+
+#[async_trait]
+impl StateHandler for TaskHandler {
+    async fn handle(
+        &self,
+        scope: &StateExecutionScope<'_>,
+        input: &Value,
+    ) -> Result<StateExecutionResult, String> {
+        let state = match scope.state_def {
+            State::Task(ref s) => s,
+            _ => return Err("Invalid state type for TaskHandler".into()),
+        };
+
+        let (output, metadata) = match scope.mode {
+            WorkflowMode::Inline => (self.handle_inline(state, input).await?, None),
+            WorkflowMode::Deferred => {
+                let (out, meta) = self.handle_deferred(scope, state, input).await?;
+                (out, Some(meta))
+            }
+        };
+
+        Ok(StateExecutionResult {
+            output,
+            next_state: state.base.next.clone(),
+            should_continue: true,
+            metadata,
+        })
+    }
+
+    fn state_type(&self) -> &'static str {
+        "task"
+    }
+}
+
+// 保留任务构建辅助函数
 fn extract_priority_and_timeout(
     state: &TaskState,
     run_id: &str,
@@ -70,98 +165,3 @@ fn build_queue_task(
         failed_at: None,
     }
 }
-
-pub struct TaskHandler<'a> {
-    match_service: Arc<dyn MatchService>,
-    state: &'a TaskState,
-}
-
-impl<'a> TaskHandler<'a> {
-    pub fn new(
-        match_service: Arc<dyn MatchService>,
-        state: &'a TaskState,
-    ) -> Self {
-        Self {
-            match_service,
-            state,
-        }
-    }
-
-    async fn handle_inline(&self, input: &Value) -> Result<Value, String> {
-        debug!("Executing task inline with resource: {}", self.state.resource);
-
-        let tool = {
-            let registry = GLOBAL_TOOL_REGISTRY
-                .lock()
-                .map_err(|e| format!("Failed to lock tool registry: {}", e))?;
-
-            registry
-                .get(&self.state.resource)
-                .ok_or_else(|| format!("Tool not found: {}", self.state.resource))?
-                .clone()
-        };
-
-        let context = ToolContext::default();
-
-        tool.validate_input(&input, &context)
-            .map_err(|e| format!("Tool input validation failed: {}", e))?;
-
-        let result = tool
-            .execute(input.clone(), context)
-            .await
-            .map_err(|e| format!("Tool execution failed: {}", e))?;
-
-        Ok(result.output)
-    }
-
-    async fn handle_deferred(
-        &self,
-        scope: &StateExecutionScope<'_>,
-        input: &Value,
-    ) -> Result<(Value, Value), String> {
-        debug!(
-            "Creating deferred task for resource: {} via MatchService",
-            self.state.resource
-        );
-
-        let task = build_queue_task(scope.run_id, scope.state_name, self.state, &input);
-
-        self.match_service
-            .enqueue_task(&self.state.resource, task.clone())
-            .await
-            .map_err(|e| format!("Failed to enqueue task via MatchService: {}", e))?;
-
-        let metadata = serde_json::to_value(&task)
-            .map_err(|e| format!("Failed to serialize task metadata: {}", e))?;
-
-        Ok((input.clone(), metadata))
-    }
-}
-
-#[async_trait]
-impl<'a> StateHandler for TaskHandler<'a> {
-    async fn handle(
-        &self,
-        scope: &StateExecutionScope<'_>,
-        input: &Value,
-    ) -> Result<StateExecutionResult, String> {
-        let (output, metadata) = match scope.mode {
-            WorkflowMode::Inline => (self.handle_inline(input).await?, None),
-            WorkflowMode::Deferred => {
-                let (out, meta) = self.handle_deferred(scope, input).await?;
-                (out, Some(meta))
-            }
-        };
-
-        Ok(StateExecutionResult {
-            output,
-            next_state: self.state.base.next.clone(),
-            should_continue: true,
-            metadata,
-        })
-    }
-
-    fn state_type(&self) -> &'static str {
-        "task"
-    }
-}        

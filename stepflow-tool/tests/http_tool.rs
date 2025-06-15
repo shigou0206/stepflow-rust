@@ -1,6 +1,6 @@
 use serde_json::json;
 use stepflow_tool::{Tool, ToolContext};
-use stepflow_tool::tools::http::{HttpTool, HttpConfig};
+use stepflow_tool::tools::http::HttpTool;
 
 #[tokio::test]
 async fn test_http_get_real_url() {

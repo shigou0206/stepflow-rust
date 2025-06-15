@@ -9,9 +9,9 @@ use stepflow_dsl::{State, WorkflowDSL};
 use stepflow_dto::dto::engine_event::EngineEvent;
 use stepflow_dto::dto::signal::ExecutionSignal;
 use stepflow_hook::EngineEventDispatcher;
-use stepflow_match::service::MatchService;
 use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
+use crate::handler::registry::StateHandlerRegistry;
 use tokio::sync::mpsc;
 
 use super::{
@@ -52,7 +52,7 @@ pub struct WorkflowEngine {
     pub mode: WorkflowMode,
     pub event_dispatcher: Arc<EngineEventDispatcher>,
     pub persistence: DynPM,
-    pub match_service: Arc<dyn MatchService>,
+    pub state_handler_registry: Arc<StateHandlerRegistry>,
 
     pub finished: bool,
     pub updated_at: DateTime<Utc>,
@@ -70,7 +70,7 @@ impl WorkflowEngine {
         mode: WorkflowMode,
         event_dispatcher: Arc<EngineEventDispatcher>,
         persistence: DynPM,
-        match_service: Arc<dyn MatchService>,
+        state_handler_registry: Arc<StateHandlerRegistry>,
     ) -> Self {
         let (signal_sender, signal_receiver) = mpsc::unbounded_channel();
 
@@ -83,7 +83,7 @@ impl WorkflowEngine {
             mode,
             event_dispatcher,
             persistence,
-            match_service,
+            state_handler_registry,
             finished: false,
             updated_at: Utc::now(),
             signal_sender: Some(signal_sender),
@@ -127,7 +127,7 @@ impl WorkflowEngine {
         run_id: String,
         event_dispatcher: Arc<EngineEventDispatcher>,
         persistence: DynPM,
-        match_service: Arc<dyn MatchService>,
+        state_handler_registry: Arc<StateHandlerRegistry>,
     ) -> Result<Self, String> {
         let execution = persistence
             .get_execution(&run_id)
@@ -178,7 +178,7 @@ impl WorkflowEngine {
             mode,
             event_dispatcher,
             persistence,
-            match_service,
+            state_handler_registry,
             finished,
             updated_at: execution
                 .close_time
@@ -438,8 +438,8 @@ impl WorkflowEngine {
             &self.context,
             &self.run_id,
             self.mode,
-            self.match_service.clone(),
             &self.persistence,
+            &self.state_handler_registry,
         )
         .await?;
 

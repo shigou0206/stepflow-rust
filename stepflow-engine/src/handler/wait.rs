@@ -3,11 +3,10 @@ use serde_json::Value;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{Utc, DateTime};
 use thiserror::Error;
 
-use stepflow_dsl::state::wait::WaitState;
-use stepflow_storage::db::DynPM;
+use stepflow_dsl::state::{wait::WaitState, State};
 use stepflow_storage::entities::timer::StoredTimer;
 use stepflow_dto::dto::timer::TimerDto;
 
@@ -15,9 +14,8 @@ use crate::{
     engine::WorkflowMode,
     mapping::MappingPipeline,
 };
-use super::{StateHandler, StateExecutionScope, StateExecutionResult};
 
-use chrono::DateTime;
+use super::{StateHandler, StateExecutionScope, StateExecutionResult};
 
 const MAX_INLINE_WAIT_SECONDS: u64 = 300;
 
@@ -31,13 +29,11 @@ pub enum WaitError {
     DatabaseError(String),
 }
 
-pub struct WaitHandler<'a> {
-    state: &'a WaitState,
-}
+pub struct WaitHandler;
 
-impl<'a> WaitHandler<'a> {
-    pub fn new(state: &'a WaitState) -> Self {
-        Self { state }
+impl WaitHandler {
+    pub fn new() -> Self {
+        Self
     }
 
     async fn handle_inline(&self, secs: u64) -> Result<(), String> {
@@ -97,9 +93,10 @@ impl<'a> WaitHandler<'a> {
     async fn process_wait(
         &self,
         scope: &StateExecutionScope<'_>,
+        state: &WaitState,
         _exec_input: &Value,
     ) -> Result<Option<Value>, String> {
-        if let Some(secs) = self.state.seconds {
+        if let Some(secs) = state.seconds {
             if secs == 0 {
                 debug!("⏩ Wait = 0s, skipping wait");
                 return Ok(None);
@@ -115,7 +112,7 @@ impl<'a> WaitHandler<'a> {
                     Ok(Some(metadata))
                 },
             }
-        } else if self.state.timestamp.is_some() {
+        } else if state.timestamp.is_some() {
             warn!("Timestamp wait specified, but not supported yet");
             Err(WaitError::TimestampNotSupported.to_string())
         } else {
@@ -125,30 +122,34 @@ impl<'a> WaitHandler<'a> {
 }
 
 #[async_trait]
-impl<'a> StateHandler for WaitHandler<'a> {
+impl StateHandler for WaitHandler {
     async fn handle(
         &self,
         scope: &StateExecutionScope<'_>,
         input: &Value,
     ) -> Result<StateExecutionResult, String> {
+        let state = match scope.state_def {
+            State::Wait(ref w) => w,
+            _ => return Err("Invalid state type for WaitHandler".into()),
+        };
+
         let pipeline = MappingPipeline {
-            input_mapping: self.state.base.input_mapping.as_ref(),
-            output_mapping: self.state.base.output_mapping.as_ref(),
+            input_mapping: state.base.input_mapping.as_ref(),
+            output_mapping: state.base.output_mapping.as_ref(),
         };
 
         let exec_input = pipeline.apply_input(input)?;
 
         debug!("WaitHandler input mapped: {}", exec_input);
 
-        let metadata = self.process_wait(scope, &exec_input).await?;
-
+        let metadata = self.process_wait(scope, state, &exec_input).await?;
         let final_output = pipeline.apply_output(&exec_input, input)?;
 
         debug!("WaitHandler final output: {}", final_output);
 
         Ok(StateExecutionResult {
             output: final_output,
-            next_state: self.state.base.next.clone(),
+            next_state: state.base.next.clone(),
             should_continue: true,
             metadata,
         })
@@ -157,26 +158,4 @@ impl<'a> StateHandler for WaitHandler<'a> {
     fn state_type(&self) -> &'static str {
         "wait"
     }
-}
-
-pub async fn handle_wait(
-    state_name: &str,
-    state: &WaitState,
-    input: &Value,
-    mode: WorkflowMode,
-    run_id: &str,
-    persistence: &DynPM,
-) -> Result<Value, String> {
-    let scope = StateExecutionScope::new(
-        run_id,
-        state_name,
-        "wait",
-        mode,
-        None,
-        persistence,
-    );
-
-    let handler = WaitHandler::new(state);
-    let result = handler.handle(&scope, input).await?;
-    Ok(result.output)
 }

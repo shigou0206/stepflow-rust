@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use stepflow_hook::EngineEventDispatcher;
 use stepflow_storage::db::DynPM;
-
+use stepflow_dsl::State;
 use crate::engine::WorkflowMode;
 
 /// ------------------------------------------------------------
@@ -27,6 +27,7 @@ pub struct StateExecutionScope<'a> {
     pub mode: WorkflowMode,
     pub dispatcher: Option<&'a Arc<EngineEventDispatcher>>,
     pub persistence: &'a DynPM,
+    pub state_def: &'a State,
 }
 
 impl<'a> StateExecutionScope<'a> {
@@ -37,6 +38,7 @@ impl<'a> StateExecutionScope<'a> {
         mode: WorkflowMode,
         dispatcher: Option<&'a Arc<EngineEventDispatcher>>,
         persistence: &'a DynPM,
+        state_def: &'a State,
     ) -> Self {
         Self {
             run_id,
@@ -45,6 +47,7 @@ impl<'a> StateExecutionScope<'a> {
             mode,
             dispatcher,
             persistence,
+            state_def,
         }
     }
 }

@@ -1,34 +1,39 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use tracing::debug;
-use stepflow_dsl::state::pass::PassState;
 
+use stepflow_dsl::state::State;
 use crate::mapping::MappingPipeline;
 use super::{StateHandler, StateExecutionScope, StateExecutionResult};
 
-pub struct PassHandler<'a> {
-    state: &'a PassState,
-}
+/// ---------------------------------------------------------------------
+/// PassHandler（无状态）
+/// ---------------------------------------------------------------------
+pub struct PassHandler;
 
-impl<'a> PassHandler<'a> {
-    pub fn new(state: &'a PassState) -> Self {
-        Self { state }
+impl PassHandler {
+    pub fn new() -> Self {
+        Self
     }
 }
 
 #[async_trait]
-impl<'a> StateHandler for PassHandler<'a> {
+impl StateHandler for PassHandler {
     async fn handle(
         &self,
-        _scope: &StateExecutionScope<'_>,
+        scope: &StateExecutionScope<'_>,
         input: &Value,
     ) -> Result<StateExecutionResult, String> {
-        let pipeline = MappingPipeline {
-            input_mapping: self.state.base.input_mapping.as_ref(),
-            output_mapping: self.state.base.output_mapping.as_ref(),
+        let state = match scope.state_def {
+            State::Pass(ref s) => s,
+            _ => return Err("Invalid state type for PassHandler".into()),
         };
 
-        // Pass 节点只执行 input→output 映射，中间不做任何处理
+        let pipeline = MappingPipeline {
+            input_mapping: state.base.input_mapping.as_ref(),
+            output_mapping: state.base.output_mapping.as_ref(),
+        };
+
         let exec_input = pipeline.apply_input(input)?;
         let output = pipeline.apply_output(&exec_input, input)?;
 
@@ -36,7 +41,7 @@ impl<'a> StateHandler for PassHandler<'a> {
 
         Ok(StateExecutionResult {
             output,
-            next_state: self.state.base.next.clone(),
+            next_state: state.base.next.clone(),
             should_continue: true,
             metadata: None,
         })
