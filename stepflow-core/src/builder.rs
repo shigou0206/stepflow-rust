@@ -1,7 +1,15 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Result;
-use sqlx::{sqlite::{SqliteConnectOptions, SqliteJournalMode}, SqlitePool};
+use std::path::Path;
+use sqlx::{
+    SqlitePool,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode},
+};
+use stepflow_engine::handler::{
+    choice::ChoiceHandler, fail::FailHandler, pass::PassHandler, registry::StateHandlerRegistry,
+    succeed::SucceedHandler, task::TaskHandler, wait::WaitHandler,
+};
 use stepflow_eventbus::impls::local::LocalEventBus;
 use stepflow_hook::{
     EngineEventDispatcher,
@@ -9,31 +17,41 @@ use stepflow_hook::{
 };
 use stepflow_match::queue::PersistentStore;
 use stepflow_match::service::{
-    HybridMatchService, MemoryMatchService, PersistentMatchService,
-    MatchService, HybridMatchServiceWithEvent
+    HybridMatchService, HybridMatchServiceWithEvent, MatchService, MemoryMatchService,
+    PersistentMatchService,
 };
 use stepflow_sqlite::SqliteStorageManager;
 use stepflow_storage::traits::{EventStorage, StateStorage, WorkflowStorage};
-use stepflow_engine::handler::{
-    choice::ChoiceHandler, fail::FailHandler, pass::PassHandler, registry::StateHandlerRegistry,
-    succeed::SucceedHandler, task::TaskHandler, wait::WaitHandler,
-};
 
-use stepflow_common::config::{StepflowConfig, StepflowExecMode};
 use prometheus::Registry;
+use stepflow_common::config::{StepflowConfig, StepflowExecMode};
 
 use crate::app_state::AppState;
 
 pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
     // ---- DB & Storage ----
+    println!("🔧 使用数据库路径: {}", cfg.db_path);
+
+    let db_path = Path::new(&cfg.db_path);
+    if !db_path.exists() {
+        println!("📂 数据库文件不存在，将尝试创建: {}", db_path.display());
+    }
+
     let db_url = format!("sqlite://{}", cfg.db_path);
     let db_options = SqliteConnectOptions::from_str(&db_url)?
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
         .busy_timeout(Duration::from_secs(5));
-    let pool = SqlitePool::connect_with(db_options).await?;
-    let persist = Arc::new(SqliteStorageManager::new(pool));
 
+    let pool = SqlitePool::connect_with(db_options).await?;
+    println!("✅ SQLite 连接建立成功");
+
+    // 初始化 StorageManager（async）
+    let manager = SqliteStorageManager::new(pool).await?;
+    println!("✅ StorageManager 初始化完成");
+
+    // ✅ 包成 Arc 并赋值给各个 trait
+    let persist = Arc::new(manager);
     // ---- Storage Traits ----
     let workflow_store: Arc<dyn WorkflowStorage> = persist.clone();
     let state_store: Arc<dyn StateStorage> = persist.clone();
@@ -56,15 +74,13 @@ pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
 
     // ---- Match Service ----
     let match_service: Arc<dyn MatchService> = match cfg.exec_mode {
-        StepflowExecMode::Polling => {
-            HybridMatchService::new(
-                MemoryMatchService::new(),
-                PersistentMatchService::new(
-                    Arc::new(PersistentStore::new(persist.clone())),
-                    persist.clone(),
-                ),
-            )
-        }
+        StepflowExecMode::Polling => HybridMatchService::new(
+            MemoryMatchService::new(),
+            PersistentMatchService::new(
+                Arc::new(PersistentStore::new(persist.clone())),
+                persist.clone(),
+            ),
+        ),
         StepflowExecMode::EventDriven => {
             let persistent = PersistentMatchService::new(
                 Arc::new(PersistentStore::new(persist.clone())),
@@ -82,7 +98,7 @@ pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
             .register("pass", Arc::new(PassHandler::new()))
             .register("choice", Arc::new(ChoiceHandler::new()))
             .register("succeed", Arc::new(SucceedHandler::new()))
-            .register("fail", Arc::new(FailHandler::new()))
+            .register("fail", Arc::new(FailHandler::new())),
     );
 
     Ok(AppState {

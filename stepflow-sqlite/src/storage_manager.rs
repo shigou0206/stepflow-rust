@@ -25,6 +25,8 @@ use crate::persistence::{
     workflow_visibility::WorkflowVisibilityPersistence,
     queue_task::QueueTaskPersistence,
 };
+use anyhow::Result;
+use sqlx::Executor;
 
 pub struct SqliteStorageManager {
     pool: SqlitePool,
@@ -39,8 +41,9 @@ pub struct SqliteStorageManager {
 }
 
 impl SqliteStorageManager {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self {
+    pub async fn new(pool: SqlitePool) -> Result<Self> {
+        maybe_init_schema(&pool).await?;
+        Ok(Self {
             workflow_execution: WorkflowExecutionPersistence::new(pool.clone()),
             workflow_event: WorkflowEventPersistence::new(pool.clone()),
             activity_task: ActivityTaskPersistence::new(pool.clone()),
@@ -50,7 +53,7 @@ impl SqliteStorageManager {
             workflow_visibility: WorkflowVisibilityPersistence::new(pool.clone()),
             queue_task: QueueTaskPersistence::new(pool.clone()),
             pool,
-        }
+        })
     }
 
     pub async fn with_transaction<F, Fut, R>(&self, f: F) -> Result<R, StorageError>
@@ -292,3 +295,20 @@ impl stepflow_storage::traits::QueueStorage for SqliteStorageManager {
         self.queue_task.find_queue_task_by_run_state(run_id, state_name).await
     }
 } 
+
+pub async fn maybe_init_schema(pool: &SqlitePool) -> Result<()> {
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+        .fetch_one(pool)
+        .await?;
+
+    if row.0 == 0 {
+        // 说明是空库，可以初始化
+        let schema = include_str!("../../assets/sql/schema.sql");
+        pool.execute(schema).await?;
+        tracing::info!("✅ SQLite schema 初始化完成");
+    } else {
+        tracing::info!("✅ SQLite 已存在表结构，无需初始化");
+    }
+
+    Ok(())
+}

@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
-use std::{env, fmt};
+use std::{env, fmt, path::PathBuf};
+use dirs;
 
 /// 系统运行时环境（控制入口行为）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,14 +153,19 @@ impl StepflowConfig {
             self.runtime, self.exec_mode, self.worker_id, self.db_path, self.concurrency, self.capabilities
         )
     }
-
     pub fn for_flutter() -> Result<Self> {
-        let exe_path = std::env::current_exe()?;
-        let exe_dir = exe_path
-            .parent()
-            .ok_or_else(|| anyhow!("无法获取当前可执行文件目录"))?;
+        let app_name = "stepflow";
 
-        let db_path = exe_dir.join("stepflow.db").to_string_lossy().to_string();
+        // macOS 可写路径：~/Library/Application Support/stepflow/
+        let base_dir: PathBuf = dirs::data_local_dir()
+            .ok_or_else(|| anyhow!("无法获取本地数据目录"))?
+            .join(app_name);
+
+        std::fs::create_dir_all(&base_dir)?; // 创建目录（如不存在）
+
+        let db_path = base_dir.join("stepflow.db").to_string_lossy().to_string();
+
+        println!("✅ 使用数据库路径: {}", db_path);
 
         Ok(Self {
             runtime: StepflowRuntime::FrbOnly,
