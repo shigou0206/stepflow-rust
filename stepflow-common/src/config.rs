@@ -1,36 +1,63 @@
 use anyhow::{anyhow, Result};
 use std::{env, fmt};
 
-/// 系统运行模式（统一控制 Engine / Worker / MatchService 行为）
+/// 系统运行时环境（控制入口行为）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StepflowMode {
+pub enum StepflowRuntime {
+    Gateway,
+    FrbOnly,
+}
+
+impl StepflowRuntime {
+    pub fn from_str(s: &str) -> Result<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "gateway" => Ok(Self::Gateway),
+            "frb" | "frbonly" => Ok(Self::FrbOnly),
+            other => Err(anyhow!("Unsupported runtime: {} (use 'gateway' or 'frb')", other)),
+        }
+    }
+}
+
+impl fmt::Display for StepflowRuntime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StepflowRuntime::Gateway => write!(f, "gateway"),
+            StepflowRuntime::FrbOnly => write!(f, "frb-only"),
+        }
+    }
+}
+
+/// 系统执行模式（控制状态推进机制）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepflowExecMode {
     Polling,
     EventDriven,
 }
 
-impl StepflowMode {
+impl StepflowExecMode {
     pub fn from_str(s: &str) -> Result<Self> {
         match s.trim().to_lowercase().as_str() {
             "poll" | "polling" => Ok(Self::Polling),
             "event" | "eventdriven" => Ok(Self::EventDriven),
-            other => Err(anyhow!("Unsupported mode: {} (use 'poll' or 'event')", other)),
+            other => Err(anyhow!("Unsupported exec mode: {} (use 'poll' or 'event')", other)),
         }
     }
 }
 
-impl fmt::Display for StepflowMode {
+impl fmt::Display for StepflowExecMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            StepflowMode::Polling => write!(f, "polling"),
-            StepflowMode::EventDriven => write!(f, "event-driven"),
+            StepflowExecMode::Polling => write!(f, "polling"),
+            StepflowExecMode::EventDriven => write!(f, "event-driven"),
         }
     }
 }
 
-/// 通用配置结构：适用于 Engine / Worker / Gateway
+/// 通用配置结构：适用于 Engine / Worker / Gateway / FRB
 #[derive(Debug, Clone)]
 pub struct StepflowConfig {
-    pub mode: StepflowMode,
+    pub runtime: StepflowRuntime,
+    pub exec_mode: StepflowExecMode,
     pub db_path: String,
     pub worker_id: String,
     pub gateway_server_url: String,
@@ -40,11 +67,20 @@ pub struct StepflowConfig {
 }
 
 impl StepflowConfig {
-    /// 用于构建第 `index` 个 Worker 配置
+    /// 构建单个配置（根据 index 拼接 worker_id）
     pub fn from_env(index: usize) -> Result<Self> {
-        let mode = StepflowMode::from_str(
-            &env::var("STEPFLOW_MODE").unwrap_or_else(|_| "event".into())
+        let runtime = StepflowRuntime::from_str(
+            &env::var("STEPFLOW_RUNTIME").unwrap_or_else(|_| "gateway".into())
         )?;
+
+        let exec_mode = StepflowExecMode::from_str(
+            &env::var("STEPFLOW_EXEC_MODE").unwrap_or_else(|_| "event".into())
+        )?;
+
+        // ❗ 校验：FRB 模式只能搭配 EventDriven
+        if runtime == StepflowRuntime::FrbOnly && exec_mode != StepflowExecMode::EventDriven {
+            return Err(anyhow!("❌ FrbOnly runtime requires EventDriven execution mode"));
+        }
 
         let db_path = env::var("STEPFLOW_DB_PATH")
             .unwrap_or_else(|_| "data/stepflow.db".into())
@@ -78,7 +114,8 @@ impl StepflowConfig {
             .unwrap_or(4);
 
         Ok(Self {
-            mode,
+            runtime,
+            exec_mode,
             db_path,
             worker_id,
             gateway_server_url,
@@ -88,33 +125,51 @@ impl StepflowConfig {
         })
     }
 
-    /// 单实例调用，index = 0
+    /// 构建默认 worker 配置（index = 0）
     pub fn from_env_default() -> Result<Self> {
         Self::from_env(0)
     }
 
-    /// 根据 WORKER_COUNT 构建多个 Worker 配置
+    /// 构建多个 worker 配置（用于并发启动）
     pub fn from_env_all() -> Result<Vec<Self>> {
         let count = env::var("WORKER_COUNT")
             .unwrap_or_else(|_| "1".into())
             .parse::<usize>()
             .map_err(|e| anyhow!("Invalid WORKER_COUNT: {}", e))?;
 
-        (0..count)
-            .map(Self::from_env)
-            .collect::<Result<Vec<_>>>()
+        (0..count).map(Self::from_env).collect()
     }
 
-    /// 判断当前 worker 是否支持某个 resource 能力
+    /// 当前 worker 是否支持某个 resource 能力
     pub fn supports(&self, capability: &str) -> bool {
         self.capabilities.iter().any(|c| c == capability)
     }
 
-    /// 打印配置概要（用于日志）
+    /// 日志摘要
     pub fn summary(&self) -> String {
         format!(
-            "mode={}, worker_id={}, db_path={}, concurrency={}, capabilities={:?}",
-            self.mode, self.worker_id, self.db_path, self.concurrency, self.capabilities
+            "runtime={}, exec_mode={}, worker_id={}, db_path={}, concurrency={}, capabilities={:?}",
+            self.runtime, self.exec_mode, self.worker_id, self.db_path, self.concurrency, self.capabilities
         )
+    }
+
+    pub fn for_flutter() -> Result<Self> {
+        let exe_path = std::env::current_exe()?;
+        let exe_dir = exe_path
+            .parent()
+            .ok_or_else(|| anyhow!("无法获取当前可执行文件目录"))?;
+
+        let db_path = exe_dir.join("stepflow.db").to_string_lossy().to_string();
+
+        Ok(Self {
+            runtime: StepflowRuntime::FrbOnly,
+            exec_mode: StepflowExecMode::EventDriven,
+            db_path,
+            worker_id: "frb-worker".to_string(),
+            gateway_server_url: "".into(),
+            capabilities: vec!["http".into(), "shell".into()],
+            gateway_bind: "127.0.0.1:3000".into(),
+            concurrency: 2,
+        })
     }
 }

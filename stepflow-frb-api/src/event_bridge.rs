@@ -3,14 +3,14 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use stepflow_dto::dto::event_envelope::EventEnvelope;
 use tokio_stream::wrappers::BroadcastStream;
-
+use stepflow_eventbus::global::get_global_event_bus;
 pub struct FrbEventStream {
     inner: BroadcastStream<EventEnvelope>,
 }
 
 impl FrbEventStream {
     pub fn new() -> Self {
-        let rx = crate::init::get_event_bus().subscribe();
+        let rx = get_global_event_bus().expect("Global event bus not initialized").subscribe();
         let inner = BroadcastStream::new(rx);
         Self { inner }
     }

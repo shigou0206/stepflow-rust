@@ -1,7 +1,10 @@
+pub use stepflow_gateway::service::execution::ExecutionSqlxSvc;
+
 use flutter_rust_bridge::frb;
 use crate::execution_api::*;
 use crate::execution_types::*;
-use crate::init::get_execution_svc;
+use once_cell::sync::OnceCell;
+static EXECUTION_SVC: OnceCell<ExecutionSqlxSvc> = OnceCell::new();
 
 #[frb]
 pub async fn start_execution_request(req: FrbStartExecutionRequest) -> Result<FrbExecutionResult, String> {
@@ -31,4 +34,10 @@ pub async fn delete_execution_request(run_id: String) -> Result<(), String> {
 #[frb]
 pub async fn list_executions_by_status_request(req: FrbListByStatusRequest) -> Result<Vec<FrbExecutionResult>, String> {
     list_executions_by_status(get_execution_svc(), req).await
+}
+
+fn get_execution_svc() -> &'static ExecutionSqlxSvc {
+    EXECUTION_SVC
+        .get()
+        .expect("ExecutionSqlxSvc not initialized")
 }

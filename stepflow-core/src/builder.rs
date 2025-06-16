@@ -19,7 +19,7 @@ use stepflow_engine::handler::{
     succeed::SucceedHandler, task::TaskHandler, wait::WaitHandler,
 };
 
-use stepflow_common::config::{StepflowConfig, StepflowMode};
+use stepflow_common::config::{StepflowConfig, StepflowExecMode};
 use prometheus::Registry;
 
 use crate::app_state::AppState;
@@ -55,8 +55,8 @@ pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
     let event_dispatcher = Arc::new(dispatcher);
 
     // ---- Match Service ----
-    let match_service: Arc<dyn MatchService> = match cfg.mode {
-        StepflowMode::Polling => {
+    let match_service: Arc<dyn MatchService> = match cfg.exec_mode {
+        StepflowExecMode::Polling => {
             HybridMatchService::new(
                 MemoryMatchService::new(),
                 PersistentMatchService::new(
@@ -65,7 +65,7 @@ pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
                 ),
             )
         }
-        StepflowMode::EventDriven => {
+        StepflowExecMode::EventDriven => {
             let persistent = PersistentMatchService::new(
                 Arc::new(PersistentStore::new(persist.clone())),
                 persist.clone(),

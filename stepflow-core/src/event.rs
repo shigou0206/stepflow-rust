@@ -2,7 +2,8 @@ use tracing::{debug, error, info};
 use crate::app_state::AppState;
 use stepflow_dto::dto::engine_event::EngineEvent;
 use stepflow_dto::dto::signal::ExecutionSignal;
-
+use stepflow_common::config::{StepflowConfig, StepflowExecMode};
+use std::sync::Arc;
 /// 启动事件驱动执行器
 pub fn start_event_runner(app: AppState) {
     let mut rx = app.subscribe_events();
@@ -69,5 +70,24 @@ pub fn start_event_runner(app: AppState) {
         }
 
         debug!("🛑 Event runner exiting");
+    });
+}
+
+/// 如果是事件驱动模式，则启动引擎监听器
+pub fn maybe_start_event_runner(config: &StepflowConfig, app_state: &AppState) {
+    if config.exec_mode == StepflowExecMode::EventDriven {
+        tracing::info!("🔔 Starting engine event runner...");
+        start_event_runner(app_state.clone());
+    }
+}
+
+/// 启动事件日志打印监听器（可选调试用）
+pub fn spawn_event_logger(app_state: &AppState) {
+    let mut bus_rx = app_state.subscribe_events();
+    tokio::spawn(async move {
+        while let Ok(envelope) = bus_rx.recv().await {
+            tracing::debug!(?envelope, "🔔 Got EventEnvelope from EventBus");
+        }
+        tracing::warn!("⚠️ EventBus subscription closed");
     });
 }

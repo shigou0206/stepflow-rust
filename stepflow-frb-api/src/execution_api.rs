@@ -1,11 +1,11 @@
-pub use stepflow_gateway::service::execution::ExecutionSqlxSvc;
-
+use stepflow_gateway::service::execution::ExecutionSqlxSvc;
 
 use crate::execution_types::*;
 use stepflow_dto::dto::execution::ExecStart;
 use stepflow_gateway::service::ExecutionService;
 use serde_json::Value;
 
+#[cfg(not(frb_expand))]
 pub async fn start_execution(svc: &ExecutionSqlxSvc, req: FrbStartExecutionRequest) -> Result<FrbExecutionResult, String> {
     let dsl = match &req.dsl_json {
         Some(json) => Some(serde_json::from_str(json).map_err(|e| format!("invalid dsl_json: {e}"))?),
@@ -35,6 +35,7 @@ pub async fn start_execution(svc: &ExecutionSqlxSvc, req: FrbStartExecutionReque
     })
 }
 
+#[cfg(not(frb_expand))]
 pub async fn get_execution(svc: &ExecutionSqlxSvc, run_id: String) -> Result<FrbExecutionResult, String> {
     let dto = svc.get(&run_id).await.map_err(|e| format!("{e}"))?;
     Ok(FrbExecutionResult {
@@ -47,6 +48,7 @@ pub async fn get_execution(svc: &ExecutionSqlxSvc, run_id: String) -> Result<Frb
     })
 }
 
+#[cfg(not(frb_expand))]
 pub async fn list_executions(svc: &ExecutionSqlxSvc, req: FrbListRequest) -> Result<Vec<FrbExecutionResult>, String> {
     let list = svc
         .list(req.limit.unwrap_or(20), req.offset.unwrap_or(0))
@@ -66,6 +68,7 @@ pub async fn list_executions(svc: &ExecutionSqlxSvc, req: FrbListRequest) -> Res
         .collect())
 }
 
+#[cfg(not(frb_expand))]
 pub async fn update_execution(svc: &ExecutionSqlxSvc, run_id: String, req: FrbExecUpdateRequest) -> Result<(), String> {
     let result = match &req.result_json {
         Some(json) => Some(serde_json::from_str::<Value>(json).map_err(|e| format!("invalid result_json: {e}"))?),
@@ -77,10 +80,12 @@ pub async fn update_execution(svc: &ExecutionSqlxSvc, run_id: String, req: FrbEx
         .map_err(|e| format!("{e}"))
 }
 
+#[cfg(not(frb_expand))]
 pub async fn delete_execution(svc: &ExecutionSqlxSvc, run_id: String) -> Result<(), String> {
     svc.delete(&run_id).await.map_err(|e| format!("{e}"))
 }
 
+#[cfg(not(frb_expand))]
 pub async fn list_executions_by_status(
     svc: &ExecutionSqlxSvc,
     req: FrbListByStatusRequest,
