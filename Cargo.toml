@@ -14,7 +14,11 @@ members = [
     "stepflow-postgres", 
     "stepflow-eventbus", 
     "stepflow-frb-api", 
-    "stepflow-core", "stepflow-common", "stepflow-cli", "stepflow-exception", "stepflow-auth",
+    "stepflow-core", 
+    "stepflow-common", 
+    "stepflow-cli", 
+    "stepflow-exception", 
+    "stepflow-auth",
 ]
 resolver = "2"
 
