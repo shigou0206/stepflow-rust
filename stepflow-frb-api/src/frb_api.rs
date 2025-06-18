@@ -3,8 +3,7 @@ pub use stepflow_gateway::service::execution::ExecutionSqlxSvc;
 use flutter_rust_bridge::frb;
 use crate::execution_api::*;
 use crate::execution_types::*;
-use once_cell::sync::OnceCell;
-static EXECUTION_SVC: OnceCell<ExecutionSqlxSvc> = OnceCell::new();
+use crate::init::*;
 
 #[frb]
 pub async fn start_execution_request(req: FrbStartExecutionRequest) -> Result<FrbExecutionResult, String> {

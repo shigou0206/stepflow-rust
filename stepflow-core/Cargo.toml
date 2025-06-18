@@ -4,22 +4,23 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio           = { version = "1", features=["macros","rt-multi-thread"] }
-http            = "1.1"
-serde           = { version="1", features=["derive"] }
-serde_json      = "1.0"
-axum            = { version = "0.7", features = ["ws", "macros"] }
-thiserror = "1.0"
-sqlx = { version="0.7", features=["sqlite","runtime-tokio-rustls"] } 
-anyhow    = "1.0"
-prometheus = "0.14" 
-tracing = "0.1"
-tracing-subscriber = "0.3"
+tokio.workspace = true
+http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+axum.workspace = true
+thiserror.workspace = true
+sqlx.workspace = true
+anyhow.workspace = true
+prometheus.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
 stepflow-dto = { path = "../stepflow-dto" }
 stepflow-common = { path = "../stepflow-common" }
-stepflow-engine  = { path = "../stepflow-engine" }
-stepflow-match   = { path = "../stepflow-match" }
+stepflow-engine = { path = "../stepflow-engine" }
+stepflow-match = { path = "../stepflow-match" }
 stepflow-storage = { path = "../stepflow-storage" }
-stepflow-hook    = { path = "../stepflow-hook" }
+stepflow-hook = { path = "../stepflow-hook" }
 stepflow-eventbus = { path = "../stepflow-eventbus" }
-stepflow-sqlite  = { path = "../stepflow-sqlite" }
+stepflow-sqlite = { path = "../stepflow-sqlite" }

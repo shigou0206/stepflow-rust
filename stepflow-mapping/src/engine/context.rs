@@ -10,4 +10,8 @@ impl MappingContext {
     pub fn new(init: Map<String, Value>) -> Self {
         Self { output: init, steps: vec![] }
     }
+
+    pub fn to_json(&self) -> Value {
+        Value::Object(self.output.clone())
+    }
 }

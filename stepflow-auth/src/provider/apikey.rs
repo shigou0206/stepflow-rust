@@ -4,13 +4,13 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 pub fn get_token(fields: &HashMap<String, Value>) -> Result<TokenResult, AuthError> {
-    let token = fields
-        .get("token")
+    let value = fields
+        .get("value")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| AuthError::MissingField("token".into()))?;
+        .ok_or_else(|| AuthError::MissingField("value".into()))?;
 
     Ok(TokenResult {
-        access_token: token.to_string(),
+        access_token: value.to_string(),
         expires_at: None,
         refresh_token: None,
     })

@@ -1,3 +1,12 @@
+CREATE TABLE _sqlx_migrations (
+  version BIGINT PRIMARY KEY,
+  description TEXT NOT NULL,
+  installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  success BOOLEAN NOT NULL,
+  checksum BLOB NOT NULL,
+  execution_time BIGINT NOT NULL
+);
+
 CREATE TABLE workflow_templates (
     template_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -141,3 +150,75 @@ CREATE INDEX idx_queue_tasks_status ON queue_tasks(status);
 CREATE INDEX idx_queue_tasks_run_id ON queue_tasks(run_id);
 CREATE INDEX idx_queue_tasks_next_retry_at ON queue_tasks(next_retry_at);
 CREATE INDEX idx_queue_tasks_updated_at ON queue_tasks(updated_at);
+
+
+INSERT INTO workflow_templates (
+    template_id,
+    name,
+    description,
+    dsl_definition,
+    version,
+    created_at,
+    updated_at
+) VALUES (
+    'template-http-branch-001',
+    'HTTP写入并分支',
+    '通过 HTTP 工具写入数据库并根据响应状态码进入不同分支',
+    '{
+        "comment": "示例工作流：通过 HTTP 工具写入数据库，并根据返回码分支",
+        "version": "1.0",
+        "startAt": "PrepareData",
+        "states": {
+            "PrepareData": {
+                "type": "pass",
+                "outputMapping": {
+                    "mappings": [
+                        { "key": "name",    "type": "constant", "value": "Alice" },
+                        { "key": "age",     "type": "constant", "value": 30 },
+                        { "key": "api_url", "type": "constant", "value": "https://example.com/api/users" }
+                    ]
+                },
+                "next": "SendData"
+            },
+            "SendData": {
+                "type": "task",
+                "resource": "http",
+                "inputMapping": {
+                    "mappings": [
+                        { "key": "url",     "type": "jsonPath", "source": "$.api_url" },
+                        { "key": "method",  "type": "constant", "value": "POST" },
+                        { "key": "headers", "type": "constant", "value": { "Content-Type": "application/json" } },
+                        { "key": "body",    "type": "jsonPath", "source": "$" }
+                    ]
+                },
+                "next": "CheckStatus"
+            },
+            "CheckStatus": {
+                "type": "choice",
+                "inputPath": "$",
+                "choices": [
+                    {
+                        "condition": {
+                            "and": [
+                                { "variable": "$.status", "operator": "GreaterThanEquals", "value": 200 },
+                                { "variable": "$.status", "operator": "LessThan",          "value": 300 }
+                            ]
+                        },
+                        "next": "Success"
+                    }
+                ],
+                "defaultNext": "Fail"
+            },
+            "Success": {
+                "type": "succeed"
+            },
+            "Fail": {
+                "type": "fail",
+                "error": "HTTP request failed or returned non-2xx status"
+            }
+        }
+    }',
+    1,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+);

@@ -59,6 +59,27 @@ pub struct MappingRule {
     pub schema: Option<Value>,
 }
 
+impl Default for MappingRule {
+    fn default() -> Self {
+        Self {
+            key: "".to_string(),
+            mapping_type: MappingType::Constant,
+            source: None,
+            transform: None,
+            template: None,
+            value: None,
+            sub_mappings: None,
+            merge_strategy: MergeStrategy::Overwrite,
+            condition: None,
+            depends_on: None,
+            comment: None,
+            lang: None,
+            expected_type: None,
+            schema: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

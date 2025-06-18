@@ -16,8 +16,8 @@ use stepflow_core::{
 use stepflow_eventbus::global::set_global_event_bus;
 
 /// 全局共享 AppState
-static GLOBAL_APP_STATE: OnceCell<Arc<AppState>> = OnceCell::new();
-static EXECUTION_SVC: OnceCell<ExecutionSqlxSvc> = OnceCell::new();
+pub static GLOBAL_APP_STATE: OnceCell<Arc<AppState>> = OnceCell::new();
+pub static EXECUTION_SVC: OnceCell<ExecutionSqlxSvc> = OnceCell::new();
 
 #[frb]
 pub async fn init_stepflow() -> anyhow::Result<()> {
