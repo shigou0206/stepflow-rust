@@ -12,8 +12,9 @@ where
             run_id, workflow_id, shard_id, template_id, mode,
             current_state_name, status, workflow_type, input, input_version,
             result, result_version, start_time, close_time,
-            current_event_id, memo, search_attrs, context_snapshot, version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            current_event_id, memo, search_attrs, context_snapshot, version,
+            parent_run_id, parent_state_name, dsl_definition
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         exec.run_id,
         exec.workflow_id,
@@ -33,14 +34,17 @@ where
         exec.memo,
         exec.search_attrs,
         exec.context_snapshot,
-        exec.version
+        exec.version,
+        exec.parent_run_id,
+        exec.parent_state_name,
+        exec.dsl_definition
     )
     .execute(executor)
     .await?;
     Ok(())
 }
 
-// 主键查询（更安全方式）
+// 主键查询
 pub async fn get_execution<'e, E>(executor: E, run_id: &str) -> Result<Option<WorkflowExecution>>
 where
     E: Executor<'e, Database = Sqlite>,
@@ -54,7 +58,8 @@ where
             workflow_type as "workflow_type!", input, input_version as "input_version!",
             result, result_version as "result_version!", start_time as "start_time!",
             close_time, current_event_id as "current_event_id!", memo,
-            search_attrs, context_snapshot, version as "version!"
+            search_attrs, context_snapshot, version as "version!",
+            parent_run_id, parent_state_name, dsl_definition
         FROM workflow_executions
         WHERE run_id = ?
         "#,
@@ -64,7 +69,7 @@ where
     .await
 }
 
-// 分页查询记录
+// 分页查询
 pub async fn find_executions<'e, E>(executor: E, limit: i64, offset: i64) -> Result<Vec<WorkflowExecution>>
 where
     E: Executor<'e, Database = Sqlite>,
@@ -78,7 +83,8 @@ where
             workflow_type as "workflow_type!", input, input_version as "input_version!",
             result, result_version as "result_version!", start_time as "start_time!",
             close_time, current_event_id as "current_event_id!", memo,
-            search_attrs, context_snapshot, version as "version!"
+            search_attrs, context_snapshot, version as "version!",
+            parent_run_id, parent_state_name, dsl_definition
         FROM workflow_executions
         ORDER BY start_time DESC LIMIT ? OFFSET ?
         "#,
@@ -89,7 +95,7 @@ where
     .await
 }
 
-// 条件查询记录
+// 状态筛选查询
 pub async fn find_executions_by_status<'e, E>(executor: E, status: &str, limit: i64, offset: i64) -> Result<Vec<WorkflowExecution>>
 where
     E: Executor<'e, Database = Sqlite>,
@@ -103,7 +109,8 @@ where
             workflow_type as "workflow_type!", input, input_version as "input_version!",
             result, result_version as "result_version!", start_time as "start_time!",
             close_time, current_event_id as "current_event_id!", memo,
-            search_attrs, context_snapshot, version as "version!"
+            search_attrs, context_snapshot, version as "version!",
+            parent_run_id, parent_state_name, dsl_definition
         FROM workflow_executions
         WHERE status = ? ORDER BY start_time DESC LIMIT ? OFFSET ?
         "#,
@@ -115,8 +122,8 @@ where
     .await
 }
 
-// 安全动态更新记录
-pub async fn update_execution<'e, E>(executor: E, run_id: &str, changes: &UpdateWorkflowExecution) -> Result<()>
+// 安全动态更新
+pub async fn update_execution<'e, E>(executor: E, run_id: &str, changes: &UpdateWorkflowExecution) -> Result<()> 
 where
     E: Executor<'e, Database = Sqlite>,
 {
@@ -151,17 +158,19 @@ where
     set_field!(search_attrs);
     set_field!(context_snapshot);
     set_field!(version);
+    set_field!(parent_run_id);
+    set_field!(parent_state_name);
+    set_field!(dsl_definition);
 
     if !has_fields { return Ok(()); }
 
     query.push(" WHERE run_id = ").push_bind(run_id);
-
     query.build().execute(executor).await?;
     Ok(())
 }
 
-// 删除记录
-pub async fn delete_execution<'e, E>(executor: E, run_id: &str) -> Result<()>
+// 删除
+pub async fn delete_execution<'e, E>(executor: E, run_id: &str) -> Result<()> 
 where
     E: Executor<'e, Database = Sqlite>,
 {

@@ -22,6 +22,10 @@ pub struct WorkflowExecution {
     pub search_attrs: Option<String>,
     pub context_snapshot: Option<String>,
     pub version: i64,
+
+    pub parent_run_id: Option<String>,
+    pub parent_state_name: Option<String>,
+    pub dsl_definition: Option<String>,
 }
 
 impl Default for WorkflowExecution {
@@ -46,6 +50,9 @@ impl Default for WorkflowExecution {
             search_attrs: None,
             context_snapshot: None,
             version: 0,
+            parent_run_id: None,
+            parent_state_name: None,
+            dsl_definition: None,
         }
     }
 }
@@ -70,4 +77,8 @@ pub struct UpdateWorkflowExecution {
     pub search_attrs: Option<Option<String>>,
     pub context_snapshot: Option<Option<String>>,
     pub version: Option<i64>,
+
+    pub parent_run_id: Option<Option<String>>,
+    pub parent_state_name: Option<Option<String>>,
+    pub dsl_definition: Option<Option<String>>,
 }

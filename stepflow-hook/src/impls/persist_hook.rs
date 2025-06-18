@@ -1,3 +1,4 @@
+// ✅ 修正 PersistHook，支持 parent_run_id / parent_state_name / dsl_definition
 use crate::EngineEventHandler;
 use chrono::Utc;
 use serde_json::json;
@@ -76,15 +77,14 @@ impl EngineEventHandler for PersistHook {
                     search_attrs: None,
                     context_snapshot: None,
                     version: 1,
+                    parent_run_id: None,
+                    parent_state_name: None,
+                    dsl_definition: None,
                 };
                 let _ = self.workflow.create_execution(&exec).await;
             }
 
-            EngineEvent::NodeEnter {
-                run_id,
-                state_name,
-                input,
-            } => {
+            EngineEvent::NodeEnter { run_id, state_name, input } => {
                 let state = StoredWorkflowState {
                     state_id: format!("{run_id}:{state_name}"),
                     run_id: run_id.clone(),
@@ -103,19 +103,10 @@ impl EngineEventHandler for PersistHook {
                     version: 1,
                 };
                 let _ = self.state.create_state(&state).await;
-                self.record_event(
-                    &run_id,
-                    "NodeEnter",
-                    &format!("Entered state: {}", state_name),
-                )
-                .await;
+                self.record_event(&run_id, "NodeEnter", &format!("Entered state: {}", state_name)).await;
             }
 
-            EngineEvent::NodeSuccess {
-                run_id,
-                state_name,
-                output,
-            } => {
+            EngineEvent::NodeSuccess { run_id, state_name, output } => {
                 let state_id = format!("{run_id}:{state_name}");
                 let update = UpdateStoredWorkflowState {
                     state_name: None,
@@ -132,11 +123,7 @@ impl EngineEventHandler for PersistHook {
                 let _ = self.state.update_state(&state_id, &update).await;
             }
 
-            EngineEvent::NodeFailed {
-                run_id,
-                state_name,
-                error,
-            } => {
+            EngineEvent::NodeFailed { run_id, state_name, error } => {
                 let state_id = format!("{run_id}:{state_name}");
                 let update = UpdateStoredWorkflowState {
                     state_name: None,
@@ -153,26 +140,13 @@ impl EngineEventHandler for PersistHook {
                 let _ = self.state.update_state(&state_id, &update).await;
             }
 
-            EngineEvent::NodeExit {
-                run_id,
-                state_name,
-                status,
-                duration_ms,
-            } => {
-                // 1) 先照旧写事件
-                self.record_event(
-                    &run_id,
-                    "NodeExit",
-                    &json!({
-                        "state": state_name,
-                        "status": status,            // "success" / "failed"
-                        "duration_ms": duration_ms,  // Option<u64>
-                    })
-                    .to_string(),
-                )
-                .await;
-            
-                // 2) 再把 state 表的 status 和 completed_at 更新一下
+            EngineEvent::NodeExit { run_id, state_name, status, duration_ms } => {
+                self.record_event(&run_id, "NodeExit", &json!({
+                    "state": state_name,
+                    "status": status,
+                    "duration_ms": duration_ms
+                }).to_string()).await;
+
                 let state_id = format!("{run_id}:{state_name}");
                 let update = UpdateStoredWorkflowState {
                     status: Some(match status.as_str() {
@@ -181,7 +155,6 @@ impl EngineEventHandler for PersistHook {
                         other     => other.to_uppercase(),
                     }),
                     completed_at: Some(Some(Utc::now().naive_utc())),
-                    // 其余字段保持不变
                     ..Default::default()
                 };
                 if let Err(e) = self.state.update_state(&state_id, &update).await {
@@ -209,6 +182,9 @@ impl EngineEventHandler for PersistHook {
                     search_attrs: None,
                     context_snapshot: None,
                     version: None,
+                    parent_run_id: None,
+                    parent_state_name: None,
+                    dsl_definition: None,
                 };
                 let _ = self.workflow.update_execution(&run_id, &update).await;
             }
@@ -217,6 +193,7 @@ impl EngineEventHandler for PersistHook {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {

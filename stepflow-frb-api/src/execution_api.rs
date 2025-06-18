@@ -21,6 +21,8 @@ pub async fn start_execution(svc: &ExecutionSqlxSvc, req: FrbStartExecutionReque
         dsl,
         init_ctx,
         mode: req.mode.clone(),
+        parent_run_id: None,
+        parent_state_name: None,
     };
 
     let dto = svc.start(inner).await.map_err(|e| format!("{e}"))?;

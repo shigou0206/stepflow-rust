@@ -23,6 +23,11 @@ pub struct StoredWorkflowExecution {
     pub search_attrs: Option<Value>,
     pub context_snapshot: Option<Value>,
     pub version: i64,
+
+    // 新增字段：子流程支持
+    pub parent_run_id: Option<String>,
+    pub parent_state_name: Option<String>,
+    pub dsl_definition: Option<Value>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -45,5 +50,9 @@ pub struct UpdateStoredWorkflowExecution {
     pub search_attrs: Option<Option<Value>>,
     pub context_snapshot: Option<Option<Value>>,
     pub version: Option<i64>,
-}
 
+    // 新增字段：子流程支持
+    pub parent_run_id: Option<Option<String>>,
+    pub parent_state_name: Option<Option<String>>,
+    pub dsl_definition: Option<Option<Value>>,
+}
