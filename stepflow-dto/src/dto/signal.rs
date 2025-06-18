@@ -1,3 +1,4 @@
+// ✅ ExecutionSignal：添加 SubflowFinished 支持
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -27,5 +28,11 @@ pub enum ExecutionSignal {
         run_id: String,
         state_name: String,
         details: Option<Value>,
+    },
+    SubflowFinished {
+        parent_run_id: String,
+        child_run_id: String,
+        state_name: String,
+        result: Value,
     },
 }
