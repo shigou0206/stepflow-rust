@@ -14,17 +14,13 @@ sqlx.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 jsonpath_lib.workspace = true
-warp.workspace = true
 reqwest.workspace = true
-env_logger.workspace = true
-futures.workspace = true
 bytes.workspace = true
 thiserror.workspace = true
 
 stepflow-dsl = { path = "../stepflow-dsl" }
 stepflow-dto = { path = "../stepflow-dto" }
 stepflow-storage = { path = "../stepflow-storage" }
-stepflow-sqlite = { path = "../stepflow-sqlite" }
 stepflow-mapping = { path = "../stepflow-mapping" }
 stepflow-hook = { path = "../stepflow-hook" }
 stepflow-match = { path = "../stepflow-match" }

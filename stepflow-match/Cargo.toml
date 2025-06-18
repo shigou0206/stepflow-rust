@@ -13,8 +13,6 @@ serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 uuid.workspace = true
-jsonpath_lib.workspace = true
-warp.workspace = true
 thiserror.workspace = true
 
 stepflow-storage = { path = "../stepflow-storage" }

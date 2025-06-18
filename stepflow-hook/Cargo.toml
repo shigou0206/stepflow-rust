@@ -14,6 +14,5 @@ sqlx.workspace = true
 tracing.workspace = true
 
 stepflow-dto = { path = "../stepflow-dto" }
-stepflow-sqlite = { path = "../stepflow-sqlite" }
 stepflow-storage = { path = "../stepflow-storage" }
 stepflow-eventbus = { path = "../stepflow-eventbus" }
