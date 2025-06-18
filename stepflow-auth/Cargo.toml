@@ -1,0 +1,18 @@
+[package]
+name = "stepflow-auth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+base64.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+stepflow-mapping = { path = "../stepflow-mapping" }
+
+[dev-dependencies]
+wiremock.workspace = true
+tokio.workspace = true

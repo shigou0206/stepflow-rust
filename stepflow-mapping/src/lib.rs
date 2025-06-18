@@ -11,3 +11,4 @@ pub mod engine;
 // —— 再做公开 re-export —— //
 pub use crate::model::{MappingDSL, MappingRule, MappingResult, PreserveFields};
 pub use crate::engine::MappingEngine;
+pub use crate::engine::context::MappingContext;

@@ -4,22 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-stepflow-storage = { path = "../stepflow-storage" }
-axum            = { version = "0.7", features = ["ws", "macros"] }
-tokio           = { version = "1", features=["macros","rt-multi-thread"] }
-tower           = "0.4"
-tower-http      = { version ="0.5", features=["trace","cors","compression-gzip"] }
-tracing         = "0.1"
-tracing-subscriber = { version="0.3", features=["env-filter","fmt"] }
-serde           = { version="1", features=["derive"] }
-serde_json      = "1.0"
-http            = "1.1"
-utoipa          = { version = "4.2.0", features = ["axum_extras", "chrono"] }
-utoipa-swagger-ui = { version = "6.0.0", features = ["axum"] }
+tokio.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+utoipa.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+uuid.workspace = true
 
-thiserror = "1.0"
-anyhow    = "1.0"
-async-trait = "0.1.88"
-chrono = { version = "0.4.41", features = ["serde"] }
-uuid = { version = "1.17.0", features = ["v4", "serde"] }
-reqwest = { version = "0.12.18", features = ["json"] }
+stepflow-storage = { path = "../stepflow-storage" }
