@@ -1,3 +1,4 @@
+// ✅ dispatch_command：支持 Map / Parallel 状态
 use crate::{
     command::Command,
     handler::registry::StateHandlerRegistry,
@@ -54,9 +55,8 @@ pub(crate) async fn dispatch_command(
         State::Choice(s) => &s.base,
         State::Fail(s) => &s.base,
         State::Succeed(s) => &s.base,
-        State::Parallel(_) | State::Map(_) => {
-            return Err("Parallel / Map not yet supported".to_string());
-        }
+        State::Parallel(s) => &s.base,
+        State::Map(s) => &s.base,
     };
 
     // ---------- 2. 执行输入映射 ----------
