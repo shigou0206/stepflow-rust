@@ -7,7 +7,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode},
 };
 use stepflow_engine::handler::{
-    choice::ChoiceHandler, fail::FailHandler, pass::PassHandler, registry::StateHandlerRegistry,
+    choice::ChoiceHandler, fail::FailHandler, map::MapHandler, parallel::ParallelHandler, pass::PassHandler, registry::StateHandlerRegistry,
     succeed::SucceedHandler, task::TaskHandler, wait::WaitHandler,
 };
 use stepflow_eventbus::impls::local::LocalEventBus;
@@ -18,7 +18,7 @@ use stepflow_hook::{
 use stepflow_match::queue::PersistentStore;
 use stepflow_match::service::{
     HybridMatchService, HybridMatchServiceWithEvent, MatchService, MemoryMatchService,
-    PersistentMatchService,
+    PersistentMatchService, SubflowMatchService, EventDrivenSubflowMatchService,
 };
 use stepflow_sqlite::SqliteStorageManager;
 use stepflow_storage::traits::{EventStorage, StateStorage, WorkflowStorage};
@@ -90,6 +90,11 @@ pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
         }
     };
 
+    let subflow_match_service: Arc<dyn SubflowMatchService> = match cfg.exec_mode {
+        StepflowExecMode::Polling => EventDrivenSubflowMatchService::new(event_bus.clone()),
+        StepflowExecMode::EventDriven => EventDrivenSubflowMatchService::new(event_bus.clone()),
+    };
+
     // ---- Handlers ----
     let state_handler_registry = Arc::new(
         StateHandlerRegistry::new()
@@ -98,7 +103,9 @@ pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
             .register("pass", Arc::new(PassHandler::new()))
             .register("choice", Arc::new(ChoiceHandler::new()))
             .register("succeed", Arc::new(SucceedHandler::new()))
-            .register("fail", Arc::new(FailHandler::new())),
+            .register("fail", Arc::new(FailHandler::new()))
+            .register("map", Arc::new(MapHandler::new(subflow_match_service.clone())))
+            .register("parallel", Arc::new(ParallelHandler::new(subflow_match_service.clone()))),
     );
 
     Ok(AppState {

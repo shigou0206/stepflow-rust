@@ -117,6 +117,10 @@ impl stepflow_storage::traits::WorkflowStorage for SqliteStorageManager {
     async fn delete_execution(&self, run_id: &str) -> Result<(), StorageError> {
         self.workflow_execution.delete_execution(run_id).await
     }
+
+    async fn find_subflows_by_parent(&self, parent_run_id: &str, parent_state_name: &str) -> Result<Vec<StoredWorkflowExecution>, StorageError> {
+        self.workflow_execution.find_subflows_by_parent(parent_run_id, parent_state_name).await
+    }
 }
 
 #[async_trait::async_trait]

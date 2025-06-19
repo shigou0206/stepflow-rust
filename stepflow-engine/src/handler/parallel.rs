@@ -5,8 +5,18 @@ use stepflow_dsl::state::State;
 use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
 
 use super::{StateExecutionScope, StateExecutionResult, StateHandler};
+use stepflow_match::service::SubflowMatchService;
+use std::sync::Arc;
 
-pub struct ParallelHandler;
+pub struct ParallelHandler {
+    pub subflow_match: Arc<dyn SubflowMatchService>,
+}
+
+impl ParallelHandler {
+    pub fn new(subflow_match: Arc<dyn SubflowMatchService>) -> Self {
+        Self { subflow_match }
+    }
+}
 
 #[async_trait]
 impl StateHandler for ParallelHandler {
@@ -20,9 +30,15 @@ impl StateHandler for ParallelHandler {
             _ => return Err("Invalid state type for ParallelHandler".into()),
         };
 
-        let mut subflow_ids = Vec::new();
+        let max_concurrency = state.max_concurrency.unwrap_or(state.branches.len() as u32);
 
         for (index, branch) in state.branches.iter().enumerate() {
+            let status = if index < max_concurrency as usize {
+                "READY"
+            } else {
+                "WAITING"
+            };
+
             let child_run_id = format!("{}:{}:{}", scope.run_id, scope.state_name, index);
             let dsl_def = serde_json::to_value(branch).map_err(|e| e.to_string())?;
 
@@ -33,7 +49,7 @@ impl StateHandler for ParallelHandler {
                 template_id: None,
                 mode: format!("{:?}", scope.mode),
                 current_state_name: Some(branch.start_at.clone()),
-                status: "CREATED".into(),
+                status: status.to_string(),
                 workflow_type: "parallel_subflow".into(),
                 input: Some(input.clone()),
                 input_version: 1,
@@ -57,18 +73,75 @@ impl StateHandler for ParallelHandler {
                 .await
                 .map_err(|e| format!("Failed to create subflow: {e}"))?;
 
-            subflow_ids.push(child_run_id);
+            self.subflow_match
+                .notify_subflow_ready(
+                    child_run_id,
+                    scope.run_id.to_string(),
+                    scope.state_name.to_string(),
+                )
+                .await?;
         }
 
         Ok(StateExecutionResult {
             output: input.clone(),
             next_state: None,
             should_continue: false,
-            metadata: Some(json!({ "subflows": subflow_ids })),
+            metadata: Some(json!({ "subflows": state.branches.len() })),
         })
     }
 
     fn state_type(&self) -> &'static str {
         "parallel"
     }
+
+    async fn on_subflow_finished(
+        &self,
+        scope: &StateExecutionScope<'_>,
+        parent_context: &Value,
+        _child_run_id: &str,
+        _result: &Value,
+    ) -> Result<StateExecutionResult, String> {
+        let subflows = scope
+            .persistence
+            .find_subflows_by_parent(scope.run_id, scope.state_name)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let all_done = subflows.iter().all(|s| s.status == "COMPLETED");
+
+        if all_done {
+            let results: Vec<_> = subflows
+                .iter()
+                .map(|s| s.result.clone().unwrap_or(Value::Null))
+                .collect();
+
+            let mut output = parent_context.clone();
+            output["parallelResult"] = Value::Array(results);
+
+            Ok(StateExecutionResult {
+                output,
+                next_state: scope.next().cloned(),
+                should_continue: true,
+                metadata: None,
+            })
+        } else {
+            if let Some(waiting) = subflows.iter().find(|s| s.status == "WAITING") {
+                self.subflow_match
+                    .notify_subflow_ready(
+                        waiting.run_id.clone(),
+                        scope.run_id.to_string(),
+                        scope.state_name.to_string(),
+                    )
+                    .await?;
+            }
+
+            Ok(StateExecutionResult {
+                output: parent_context.clone(),
+                next_state: None,
+                should_continue: false,
+                metadata: None,
+            })
+        }
+    }
+
 }

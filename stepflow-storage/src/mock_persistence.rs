@@ -14,6 +14,7 @@ impl WorkflowStorage for DummyPersistence {
     async fn find_executions_by_status(&self, _status: &str, _start: i64, _end: i64) -> Result<Vec<StoredWorkflowExecution>, StorageError> { unimplemented!() }
     async fn update_execution(&self, _id: &str, _update: &UpdateStoredWorkflowExecution) -> Result<(), StorageError> { unimplemented!() }
     async fn delete_execution(&self, _id: &str) -> Result<(), StorageError> { unimplemented!() }
+    async fn find_subflows_by_parent(&self, _parent_run_id: &str, _parent_state_name: &str) -> Result<Vec<StoredWorkflowExecution>, StorageError> { unimplemented!() }
 }
 #[async_trait]
 impl EventStorage for DummyPersistence {

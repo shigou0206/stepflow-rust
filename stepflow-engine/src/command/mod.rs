@@ -16,6 +16,8 @@ impl Command {
             Command::Choice { .. } => "Choice",
             Command::Succeed { .. } => "Succeed",
             Command::Fail { .. } => "Fail",
+            Command::Map { .. } => "Map",
+            Command::Parallel { .. } => "Parallel",
         }
     }
 }

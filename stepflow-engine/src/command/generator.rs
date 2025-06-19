@@ -1,5 +1,4 @@
-// stepflow-engine/src/command/generator.rs
-
+// ✅ step_once：支持 Map / Parallel 状态生成命令
 use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 use stepflow_dsl::{WorkflowDSL, State};
@@ -87,7 +86,14 @@ pub fn step_once(
             }
         }
 
-        State::Map(_) => Err("Map state is not yet implemented".to_string()),
-        State::Parallel(_) => Err("Parallel state is not yet implemented".to_string()),
+        State::Map(map) => Ok(Command::Map {
+            state_name: state_name.to_string(),
+            next_state: map.base.next.clone(),
+        }),
+
+        State::Parallel(par) => Ok(Command::Parallel {
+            state_name: state_name.to_string(),
+            next_state: par.base.next.clone(),
+        }),
     }
 }

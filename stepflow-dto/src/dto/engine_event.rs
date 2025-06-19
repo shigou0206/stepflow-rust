@@ -67,6 +67,26 @@ pub enum EngineEvent {
         output: Value,
     },
 
+    SubflowReady {
+        run_id: String,           // 子流程 run_id
+        parent_run_id: String,    // 父流程 run_id
+        state_name: String,       // 所属 Map/Parallel 状态
+    },
+
+    SubflowFinished {
+        parent_run_id: String,
+        child_run_id: String,
+        state_name: String,
+        result: Value,
+    },
+
+    SubflowFailed {
+        parent_run_id: String,
+        child_run_id: String,
+        state_name: String,
+        error: String,
+    },
+
     // === 扩展 & UI ===
     UiEventPushed {
         run_id: String,

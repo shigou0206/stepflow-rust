@@ -1,12 +1,11 @@
-// ✅ 扩展 apply_signal：准备支持 Map / Parallel 的 SubflowFinished 聚合
 use stepflow_dsl::State;
 use stepflow_dto::dto::signal::ExecutionSignal;
 use crate::engine::WorkflowEngine;
+use crate::handler::execution_scope::StateExecutionScope;
 use crate::handler::execution_scope::StateExecutionResult;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
 use chrono::Utc;
 
-/// 应用信号并推进引擎，返回 StepExecutionResult
 pub async fn apply_signal(
     engine: &mut WorkflowEngine,
     signal: ExecutionSignal,
@@ -89,18 +88,6 @@ pub async fn apply_signal(
                 ));
             }
 
-            let state = if matches!(engine.state_def(), State::Task(_)) {
-                engine.state_def()
-            } else if let Some(last_task) = &engine.last_task_state {
-                &engine.dsl.states[last_task]
-            } else {
-                return Err("No Task state found for signal".into());
-            };
-
-            let State::Task(_) = state else {
-                return Err("TaskCancelled signal applied to non-Task state".into());
-            };
-
             engine.persistence
                 .update_execution(
                     &run_id,
@@ -116,12 +103,12 @@ pub async fn apply_signal(
             engine.dispatch_event(stepflow_dto::dto::engine_event::EngineEvent::NodeCancelled {
                 run_id: run_id.clone(),
                 state_name: state_name.clone(),
-                reason: reason.clone().unwrap_or_else(|| "Task cancelled".to_string()),
+                reason: reason.unwrap_or_else(|| "Task cancelled".into()),
             }).await;
 
             engine.finished = true;
 
-            Err(format!("Task cancelled: {}", reason.unwrap_or_else(|| "Task cancelled".to_string())))
+            Err("Task cancelled".into())
         }
 
         ExecutionSignal::TimerFired { .. } => {
@@ -132,8 +119,65 @@ pub async fn apply_signal(
             Err("Heartbeat signal not yet supported".into())
         }
 
-        ExecutionSignal::SubflowFinished { .. } => {
-            Err("SubflowFinished signal not yet supported".into())
+        ExecutionSignal::SubflowFinished {
+            parent_run_id,
+            child_run_id,
+            state_name,
+            result,
+        } => {
+            if parent_run_id != engine.run_id {
+                return Err("SubflowFinished: parent_run_id mismatch".into());
+            }
+            if state_name != engine.current_state {
+                return Err(format!(
+                    "SubflowFinished: state_name mismatch '{}', expected '{}'",
+                    state_name, engine.current_state
+                ));
+            }
+
+            // 👉 调用对应 handler 的 on_subflow_finished()
+            let state_type = engine.state_def().variant_name();
+            let handler = engine
+                .state_handler_registry
+                .get(state_type)
+                .ok_or_else(|| format!("No handler registered for state type: {state_type}"))?;
+
+            let scope = StateExecutionScope::new(
+                &engine.run_id,
+                &engine.current_state,
+                state_type,
+                engine.mode,
+                Some(&engine.event_dispatcher),
+                &engine.persistence,
+                engine.state_def(),
+                &engine.context,
+            );
+
+            let result = handler
+                .on_subflow_finished(&scope, &engine.context, &child_run_id, &result)
+                .await?;
+
+            engine.context = result.output.clone();
+
+            // ✅ 若应推进，则更新状态并写入
+            if result.should_continue {
+                let next = result
+                    .next_state
+                    .clone()
+                    .ok_or("Missing next_state in subflow result")?;
+
+                engine.current_state = next.clone();
+                engine.persistence
+                    .update_execution(&engine.run_id, &UpdateStoredWorkflowExecution {
+                        current_state_name: Some(Some(next)),
+                        context_snapshot: Some(Some(engine.context.clone())),
+                        ..Default::default()
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+
+            Ok(result)
         }
     }
 }

@@ -5,8 +5,18 @@ use jsonpath_lib;
 use stepflow_dsl::state::State;
 use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
 use super::{StateHandler, StateExecutionScope, StateExecutionResult};
+use stepflow_match::service::SubflowMatchService;
+use std::sync::Arc;
 
-pub struct MapHandler;
+pub struct MapHandler {
+    pub subflow_match: Arc<dyn SubflowMatchService>,
+}
+
+impl MapHandler {
+    pub fn new(subflow_match: Arc<dyn SubflowMatchService>) -> Self {
+        Self { subflow_match }
+    }
+}
 
 #[async_trait]
 impl StateHandler for MapHandler {
@@ -28,13 +38,17 @@ impl StateHandler for MapHandler {
             _ => return Err("itemsPath must resolve to an array".into()),
         };
 
-        let mut subflow_ids = Vec::new();
+        let max_concurrency = state.max_concurrency.unwrap_or(items.len() as u32);
 
         for (index, item) in items.iter().enumerate() {
             let child_run_id = format!("{}:{}:{}", scope.run_id, scope.state_name, index);
             let child_context = json!({"item": item});
 
-            let dsl_def = serde_json::to_string(&state.iterator).map_err(|e| e.to_string())?;
+            let status = if index < max_concurrency as usize {
+                "READY"
+            } else {
+                "WAITING"
+            };
 
             let subflow = StoredWorkflowExecution {
                 run_id: child_run_id.clone(),
@@ -43,7 +57,7 @@ impl StateHandler for MapHandler {
                 template_id: None,
                 mode: format!("{:?}", scope.mode),
                 current_state_name: Some(state.iterator.start_at.clone()),
-                status: "CREATED".to_string(),
+                status: status.to_string(),
                 workflow_type: "map_subflow".to_string(),
                 input: Some(child_context),
                 input_version: 1,
@@ -58,24 +72,85 @@ impl StateHandler for MapHandler {
                 version: 1,
                 parent_run_id: Some(scope.run_id.to_string()),
                 parent_state_name: Some(scope.state_name.to_string()),
-                dsl_definition: Some(serde_json::from_str(&dsl_def).map_err(|e| e.to_string())?),
+                dsl_definition: Some(json!(state.iterator)),
             };
 
-            scope.persistence.create_execution(&subflow)
-                .await.map_err(|e| format!("Failed to create subflow: {e}"))?;
+            scope
+                .persistence
+                .create_execution(&subflow)
+                .await
+                .map_err(|e| format!("Failed to create subflow: {e}"))?;
 
-            subflow_ids.push(child_run_id);
+            if status == "READY" {
+                self.subflow_match
+                    .notify_subflow_ready(
+                        child_run_id,
+                        scope.run_id.to_string(),
+                        scope.state_name.to_string(),
+                    )
+                    .await?;
+            }
         }
 
         Ok(StateExecutionResult {
             output: input.clone(),
             next_state: None,
             should_continue: false,
-            metadata: Some(json!({"subflows": subflow_ids})),
+            metadata: Some(json!({"subflows": items.len()})),
         })
     }
 
     fn state_type(&self) -> &'static str {
         "map"
+    }
+
+    async fn on_subflow_finished(
+        &self,
+        scope: &StateExecutionScope<'_>,
+        parent_context: &Value,
+        _child_run_id: &str,
+        _result: &Value,
+    ) -> Result<StateExecutionResult, String> {
+        let subflows = scope
+            .persistence
+            .find_subflows_by_parent(scope.run_id, scope.state_name)
+            .await
+            .map_err(|e| e.to_string())?;
+    
+        let all_done = subflows.iter().all(|s| s.status == "COMPLETED");
+    
+        if all_done {
+            let results: Vec<_> = subflows
+                .iter()
+                .map(|s| s.result.clone().unwrap_or(Value::Null))
+                .collect();
+    
+            let mut output = parent_context.clone();
+            output["mapResult"] = Value::Array(results);
+    
+            Ok(StateExecutionResult {
+                output,
+                next_state: scope.next().cloned(),
+                should_continue: true,
+                metadata: None,
+            })
+        } else {
+            if let Some(waiting) = subflows.iter().find(|s| s.status == "WAITING") {
+                self.subflow_match
+                    .notify_subflow_ready(
+                        waiting.run_id.clone(),
+                        scope.run_id.to_string(),
+                        scope.state_name.to_string(),
+                    )
+                    .await?;
+            }
+    
+            Ok(StateExecutionResult {
+                output: parent_context.clone(),
+                next_state: None,
+                should_continue: false,
+                metadata: None,
+            })
+        }
     }
 }

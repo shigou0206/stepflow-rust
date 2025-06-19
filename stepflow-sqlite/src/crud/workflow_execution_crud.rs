@@ -179,3 +179,32 @@ where
         .await?;
     Ok(())
 }
+
+pub async fn find_subflows_by_parent<'e, E>(
+    executor: E,
+    parent_run_id: &str,
+    parent_state_name: &str,
+) -> Result<Vec<WorkflowExecution>>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    sqlx::query_as!(
+        WorkflowExecution,
+        r#"
+        SELECT 
+            run_id as "run_id!", workflow_id, shard_id as "shard_id!", template_id,
+            mode as "mode!", current_state_name, status as "status!",
+            workflow_type as "workflow_type!", input, input_version as "input_version!",
+            result, result_version as "result_version!", start_time as "start_time!",
+            close_time, current_event_id as "current_event_id!", memo,
+            search_attrs, context_snapshot, version as "version!",
+            parent_run_id, parent_state_name, dsl_definition
+        FROM workflow_executions
+        WHERE parent_run_id = ? AND parent_state_name = ?
+        "#,
+        parent_run_id,
+        parent_state_name
+    )
+    .fetch_all(executor)
+    .await
+}

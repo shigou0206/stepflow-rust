@@ -28,6 +28,7 @@ pub struct StateExecutionScope<'a> {
     pub dispatcher: Option<&'a Arc<EngineEventDispatcher>>,
     pub persistence: &'a DynPM,
     pub state_def: &'a State,
+    pub context: &'a Value, // ✅ 添加当前上下文，便于子流程聚合等
 }
 
 impl<'a> StateExecutionScope<'a> {
@@ -39,6 +40,7 @@ impl<'a> StateExecutionScope<'a> {
         dispatcher: Option<&'a Arc<EngineEventDispatcher>>,
         persistence: &'a DynPM,
         state_def: &'a State,
+        context: &'a Value, // ✅ 新参数
     ) -> Self {
         Self {
             run_id,
@@ -48,6 +50,21 @@ impl<'a> StateExecutionScope<'a> {
             dispatcher,
             persistence,
             state_def,
+            context, // ✅ 新字段赋值
+        }
+    }
+
+    /// 便捷方法：提取 next_state（用于推进）
+    pub fn next(&self) -> Option<&String> {
+        match self.state_def {
+            State::Task(s) => s.base.next.as_ref(),
+            State::Wait(s) => s.base.next.as_ref(),
+            State::Pass(s) => s.base.next.as_ref(),
+            State::Choice(_) => None,
+            State::Succeed(_) => None,
+            State::Fail(_) => None,
+            State::Map(s) => s.base.next.as_ref(),
+            State::Parallel(s) => s.base.next.as_ref(),
         }
     }
 }

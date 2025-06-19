@@ -185,4 +185,15 @@ impl WorkflowExecutionPersistence {
             .await
             .map_err(StorageError::from)
     }
+
+    pub async fn find_subflows_by_parent(
+        &self,
+        parent_run_id: &str,
+        parent_state_name: &str,
+    ) -> Result<Vec<StoredWorkflowExecution>, StorageError> {
+        let models = workflow_execution_crud::find_subflows_by_parent(&self.pool, parent_run_id, parent_state_name)
+            .await
+            .map_err(StorageError::from)?;
+        Ok(models.into_iter().map(Self::to_entity).collect())
+    }
 }

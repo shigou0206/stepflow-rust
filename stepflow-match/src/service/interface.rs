@@ -51,3 +51,16 @@ pub trait MatchService: Send + Sync {
         pm: &DynPM,
     ) -> Result<Value, String>;
 }
+
+#[async_trait]
+pub trait SubflowMatchService: Send + Sync {
+    fn as_any(&self) -> &dyn Any;
+
+    /// 通知子流程已准备好（由 MapHandler / ParallelHandler 调用）
+    async fn notify_subflow_ready(
+        &self,
+        run_id: String,
+        parent_run_id: String,
+        state_name: String,
+    ) -> Result<(), String>;
+}

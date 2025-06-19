@@ -82,6 +82,7 @@ pub(crate) async fn dispatch_command(
         None,
         persistence,
         state_enum,
+        context,
     );
 
     let result = handler

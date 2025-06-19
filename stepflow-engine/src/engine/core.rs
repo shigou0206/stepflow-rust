@@ -102,23 +102,32 @@ impl WorkflowEngine {
     }
 
     pub async fn handle_next_signal(&mut self) -> Result<bool, String> {
-        let receiver = match &mut self.signal_receiver {
+        // 先把 signal_receiver 移出来，避免后续借用冲突
+        let mut receiver = match self.signal_receiver.take() {
             Some(rx) => rx,
             None => return Ok(false),
         };
-
-        match receiver.try_recv() {
-            Ok(signal) => {
-                apply_signal(self, signal).await?;
-                Ok(true)
-            }
-            Err(mpsc::error::TryRecvError::Empty) => Ok(false),
-            Err(mpsc::error::TryRecvError::Disconnected) => {
-                warn!("Signal channel disconnected for run_id: {}", self.run_id);
-                self.signal_receiver = None;
-                Ok(false)
+    
+        let mut handled_any = false;
+    
+        loop {
+            match receiver.try_recv() {
+                Ok(signal) => {
+                    apply_signal(self, signal).await?;
+                    handled_any = true;
+                }
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                    self.signal_receiver = Some(receiver);
+                    break;
+                }
+                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                    warn!("Signal channel disconnected for run_id: {}", self.run_id);
+                    break;
+                }
             }
         }
+    
+        Ok(handled_any)
     }
 
     // ------------------------- 恢复 ----------------------------------

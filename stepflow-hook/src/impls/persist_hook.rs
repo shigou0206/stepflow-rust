@@ -328,6 +328,13 @@ mod tests {
         async fn delete_execution(&self, _: &str) -> Result<(), StorageError> {
             Ok(())
         }
+        async fn find_subflows_by_parent(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Vec<StoredWorkflowExecution>, StorageError> {
+            Ok(vec![])
+        }
     }
 
     #[tokio::test]

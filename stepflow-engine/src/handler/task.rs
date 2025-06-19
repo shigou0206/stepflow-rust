@@ -103,6 +103,16 @@ impl StateHandler for TaskHandler {
     fn state_type(&self) -> &'static str {
         "task"
     }
+
+    async fn on_subflow_finished(
+        &self,
+        _scope: &StateExecutionScope<'_>,
+        _parent_context: &Value,
+        _child_run_id: &str,
+        _result: &Value,
+    ) -> Result<StateExecutionResult, String> {
+        Err("on_subflow_finished not supported by this state".into())
+    }
 }
 
 // 保留任务构建辅助函数

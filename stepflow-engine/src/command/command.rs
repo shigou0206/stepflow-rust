@@ -1,3 +1,4 @@
+// ✅ Command：增加支持 Map / Parallel 状态指令
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,6 +34,14 @@ pub enum Command {
         error: Option<String>,
         cause: Option<String>,
     },
+    Map {
+        state_name: String,
+        next_state: Option<String>,
+    },
+    Parallel {
+        state_name: String,
+        next_state: Option<String>,
+    },
 }
 
 impl Command {
@@ -43,7 +52,9 @@ impl Command {
             Command::Pass { state_name, .. } |
             Command::Choice { state_name, .. } |
             Command::Succeed { state_name, .. } |
-            Command::Fail { state_name, .. } => state_name
+            Command::Fail { state_name, .. } |
+            Command::Map { state_name, .. } |
+            Command::Parallel { state_name, .. } => state_name
         }
     }
 }

@@ -14,4 +14,13 @@ pub trait StateHandler: Send + Sync {
 
     /// 获取状态类型
     fn state_type(&self) -> &'static str;
+
+    /// 子流程完成后的事件处理（Map/Parallel 专用）
+    async fn on_subflow_finished(
+        &self,
+        scope: &StateExecutionScope<'_>,
+        parent_context: &Value,
+        child_run_id: &str,
+        result: &Value,
+    ) -> Result<StateExecutionResult, String>;
 } 
