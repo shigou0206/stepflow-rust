@@ -6,9 +6,7 @@ use axum::{
 
 use stepflow_dto::dto::timer::{TimerDto, CreateTimerDto, UpdateTimerDto};
 
-use crate::{
-    service::{TimerSvc, TimerService},
-};
+use stepflow_core::service::{TimerSvc, TimerService};
 
 use stepflow_core::{
     app_state::AppState,

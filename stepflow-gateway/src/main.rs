@@ -1,5 +1,4 @@
 mod routes;
-mod service;
 
 use routes::ApiDoc;
 

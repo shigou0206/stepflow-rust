@@ -3,7 +3,7 @@ use stepflow_storage::db::DynPM;
 use stepflow_storage::error::StorageError;
 use stepflow_storage::entities::workflow_template::{StoredWorkflowTemplate, UpdateStoredWorkflowTemplate};
 use stepflow_dto::dto::template::*;
-use stepflow_core::{
+use crate::{
     error::{AppError, AppResult},
 };
 use anyhow::{Context, Error};

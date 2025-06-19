@@ -15,7 +15,10 @@ anyhow.workspace = true
 prometheus.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-
+async-trait.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+stepflow-dsl = { path = "../stepflow-dsl" }
 stepflow-dto = { path = "../stepflow-dto" }
 stepflow-common = { path = "../stepflow-common" }
 stepflow-engine = { path = "../stepflow-engine" }

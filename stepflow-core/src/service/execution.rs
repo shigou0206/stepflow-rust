@@ -3,7 +3,7 @@ use anyhow::{Context, Error};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;
-use stepflow_core::{
+use crate::{
     app_state::AppState,
     error::{AppError, AppResult},
 };

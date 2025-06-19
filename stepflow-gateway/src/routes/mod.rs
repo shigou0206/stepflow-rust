@@ -7,15 +7,13 @@ pub mod workflow_event;
 pub mod queue_task;
 pub mod timer;
 pub mod match_router;
-use crate::{
-    service::{
-        template::TemplateSqlxSvc,
-        execution::ExecutionSqlxSvc,
-        activity_task::ActivityTaskSqlxSvc,
-        workflow_event::WorkflowEventSqlxSvc,
-        queue_task::QueueTaskSqlxSvc,
-        timer::TimerSqlxSvc
-    },
+use stepflow_core::service::{
+    template::TemplateSqlxSvc,
+    execution::ExecutionSqlxSvc,
+    activity_task::ActivityTaskSqlxSvc,
+    workflow_event::WorkflowEventSqlxSvc,
+    queue_task::QueueTaskSqlxSvc,
+    timer::TimerSqlxSvc
 };
 use stepflow_core::app_state::AppState;
 use std::sync::Arc;

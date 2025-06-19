@@ -17,3 +17,4 @@ stepflow-common = { path = "../stepflow-common" }
 stepflow-tool = { path = "../stepflow-tool" }
 stepflow-dto = { path = "../stepflow-dto" }
 stepflow-eventbus = { path = "../stepflow-eventbus" }
+stepflow-core = { path = "../stepflow-core" }

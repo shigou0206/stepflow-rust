@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use stepflow_dto::dto::queue_task::{QueueTaskDto, UpdateQueueTaskDto};
-use stepflow_core::{
+use crate::{
     app_state::AppState,
     error::{AppError, AppResult},
 };

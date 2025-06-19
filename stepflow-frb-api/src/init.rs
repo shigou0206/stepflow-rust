@@ -1,5 +1,5 @@
 pub use stepflow_core::app_state::AppState;
-pub use stepflow_gateway::service::execution::ExecutionSqlxSvc;
+pub use stepflow_core::service::execution::ExecutionSqlxSvc;
 
 use std::sync::Arc;
 

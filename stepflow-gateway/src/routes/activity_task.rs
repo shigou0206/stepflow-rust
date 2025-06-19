@@ -14,9 +14,7 @@ use stepflow_core::{
     app_state::AppState,
     error::AppResult,
 };
-use crate::{
-    service::{ActivityTaskService, ActivityTaskSvc},
-};
+use stepflow_core::service::{ActivityTaskService, ActivityTaskSvc};
 
 pub fn router(svc: ActivityTaskSvc) -> Router<AppState> {
     Router::new()

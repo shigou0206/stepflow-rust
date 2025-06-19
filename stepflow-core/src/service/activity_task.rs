@@ -14,7 +14,7 @@ use stepflow_storage::{
 
 use crate::service::ActivityTaskService;
 
-use stepflow_core::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult};
 
 /// ------------------------------------------------------------
 /// 具体实现结构体

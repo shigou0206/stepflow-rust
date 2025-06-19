@@ -1,8 +1,8 @@
-use stepflow_gateway::service::execution::ExecutionSqlxSvc;
+use stepflow_core::service::execution::ExecutionSqlxSvc;
 
 use crate::execution_types::*;
 use stepflow_dto::dto::execution::ExecStart;
-use stepflow_gateway::service::ExecutionService;
+use stepflow_core::service::ExecutionService;
 use serde_json::Value;
 
 #[cfg(not(frb_expand))]

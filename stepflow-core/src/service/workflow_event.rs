@@ -3,7 +3,7 @@ use stepflow_storage::db::DynPM;
 use stepflow_storage::error::StorageError;
 use stepflow_storage::entities::workflow_event::StoredWorkflowEvent;
 use stepflow_dto::dto::workflow_event::{WorkflowEventDto, RecordEventRequest};
-use stepflow_core::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult};
 use anyhow::Error;
 
 #[derive(Clone)]

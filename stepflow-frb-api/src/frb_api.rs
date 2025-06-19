@@ -1,4 +1,4 @@
-pub use stepflow_gateway::service::execution::ExecutionSqlxSvc;
+use stepflow_core::service::execution::ExecutionSqlxSvc;
 
 use flutter_rust_bridge::frb;
 use crate::execution_api::*;
