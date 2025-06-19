@@ -125,6 +125,11 @@ pub async fn apply_signal(
             state_name,
             result,
         } => {
+            tracing::debug!(
+                "[signal] SubflowFinished received: parent_run_id={}, child_run_id={}, state_name={}, result={:?}",
+                parent_run_id, child_run_id, state_name, result
+            );
+
             if parent_run_id != engine.run_id {
                 return Err("SubflowFinished: parent_run_id mismatch".into());
             }
@@ -135,8 +140,12 @@ pub async fn apply_signal(
                 ));
             }
 
-            // 👉 调用对应 handler 的 on_subflow_finished()
             let state_type = engine.state_def().variant_name();
+            tracing::debug!(
+                "[signal] Dispatching on_subflow_finished for state_type={}",
+                state_type
+            );
+
             let handler = engine
                 .state_handler_registry
                 .get(state_type)
@@ -157,9 +166,13 @@ pub async fn apply_signal(
                 .on_subflow_finished(&scope, &engine.context, &child_run_id, &result)
                 .await?;
 
+            tracing::debug!(
+                "[signal] on_subflow_finished result: should_continue={}, next_state={:?}",
+                result.should_continue, result.next_state
+            );
+
             engine.context = result.output.clone();
 
-            // ✅ 若应推进，则更新状态并写入
             if result.should_continue {
                 let next = result
                     .next_state
@@ -167,6 +180,12 @@ pub async fn apply_signal(
                     .ok_or("Missing next_state in subflow result")?;
 
                 engine.current_state = next.clone();
+
+                tracing::debug!(
+                    "[signal] Advancing to next_state={}",
+                    next
+                );
+
                 engine.persistence
                     .update_execution(&engine.run_id, &UpdateStoredWorkflowExecution {
                         current_state_name: Some(Some(next)),
@@ -179,5 +198,6 @@ pub async fn apply_signal(
 
             Ok(result)
         }
+    
     }
 }
