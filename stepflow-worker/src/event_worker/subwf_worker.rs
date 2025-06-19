@@ -1,5 +1,6 @@
 use anyhow::Result;
-use stepflow_core::service::ExecutionSvc; // ✅ 使用具体类型
+use stepflow_core::service::ExecutionSvc;
+use stepflow_core::service::ExecutionService;
 use stepflow_dto::dto::engine_event::EngineEvent;
 use stepflow_dto::dto::execution::ExecStart;
 use stepflow_eventbus::core::bus::EventBus;
@@ -33,7 +34,6 @@ pub async fn start_subflow_worker(
             };
 
             let req = ExecStart {
-                run_id: Some(run_id.clone()),
                 template_id: None,
                 mode: parent.mode.clone(),
                 init_ctx: parent.result.clone(),
