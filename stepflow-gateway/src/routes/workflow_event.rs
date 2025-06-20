@@ -6,7 +6,7 @@ use axum::{
 
 use stepflow_dto::dto::workflow_event::{WorkflowEventDto, RecordEventRequest, ListQuery};
 
-use stepflow_core::service::WorkflowEventSvc;
+use stepflow_core::service::{WorkflowEventSvc, WorkflowEventService};
 
 use stepflow_core::{
     app_state::AppState,

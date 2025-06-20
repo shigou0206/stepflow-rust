@@ -5,6 +5,7 @@ use stepflow_storage::entities::workflow_event::StoredWorkflowEvent;
 use stepflow_dto::dto::workflow_event::{WorkflowEventDto, RecordEventRequest};
 use crate::error::{AppError, AppResult};
 use anyhow::Error;
+use async_trait::async_trait;
 
 #[derive(Clone)]
 pub struct WorkflowEventSqlxSvc {
@@ -17,27 +18,27 @@ impl WorkflowEventSqlxSvc {
     }
 }
 
-
-impl WorkflowEventSqlxSvc {
-    pub async fn list_events(&self, limit: i64, offset: i64) -> AppResult<Vec<WorkflowEventDto>> {
+#[async_trait]
+impl crate::service::WorkflowEventService for WorkflowEventSqlxSvc {
+    async fn list_events(&self, limit: i64, offset: i64) -> AppResult<Vec<WorkflowEventDto>> {
         let events = self.pm.find_events_by_run_id("", limit, offset).await
             .map_err(|e: StorageError| Error::new(e))?;
         Ok(events.into_iter().map(Into::into).collect())
     }
 
-    pub async fn get_event(&self, id: i64) -> AppResult<Option<WorkflowEventDto>> {
+    async fn get_event(&self, id: i64) -> AppResult<Option<WorkflowEventDto>> {
         let event = self.pm.get_event(id).await
             .map_err(|e: StorageError| Error::new(e))?;
         Ok(event.map(Into::into))
     }
 
-    pub async fn list_events_for_run(&self, run_id: &str, limit: i64, offset: i64) -> AppResult<Vec<WorkflowEventDto>> {
+    async fn list_events_for_run(&self, run_id: &str, limit: i64, offset: i64) -> AppResult<Vec<WorkflowEventDto>> {
         let events = self.pm.find_events_by_run_id(run_id, limit, offset).await
             .map_err(|e: StorageError| Error::new(e))?;
         Ok(events.into_iter().map(Into::into).collect())
     }
 
-    pub async fn record_event(&self, req: RecordEventRequest) -> AppResult<WorkflowEventDto> {
+    async fn record_event(&self, req: RecordEventRequest) -> AppResult<WorkflowEventDto> {
         let event = StoredWorkflowEvent {
             id: 0,
             run_id: req.run_id,
@@ -64,7 +65,7 @@ impl WorkflowEventSqlxSvc {
         Ok(event.into())
     }
 
-    pub async fn archive_event(&self, id: i64) -> AppResult<Option<WorkflowEventDto>> {
+    async fn archive_event(&self, id: i64) -> AppResult<Option<WorkflowEventDto>> {
         self.pm.archive_event(id).await
             .map_err(|e: StorageError| Error::new(e))?;
 
@@ -73,7 +74,7 @@ impl WorkflowEventSqlxSvc {
         Ok(event.map(Into::into))
     }
 
-    pub async fn delete_event(&self, id: i64) -> AppResult<()> {
+    async fn delete_event(&self, id: i64) -> AppResult<()> {
         self.pm.delete_event(id).await
             .map_err(|e: StorageError| Error::new(e))?;
         Ok(())

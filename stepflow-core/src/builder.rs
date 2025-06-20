@@ -23,10 +23,24 @@ use stepflow_match::service::{
 use stepflow_sqlite::SqliteStorageManager;
 use stepflow_storage::traits::{EventStorage, StateStorage, WorkflowStorage};
 
+use crate::service_register::ServiceRegistry;
+use crate::service::{TemplateSvc, ExecutionSvc, ActivityTaskSvc, WorkflowEventSvc, QueueTaskSvc, TimerSvc};
 use prometheus::Registry;
 use stepflow_common::config::{StepflowConfig, StepflowExecMode};
 
 use crate::app_state::AppState;
+
+
+pub fn build_service_registry(state: Arc<AppState>) -> ServiceRegistry {
+    ServiceRegistry {
+        template: Arc::new(TemplateSvc::new(state.persist.clone())),
+        execution: Arc::new(ExecutionSvc::new(state.clone())),
+        activity_task: Arc::new(ActivityTaskSvc::new(state.persist.clone())),
+        workflow_event: Arc::new(WorkflowEventSvc::new(state.persist.clone())),
+        queue_task: Arc::new(QueueTaskSvc::new(state.clone())),
+        timer: Arc::new(TimerSvc::new(state.clone())),
+    }
+}
 
 pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
     // ---- DB & Storage ----
@@ -108,12 +122,19 @@ pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
             .register("parallel", Arc::new(ParallelHandler::new(subflow_match_service.clone()))),
     );
 
-    Ok(AppState {
-        persist,
+    let mut state = AppState {
+        persist: persist.clone(),
         engines: Default::default(),
-        event_dispatcher,
-        match_service,
-        event_bus,
-        state_handler_registry,
-    })
+        event_dispatcher: event_dispatcher.clone(),
+        match_service: match_service.clone(),
+        event_bus: event_bus.clone(),
+        state_handler_registry: state_handler_registry.clone(),
+        services: Arc::new(ServiceRegistry::empty()),
+    };
+
+    // ④ 构造服务注册表并注入
+    let registry = Arc::new(build_service_registry(Arc::new(state.clone())));
+    state.services = registry;
+
+    Ok(state)
 }

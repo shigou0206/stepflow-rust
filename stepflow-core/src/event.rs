@@ -2,9 +2,10 @@ use tracing::{debug, error, info};
 use crate::app_state::AppState;
 use stepflow_common::config::{StepflowConfig, StepflowExecMode};
 use stepflow_dto::dto::engine_event::EngineEvent;
+use stepflow_dto::dto::execution::ExecStart;
 use stepflow_dto::dto::signal::ExecutionSignal;
 
-/// 启动事件驱动执行器
+/// 启动事件驱动执行器（含 TaskFinished / SubflowFinished / SubflowReady）
 pub fn start_event_runner(app: AppState) {
     let mut rx = app.subscribe_events();
 
@@ -113,6 +114,36 @@ pub fn start_event_runner(app: AppState) {
                     }
                 }
 
+                // ✅ SubflowReady → 启动子工作流
+                // EngineEvent::SubflowReady {
+                //     run_id,
+                //     parent_run_id,
+                //     state_name,
+                //     dsl,
+                //     init_ctx,
+                // } => {
+                //     info!(
+                //         %run_id, %parent_run_id, %state_name,
+                //         "📦 SubflowReady received, starting subflow"
+                //     );
+
+                //     let exec_svc = app.execution_svc.clone();
+                //     let req = ExecStart {
+                //         run_id: Some(run_id.clone()),
+                //         template_id: None,
+                //         init_ctx: Some(init_ctx.clone()),
+                //         parent_run_id: Some(parent_run_id.clone()),
+                //         parent_state_name: Some(state_name.clone()),
+                //         dsl: Some(dsl.clone()),
+                //     };
+
+                //     if let Err(e) = exec_svc.start(req).await {
+                //         error!(%run_id, "❌ Failed to start subflow: {e:#}");
+                //     } else {
+                //         info!(%run_id, "✅ Subflow started");
+                //     }
+                // }
+
                 _ => {} // 忽略其他事件
             }
         }
@@ -138,4 +169,4 @@ pub fn spawn_event_logger(app_state: &AppState) {
         }
         tracing::warn!("⚠️ EventBus subscription closed");
     });
-}   
+}

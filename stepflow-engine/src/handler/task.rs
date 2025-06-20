@@ -3,8 +3,6 @@ use serde_json::Value;
 use stepflow_dsl::state::{task::TaskState, State};
 use stepflow_dto::dto::queue_task::QueueTaskDto;
 use stepflow_match::service::MatchService;
-use stepflow_tool::common::context::ToolContext;
-use stepflow_tool::registry::globals::GLOBAL_TOOL_REGISTRY;
 
 use async_trait::async_trait;
 use std::sync::Arc;

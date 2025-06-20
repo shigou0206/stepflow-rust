@@ -3,7 +3,7 @@ pub mod error;
 pub mod builder;
 pub mod event;
 pub mod service;
-
+pub mod service_register;
 pub use app_state::AppState;
 pub use error::{AppError, AppResult};
 
