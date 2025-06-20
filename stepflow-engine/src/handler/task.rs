@@ -21,31 +21,6 @@ impl TaskHandler {
         Self { match_service }
     }
 
-    async fn handle_inline(&self, state: &TaskState, input: &Value) -> Result<Value, String> {
-        debug!("Executing task inline with resource: {}", state.resource);
-
-        let tool = {
-            let registry = GLOBAL_TOOL_REGISTRY.clone();
-
-            registry
-                .get(&state.resource)
-                .ok_or_else(|| format!("Tool not found: {}", state.resource))?
-                .clone()
-        };
-
-        let context = ToolContext::default();
-
-        tool.validate_input(&input, &context)
-            .map_err(|e| format!("Tool input validation failed: {}", e))?;
-
-        let result = tool
-            .execute(input.clone(), context)
-            .await
-            .map_err(|e| format!("Tool execution failed: {}", e))?;
-
-        Ok(result.output)
-    }
-
     async fn handle_deferred(
         &self,
         scope: &StateExecutionScope<'_>,

@@ -1,5 +1,5 @@
 use crate::command::step_once;
-use crate::mapping::MappingPipeline;
+use crate::handler::registry::StateHandlerRegistry;
 use crate::signal::handler::apply_signal;
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
@@ -11,7 +11,6 @@ use stepflow_dto::dto::signal::ExecutionSignal;
 use stepflow_hook::EngineEventDispatcher;
 use stepflow_storage::db::DynPM;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
-use crate::handler::registry::StateHandlerRegistry;
 use tokio::sync::mpsc;
 
 use super::{
@@ -104,9 +103,9 @@ impl WorkflowEngine {
             Some(rx) => rx,
             None => return Ok(false),
         };
-    
+
         let mut handled_any = false;
-    
+
         loop {
             match receiver.try_recv() {
                 Ok(signal) => {
@@ -123,73 +122,9 @@ impl WorkflowEngine {
                 }
             }
         }
-    
+
         Ok(handled_any)
     }
-
-    // ------------------------- 恢复 ----------------------------------
-
-    pub async fn restore(
-        run_id: String,
-        event_dispatcher: Arc<EngineEventDispatcher>,
-        persistence: DynPM,
-        state_handler_registry: Arc<StateHandlerRegistry>,
-    ) -> Result<Self, String> {
-        let execution = persistence
-            .get_execution(&run_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Execution {} not found", run_id))?;
-
-        let template_id = execution
-            .template_id
-            .ok_or_else(|| "Template ID missing".to_string())?;
-
-        let template = persistence
-            .get_template(&template_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Template {} not found", template_id))?;
-
-        let dsl: WorkflowDSL =
-            serde_json::from_str(&template.dsl_definition).map_err(|e| e.to_string())?;
-
-        let context = execution
-            .context_snapshot
-            .unwrap_or_else(|| Value::Object(Default::default()));
-
-        let current_state = execution
-            .current_state_name
-            .unwrap_or_else(|| dsl.start_at.clone());
-
-
-        let finished = matches!(
-            execution.status.as_str(),
-            "COMPLETED" | "FAILED" | "TERMINATED" | "PAUSED" | "SUSPENDED"
-        );
-
-        let (signal_sender, signal_receiver) = mpsc::unbounded_channel();
-
-        Ok(Self {
-            run_id,
-            current_state,
-            last_task_state: None,
-            dsl,
-            context,
-            event_dispatcher,
-            persistence,
-            state_handler_registry,
-            finished,
-            updated_at: execution
-                .close_time
-                .unwrap_or_else(|| execution.start_time)
-                .and_utc(),
-            signal_sender: Some(signal_sender),
-            signal_receiver: Some(signal_receiver),
-        })
-    }
-
-    // --------------------- 调度辅助 -----------------------------
 
     pub(crate) async fn dispatch_event(&self, ev: EngineEvent) {
         self.event_dispatcher.dispatch(ev).await;
@@ -197,16 +132,8 @@ impl WorkflowEngine {
     pub(crate) fn state_def(&self) -> &State {
         &self.dsl.states[&self.current_state]
     }
-    fn deferred_task(&self) -> bool {
-        matches!(self.state_def(), State::Task(_))
-    }
 
     // --------------------- 主入口 -------------------------------
-
-    pub async fn run_inline(&mut self) -> Result<Value, String> {
-        self.run_state().await
-    }
-
     pub async fn advance_until_blocked(&mut self) -> Result<StateExecutionResult, String> {
         let out = self.run_state().await?;
         Ok(StateExecutionResult {
@@ -223,8 +150,10 @@ impl WorkflowEngine {
                 break;
             }
 
-            // 记录当前 state 是否是 Task（SendData 之类）
-            let is_task_state = matches!(self.state_def(), State::Task(_));
+            let is_blocking_state = matches!(
+                self.state_def(),
+                State::Task(_) | State::Wait(_) | State::Map(_) | State::Parallel(_)
+            );
 
             let step_out = self.advance_once().await?;
             debug!(
@@ -236,14 +165,8 @@ impl WorkflowEngine {
                 break; // End 节点
             }
 
-            // ---- 如果刚才执行的就是 Task 状态，说明任务已写入队列；立即挂起 ----
-            if is_task_state {
-                debug!("⏸ task scheduled, engine suspend");
-                break; // 立即退出，等待外部 worker 通过 /update 触发信号处理
-            }
-
-            // ---- 处理 task 完成/失败的情况 ----
-            if self.check_deferred().await? {
+            if is_blocking_state {
+                debug!("⏸ blocking state encountered, engine suspend");
                 break;
             }
 
@@ -257,83 +180,6 @@ impl WorkflowEngine {
             self.run_id, self.current_state
         );
         Ok(self.context.clone())
-    }
-    // ------------------ Deferred 轮询 ---------------------------
-
-    async fn check_deferred(&mut self) -> Result<bool, String> {
-        if !self.deferred_task() {
-            return Ok(false);
-        }
-
-        let maybe_task = self
-            .persistence
-            .find_queue_tasks_by_status("pending", 100, 0)
-            .await
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .find(|t| t.run_id == self.run_id && t.state_name == self.current_state);
-
-        if let Some(t) = maybe_task {
-            match t.status.as_str() {
-                "completed" => {
-                    if let Some(payload) = t.task_payload {
-                        let State::Task(task_state) = self.state_def() else {
-                            return Err("Expected Task state".into());
-                        };
-                        let pipeline = MappingPipeline {
-                            input_mapping: task_state.base.input_mapping.as_ref(),
-                            output_mapping: task_state.base.output_mapping.as_ref(),
-                        };
-                        self.context = pipeline
-                            .apply_output(&payload, &self.context)
-                            .map_err(|e| e.to_string())?;
-
-                        self.persistence
-                            .update_execution(
-                                &self.run_id,
-                                &UpdateStoredWorkflowExecution {
-                                    context_snapshot: Some(Some(self.context.clone())),
-                                    ..Default::default()
-                                },
-                            )
-                            .await
-                            .map_err(|e| e.to_string())?;
-
-                        self.dispatch_event(EngineEvent::NodeSuccess {
-                            run_id: self.run_id.clone(),
-                            state_name: self.current_state.clone(),
-                            output: payload,
-                        })
-                        .await;
-                    }
-                    Ok(true)
-                }
-                "failed" => {
-                    let err_msg = t.error_message.unwrap_or_else(|| "Task failed".to_string());
-                    self.persistence
-                        .update_execution(
-                            &self.run_id,
-                            &UpdateStoredWorkflowExecution {
-                                status: Some("FAILED".into()),
-                                close_time: Some(Some(Utc::now().naive_utc())),
-                                ..Default::default()
-                            },
-                        )
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    self.dispatch_event(EngineEvent::NodeFailed {
-                        run_id: self.run_id.clone(),
-                        state_name: self.current_state.clone(),
-                        error: err_msg.clone(),
-                    })
-                    .await;
-                    Err(err_msg)
-                }
-                _ => Ok(true),
-            }
-        } else {
-            Ok(false)
-        }
     }
 
     // ---- 只在首次进入节点时写 input ---------------------------------
@@ -504,39 +350,5 @@ impl WorkflowEngine {
         debug!("📤 step outcome: {:?}", outcome);
 
         Ok(outcome)
-    }
-
-    // ----------------- 外部控制 -------------------------------
-
-    pub async fn pause(&mut self) -> Result<(), String> {
-        self.persistence
-            .update_execution(
-                &self.run_id,
-                &UpdateStoredWorkflowExecution {
-                    status: Some("PAUSED".into()),
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        self.finished = true;
-        Ok(())
-    }
-
-    pub async fn resume(&mut self) -> Result<(), String> {
-        let exec = self
-            .persistence
-            .get_execution(&self.run_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Execution {} not found", self.run_id))?;
-
-        match exec.status.as_str() {
-            "PAUSED" | "SUSPENDED" => {
-                self.finished = false;
-                Ok(())
-            }
-            s => Err(format!("Cannot resume from status {}", s)),
-        }
     }
 }

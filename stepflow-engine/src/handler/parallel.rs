@@ -97,7 +97,7 @@ impl StateHandler for ParallelHandler {
         Ok(StateExecutionResult {
             output: input.clone(),
             next_state: None,
-            should_continue: false,
+            should_continue: true,
             metadata: Some(json!({ "subflows": state.branches.len() })),
         })
     }
@@ -157,7 +157,7 @@ impl StateHandler for ParallelHandler {
             Ok(StateExecutionResult {
                 output: parent_context.clone(),
                 next_state: None,
-                should_continue: false,
+                should_continue: true,
                 metadata: None,
             })
         }

@@ -108,7 +108,7 @@ impl StateHandler for MapHandler {
         Ok(StateExecutionResult {
             output: input.clone(),
             next_state: None,
-            should_continue: false,
+            should_continue: true,
             metadata: Some(json!({ "subflows": items.len() })),
         })
     }
@@ -183,7 +183,7 @@ impl StateHandler for MapHandler {
             Ok(StateExecutionResult {
                 output: parent_context.clone(),
                 next_state: None,
-                should_continue: false,
+                should_continue: true,
                 metadata: None,
             })
         }
