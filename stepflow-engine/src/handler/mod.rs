@@ -17,3 +17,5 @@ pub use wait::WaitHandler;
 pub use choice::ChoiceHandler;
 pub use succeed::SucceedHandler;
 pub use fail::FailHandler;
+pub use map::MapHandler;
+pub use parallel::ParallelHandler;
