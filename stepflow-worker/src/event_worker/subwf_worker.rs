@@ -18,6 +18,8 @@ pub async fn start_subflow_worker(
             run_id,
             parent_run_id,
             state_name,
+            dsl,
+            init_ctx,
         } = envelope.payload
         {
             tracing::info!(
@@ -25,21 +27,14 @@ pub async fn start_subflow_worker(
                 run_id, parent_run_id, state_name
             );
 
-            let parent = match exec_service.get(&parent_run_id).await {
-                Ok(parent) => parent,
-                Err(e) => {
-                    tracing::error!("❌ Failed to fetch parent {}: {e:#}", parent_run_id);
-                    continue;
-                }
-            };
 
             let req = ExecStart {
+                run_id: Some(run_id.clone()),
                 template_id: None,
-                mode: parent.mode.clone(),
-                init_ctx: parent.result.clone(),
+                init_ctx: Some(init_ctx),
                 parent_run_id: Some(parent_run_id.clone()),
                 parent_state_name: Some(state_name.clone()),
-                dsl: None,
+                dsl: Some(dsl),
             };
 
             if let Err(e) = exec_service.start(req).await {

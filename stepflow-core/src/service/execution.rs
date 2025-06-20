@@ -8,8 +8,8 @@ use crate::{
     error::{AppError, AppResult},
 };
 use stepflow_dto::dto::execution::*;
-use stepflow_engine::engine::{WorkflowEngine, WorkflowMode};
-use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
+use stepflow_engine::engine::WorkflowEngine;
+use stepflow_storage::entities::workflow_execution::{StoredWorkflowExecution, UpdateStoredWorkflowExecution};
 use stepflow_storage::error::StorageError;
 use stepflow_dsl::dsl::WorkflowDSL;
 
@@ -22,55 +22,53 @@ impl ExecutionSqlxSvc {
     pub fn new(state: Arc<AppState>) -> Self {
         Self { state }
     }
-
-    fn mode_from_str(s: &str) -> Result<WorkflowMode, AppError> {
-        match s {
-            "INLINE" => Ok(WorkflowMode::Inline),
-            "DEFERRED" => Ok(WorkflowMode::Deferred),
-            _ => Err(AppError::BadRequest("mode must be INLINE or DEFERRED".into())),
-        }
-    }
 }
 
 #[async_trait]
 impl crate::service::ExecutionService for ExecutionSqlxSvc {
+
     async fn start(&self, req: ExecStart) -> AppResult<ExecDto> {
+        // 1. 解析 DSL
         let dsl_val = if let Some(tpl_id) = &req.template_id {
             let tpl = self.state.persist.get_template(tpl_id).await
-                .map_err(|e: StorageError| Error::new(e))?
+                .map_err(Error::new)?
                 .ok_or(AppError::NotFound)?;
-            serde_json::from_str::<Value>(&tpl.dsl_definition).context("解析模板 DSL 失败")?
+            serde_json::from_str::<Value>(&tpl.dsl_definition)
+                .context("解析模板 DSL 失败")?
         } else {
-            req.dsl.clone().ok_or(AppError::BadRequest("dsl or template_id required".into()))?
+            req.dsl.clone().ok_or_else(|| AppError::BadRequest("dsl or template_id required".into()))?
         };
 
         let dsl: WorkflowDSL = match dsl_val {
-            Value::Object(_) => serde_json::from_value(dsl_val).map_err(|e| AppError::BadRequest(format!("invalid DSL: {e}")))?,
-            Value::String(ref s) => serde_json::from_str(s).map_err(|e| AppError::BadRequest(format!("invalid DSL string: {e}")))?,
+            Value::Object(_) => serde_json::from_value(dsl_val)
+                .map_err(|e| AppError::BadRequest(format!("invalid DSL: {e}")))?,
+            Value::String(ref s) => serde_json::from_str(s)
+                .map_err(|e| AppError::BadRequest(format!("invalid DSL string: {e}")))?,
             _ => return Err(AppError::BadRequest("DSL must be a JSON object or JSON string".into())),
         };
 
-        let mode = Self::mode_from_str(&req.mode)?;
-        let run_id = uuid::Uuid::new_v4().to_string();
+        // 3. 确定 run_id
+        let run_id = req.run_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let started_at = chrono::Utc::now();
 
+        // 4. 构造引擎
         let mut engine = WorkflowEngine::new(
             run_id.clone(),
             dsl.clone(),
             req.init_ctx.clone().unwrap_or_default(),
-            mode,
             self.state.event_dispatcher.clone(),
             self.state.persist.clone(),
             self.state.state_handler_registry.clone(),
         );
 
-        let started_at = chrono::Utc::now();
+        // 5. 插入初始 execution
         let exec_row = StoredWorkflowExecution {
             run_id: run_id.clone(),
             workflow_id: Some(format!("wf-{run_id}")),
             shard_id: 0,
             template_id: req.template_id.clone(),
-            mode: req.mode.clone(),
-            current_state_name: Some("initial".into()),
+            mode: "DEFERRED".into(),
+            current_state_name: Some(dsl.start_at.clone()),
             status: "RUNNING".into(),
             workflow_type: "default".into(),
             input: Some(req.init_ctx.clone().unwrap_or_default()),
@@ -90,41 +88,30 @@ impl crate::service::ExecutionService for ExecutionSqlxSvc {
         };
 
         self.state.persist.create_execution(&exec_row)
-            .await.map_err(|e: StorageError| AppError::Internal(e.to_string()))?;
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        let (final_status, final_result, finished_at) = match mode {
-            WorkflowMode::Inline => {
-                let res = engine.run_inline().await
-                    .map_err(|e| AppError::BadRequest(format!("执行工作流失败: {e}")))?;
-                ("COMPLETED".to_string(), Some(res), Some(chrono::Utc::now()))
-            }
-            WorkflowMode::Deferred => {
-                engine.advance_until_blocked().await.ok();
-                self.state.engines.lock().await.insert(run_id.clone(), engine);
-                ("RUNNING".to_string(), None, None)
-            }
+        // 6. 执行一轮直到阻塞
+        let result = engine.advance_until_blocked().await.ok();
+        self.state.engines.lock().await.insert(run_id.clone(), engine);
+
+        // 7. 补充更新 execution（仅上下文）
+        let patch = UpdateStoredWorkflowExecution {
+            context_snapshot: result.map(|r| Some(r.output)),
+            ..Default::default()
         };
 
-        if final_status != "RUNNING" {
-            use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
-            let patch = UpdateStoredWorkflowExecution {
-                status: Some(final_status.clone()),
-                result: Some(final_result.clone()),
-                close_time: finished_at.map(|t| Some(t.naive_utc())),
-                result_version: Some(2),
-                ..Default::default()
-            };
-            self.state.persist.update_execution(&run_id, &patch).await
-                .map_err(|e: StorageError| AppError::Internal(e.to_string()))?;
-        }
+        self.state.persist.update_execution(&run_id, &patch).await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
 
+        // 8. 返回执行信息
         Ok(ExecDto {
             run_id,
-            mode: req.mode,
-            status: final_status,
-            result: final_result,
+            mode: "DEFERRED".into(),
+            status: "RUNNING".into(),
+            result: None,
             started_at,
-            finished_at,
+            finished_at: None,
         })
     }
 

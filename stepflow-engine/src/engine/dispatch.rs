@@ -7,7 +7,7 @@ use crate::{
 use serde_json::Value;
 use stepflow_dsl::{state::base::BaseState, State};
 use stepflow_storage::db::DynPM;
-use super::types::{StepOutcome, WorkflowMode};
+use super::types::StepOutcome;
 use crate::handler::execution_scope::StateExecutionScope;
 
 /// 调度失败类型
@@ -40,7 +40,6 @@ pub(crate) async fn dispatch_command(
     state_enum: &State,
     context: &Value,
     run_id: &str,
-    mode: WorkflowMode,
     persistence: &DynPM,
     registry: &StateHandlerRegistry,
 ) -> Result<(StepOutcome, Option<String>, Value, Option<Value>), String> {
@@ -78,7 +77,6 @@ pub(crate) async fn dispatch_command(
         run_id,
         &state_name,
         state_type,
-        mode,
         None,
         persistence,
         state_enum,

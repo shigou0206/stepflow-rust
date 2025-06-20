@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use stepflow_eventbus::core::bus::EventBus;
 use stepflow_dto::dto::engine_event::EngineEvent;
 use crate::service::interface::SubflowMatchService;
+use serde_json::Value;
 
 pub struct EventDrivenSubflowMatchService {
     event_bus: Arc<dyn EventBus>,
@@ -25,11 +26,15 @@ impl SubflowMatchService for EventDrivenSubflowMatchService {
         run_id: String,
         parent_run_id: String,
         state_name: String,
+        dsl: Value,
+        init_ctx: Value,
     ) -> Result<(), String> {
         let event = EngineEvent::SubflowReady {
             run_id,
             parent_run_id,
             state_name,
+            dsl,
+            init_ctx,
         };
         self.event_bus
             .emit(event.into())

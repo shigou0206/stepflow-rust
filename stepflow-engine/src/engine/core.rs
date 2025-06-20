@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 
 use super::{
     dispatch::dispatch_command,
-    types::{StateExecutionResult, StepOutcome, WorkflowMode},
+    types::{StateExecutionResult, StepOutcome},
 };
 
 /// 状态执行状态
@@ -49,7 +49,6 @@ pub struct WorkflowEngine {
     pub current_state: String,
     pub last_task_state: Option<String>, // 记录上一个 Task 状态
 
-    pub mode: WorkflowMode,
     pub event_dispatcher: Arc<EngineEventDispatcher>,
     pub persistence: DynPM,
     pub state_handler_registry: Arc<StateHandlerRegistry>,
@@ -67,7 +66,6 @@ impl WorkflowEngine {
         run_id: String,
         dsl: WorkflowDSL,
         input: Value,
-        mode: WorkflowMode,
         event_dispatcher: Arc<EngineEventDispatcher>,
         persistence: DynPM,
         state_handler_registry: Arc<StateHandlerRegistry>,
@@ -80,7 +78,6 @@ impl WorkflowEngine {
             last_task_state: None, // 初始化为 None
             dsl,
             context: input,
-            mode,
             event_dispatcher,
             persistence,
             state_handler_registry,
@@ -165,11 +162,6 @@ impl WorkflowEngine {
             .current_state_name
             .unwrap_or_else(|| dsl.start_at.clone());
 
-        let mode = match execution.mode.as_str() {
-            "INLINE" => WorkflowMode::Inline,
-            "DEFERRED" => WorkflowMode::Deferred,
-            _ => return Err(format!("Invalid mode {}", execution.mode)),
-        };
 
         let finished = matches!(
             execution.status.as_str(),
@@ -184,7 +176,6 @@ impl WorkflowEngine {
             last_task_state: None,
             dsl,
             context,
-            mode,
             event_dispatcher,
             persistence,
             state_handler_registry,
@@ -207,7 +198,7 @@ impl WorkflowEngine {
         &self.dsl.states[&self.current_state]
     }
     fn deferred_task(&self) -> bool {
-        self.mode == WorkflowMode::Deferred && matches!(self.state_def(), State::Task(_))
+        matches!(self.state_def(), State::Task(_))
     }
 
     // --------------------- 主入口 -------------------------------
@@ -227,12 +218,6 @@ impl WorkflowEngine {
     }
 
     async fn run_state(&mut self) -> Result<Value, String> {
-        if self.mode == WorkflowMode::Inline {
-            self.dispatch_event(EngineEvent::WorkflowStarted {
-                run_id: self.run_id.clone(),
-            })
-            .await;
-        }
         loop {
             if self.finished {
                 break;
@@ -252,7 +237,7 @@ impl WorkflowEngine {
             }
 
             // ---- 如果刚才执行的就是 Task 状态，说明任务已写入队列；立即挂起 ----
-            if is_task_state && self.mode == WorkflowMode::Deferred {
+            if is_task_state {
                 debug!("⏸ task scheduled, engine suspend");
                 break; // 立即退出，等待外部 worker 通过 /update 触发信号处理
             }
@@ -446,7 +431,6 @@ impl WorkflowEngine {
             self.state_def(),
             &self.context,
             &self.run_id,
-            self.mode,
             &self.persistence,
             &self.state_handler_registry,
         )

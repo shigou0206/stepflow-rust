@@ -62,5 +62,7 @@ pub trait SubflowMatchService: Send + Sync {
         run_id: String,
         parent_run_id: String,
         state_name: String,
+        dsl: Value,
+        init_ctx: Value,
     ) -> Result<(), String>;
 }

@@ -1,21 +1,18 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::time::Duration;
+use thiserror::Error;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-use chrono::{Utc, DateTime};
-use thiserror::Error;
 
 use stepflow_dsl::state::{wait::WaitState, State};
-use stepflow_storage::entities::timer::StoredTimer;
 use stepflow_dto::dto::timer::TimerDto;
+use stepflow_storage::entities::timer::StoredTimer;
 
-use crate::{
-    engine::WorkflowMode,
-    mapping::MappingPipeline,
-};
+use crate::mapping::MappingPipeline;
 
-use super::{StateHandler, StateExecutionScope, StateExecutionResult};
+use super::{StateExecutionResult, StateExecutionScope, StateHandler};
 
 const MAX_INLINE_WAIT_SECONDS: u64 = 300;
 
@@ -67,7 +64,8 @@ impl WaitHandler {
             updated_at: now,
         };
 
-        scope.persistence
+        scope
+            .persistence
             .create_timer(&timer)
             .await
             .map_err(|e| WaitError::DatabaseError(e.to_string()).to_string())?;
@@ -85,7 +83,8 @@ impl WaitHandler {
             payload: timer.payload,
             created_at: DateTime::<Utc>::from_utc(timer.created_at, Utc),
             updated_at: DateTime::<Utc>::from_utc(timer.updated_at, Utc),
-        }).map_err(|e| format!("Failed to serialize timer metadata: {e}"))?;
+        })
+        .map_err(|e| format!("Failed to serialize timer metadata: {e}"))?;
 
         Ok(metadata)
     }
@@ -102,16 +101,8 @@ impl WaitHandler {
                 return Ok(None);
             }
 
-            match scope.mode {
-                WorkflowMode::Inline => {
-                    self.handle_inline(secs).await?;
-                    Ok(None)
-                },
-                WorkflowMode::Deferred => {
-                    let metadata = self.handle_deferred(scope, secs).await?;
-                    Ok(Some(metadata))
-                },
-            }
+            let metadata = self.handle_deferred(scope, secs).await?;
+            Ok(Some(metadata))
         } else if state.timestamp.is_some() {
             warn!("Timestamp wait specified, but not supported yet");
             Err(WaitError::TimestampNotSupported.to_string())

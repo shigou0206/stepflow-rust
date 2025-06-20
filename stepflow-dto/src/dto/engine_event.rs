@@ -68,9 +68,11 @@ pub enum EngineEvent {
     },
 
     SubflowReady {
-        run_id: String,           // 子流程 run_id
-        parent_run_id: String,    // 父流程 run_id
-        state_name: String,       // 所属 Map/Parallel 状态
+        run_id: String,
+        parent_run_id: String,
+        state_name: String,
+        dsl: Value,
+        init_ctx: Value,
     },
 
     SubflowFinished {

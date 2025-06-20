@@ -17,10 +17,10 @@ pub async fn start_execution(svc: &ExecutionSqlxSvc, req: FrbStartExecutionReque
     };
 
     let inner = ExecStart {
+        run_id: None,
         template_id: req.template_id.clone(),
         dsl,
         init_ctx,
-        mode: req.mode.clone(),
         parent_run_id: None,
         parent_state_name: None,
     };

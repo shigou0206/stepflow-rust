@@ -6,15 +6,13 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExecStart {
-    #[schema(example = "INLINE")]
-    pub mode: String, // "INLINE" | "DEFERRED"
-
     // 启动主流程的方式（模板 or DSL）
     pub template_id: Option<String>,
     pub dsl:         Option<Value>,
     pub init_ctx:    Option<Value>,
 
     // 🔽 新增字段：支持作为子流程启动
+    pub run_id: Option<String>,
     pub parent_run_id: Option<String>,
     pub parent_state_name: Option<String>,
 }

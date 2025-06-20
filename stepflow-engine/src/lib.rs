@@ -11,4 +11,4 @@ pub mod tools;
 pub mod utils;
 pub mod signal;
 pub use command::{Command, CommandResult, step_once};
-pub use engine::{WorkflowEngine, WorkflowMode};
+pub use engine::WorkflowEngine;

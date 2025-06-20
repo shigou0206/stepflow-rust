@@ -4,7 +4,6 @@ use std::sync::Arc;
 use stepflow_hook::EngineEventDispatcher;
 use stepflow_storage::db::DynPM;
 use stepflow_dsl::State;
-use crate::engine::WorkflowMode;
 
 /// ------------------------------------------------------------
 /// StateExecutionResult —— handler 的统一输出
@@ -24,7 +23,6 @@ pub struct StateExecutionScope<'a> {
     pub run_id: &'a str,
     pub state_name: &'a str,
     pub state_type: &'a str,
-    pub mode: WorkflowMode,
     pub dispatcher: Option<&'a Arc<EngineEventDispatcher>>,
     pub persistence: &'a DynPM,
     pub state_def: &'a State,
@@ -36,7 +34,6 @@ impl<'a> StateExecutionScope<'a> {
         run_id: &'a str,
         state_name: &'a str,
         state_type: &'a str,
-        mode: WorkflowMode,
         dispatcher: Option<&'a Arc<EngineEventDispatcher>>,
         persistence: &'a DynPM,
         state_def: &'a State,
@@ -46,7 +43,6 @@ impl<'a> StateExecutionScope<'a> {
             run_id,
             state_name,
             state_type,
-            mode,
             dispatcher,
             persistence,
             state_def,

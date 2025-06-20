@@ -155,7 +155,6 @@ pub async fn apply_signal(
                 &engine.run_id,
                 &engine.current_state,
                 state_type,
-                engine.mode,
                 Some(&engine.event_dispatcher),
                 &engine.persistence,
                 engine.state_def(),

@@ -1,17 +1,16 @@
 use chrono::Utc;
 use serde_json::Value;
 use stepflow_dsl::state::{task::TaskState, State};
-use crate::engine::WorkflowMode;
-use stepflow_match::service::MatchService;
 use stepflow_dto::dto::queue_task::QueueTaskDto;
+use stepflow_match::service::MatchService;
 use stepflow_tool::common::context::ToolContext;
 use stepflow_tool::registry::globals::GLOBAL_TOOL_REGISTRY;
 
-use std::sync::Arc;
 use async_trait::async_trait;
+use std::sync::Arc;
 use tracing::{debug, warn};
 
-use super::{StateHandler, StateExecutionScope, StateExecutionResult};
+use super::{StateExecutionResult, StateExecutionScope, StateHandler};
 
 pub struct TaskHandler {
     match_service: Arc<dyn MatchService>,
@@ -84,12 +83,9 @@ impl StateHandler for TaskHandler {
             _ => return Err("Invalid state type for TaskHandler".into()),
         };
 
-        let (output, metadata) = match scope.mode {
-            WorkflowMode::Inline => (self.handle_inline(state, input).await?, None),
-            WorkflowMode::Deferred => {
-                let (out, meta) = self.handle_deferred(scope, state, input).await?;
-                (out, Some(meta))
-            }
+        let (output, metadata) = {
+            let (out, meta) = self.handle_deferred(scope, state, input).await?;
+            (out, Some(meta))
         };
 
         Ok(StateExecutionResult {
@@ -129,7 +125,10 @@ fn extract_priority_and_timeout(
             if let Some(p) = p_val.as_u64().and_then(|v| u8::try_from(v).ok()) {
                 priority = Some(p);
             } else {
-                warn!("Invalid priority in config for {}.{}, using None", run_id, state_name);
+                warn!(
+                    "Invalid priority in config for {}.{}, using None",
+                    run_id, state_name
+                );
             }
         }
 
@@ -137,7 +136,10 @@ fn extract_priority_and_timeout(
             if let Some(t) = t_val.as_i64() {
                 timeout_seconds = Some(t);
             } else {
-                warn!("Invalid timeout_seconds in config for {}.{}, using None", run_id, state_name);
+                warn!(
+                    "Invalid timeout_seconds in config for {}.{}, using None",
+                    run_id, state_name
+                );
             }
         }
     }

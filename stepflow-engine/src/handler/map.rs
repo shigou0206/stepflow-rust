@@ -36,12 +36,11 @@ impl StateHandler for MapHandler {
         let matched = jsonpath_lib::select(input, &state.items_path)
             .map_err(|e| format!("Invalid itemsPath: {e}"))?;
 
-        debug!(matched_len = matched.len(), path = %state.items_path, "🔍 JsonPath matched items");
-
         let items: Vec<Value> = matched.into_iter().cloned().collect();
+        debug!(matched_len = items.len(), path = %state.items_path, "🔍 JsonPath matched items");
 
         if items.is_empty() {
-            warn!(run_id = scope.run_id, path = %state.items_path, "⚠️ itemsPath resolved to empty array");
+            warn!(run_id = scope.run_id, "⚠️ itemsPath yielded no items");
             return Err("itemsPath did not yield any array items".into());
         }
 
@@ -50,21 +49,21 @@ impl StateHandler for MapHandler {
 
         for (index, item) in items.iter().enumerate() {
             let child_run_id = format!("{}:{}:{}", scope.run_id, scope.state_name, index);
-            let child_context = json!({"item": item});
+            let child_context = json!({ "item": item });
             let status = if index < max_concurrency as usize { "READY" } else { "WAITING" };
 
-            debug!(%child_run_id, %status, "🚧 Creating subflow");
+            debug!(%child_run_id, %status, "🚧 Inserting subflow");
 
             let subflow = StoredWorkflowExecution {
                 run_id: child_run_id.clone(),
                 workflow_id: Some(child_run_id.clone()),
                 shard_id: 0,
                 template_id: None,
-                mode: format!("{:?}", scope.mode),
+                mode: "DEFERRED".to_string(), // 强制写入 "DEFERRED"
                 current_state_name: Some(state.iterator.start_at.clone()),
                 status: status.to_string(),
                 workflow_type: "map_subflow".to_string(),
-                input: Some(child_context),
+                input: Some(child_context.clone()),
                 input_version: 1,
                 result: None,
                 result_version: 1,
@@ -80,8 +79,7 @@ impl StateHandler for MapHandler {
                 dsl_definition: Some(json!(state.iterator)),
             };
 
-            scope
-                .persistence
+            scope.persistence
                 .create_execution(&subflow)
                 .await
                 .map_err(|e| {
@@ -90,12 +88,14 @@ impl StateHandler for MapHandler {
                 })?;
 
             if status == "READY" {
-                debug!(%child_run_id, "📬 Notifying subflow READY");
+                debug!(%child_run_id, "📬 Emitting subflow READY event");
                 self.subflow_match
                     .notify_subflow_ready(
                         child_run_id,
                         scope.run_id.to_string(),
                         scope.state_name.to_string(),
+                        json!(state.iterator),
+                        child_context,
                     )
                     .await
                     .map_err(|e| {
@@ -109,7 +109,7 @@ impl StateHandler for MapHandler {
             output: input.clone(),
             next_state: None,
             should_continue: false,
-            metadata: Some(json!({"subflows": items.len()})),
+            metadata: Some(json!({ "subflows": items.len() })),
         })
     }
 
@@ -125,7 +125,13 @@ impl StateHandler for MapHandler {
         _result: &Value,
     ) -> Result<StateExecutionResult, String> {
         debug!(run_id = scope.run_id, state = scope.state_name, "🧩 on_subflow_finished triggered");
-
+    
+        // ✅ 从 scope 中提取 MapState
+        let state = match scope.state_def {
+            State::Map(ref s) => s,
+            _ => return Err("Invalid state type for MapHandler".into()),
+        };
+    
         let subflows = scope
             .persistence
             .find_subflows_by_parent(scope.run_id, scope.state_name)
@@ -134,21 +140,21 @@ impl StateHandler for MapHandler {
                 error!(run_id = scope.run_id, "❌ Failed to query subflows: {}", e);
                 e.to_string()
             })?;
-
+    
         let all_done = subflows.iter().all(|s| s.status == "COMPLETED");
         debug!(total = subflows.len(), all_done, "🔎 Subflow completion check");
-
+    
         if all_done {
             let results: Vec<_> = subflows
                 .iter()
                 .map(|s| s.result.clone().unwrap_or(Value::Null))
                 .collect();
-
+    
             let mut output = parent_context.clone();
             output["mapResult"] = Value::Array(results);
-
+    
             debug!(run_id = scope.run_id, state = scope.state_name, "✅ All subflows done, continuing");
-
+    
             Ok(StateExecutionResult {
                 output,
                 next_state: scope.next().cloned(),
@@ -157,12 +163,15 @@ impl StateHandler for MapHandler {
             })
         } else {
             if let Some(waiting) = subflows.iter().find(|s| s.status == "WAITING") {
-                debug!(run_id = scope.run_id, waiting_id = %waiting.run_id, "🔁 Notifying next waiting subflow");
+                debug!(waiting_id = %waiting.run_id, "🔁 Resuming waiting subflow");
+    
                 self.subflow_match
                     .notify_subflow_ready(
                         waiting.run_id.clone(),
                         scope.run_id.to_string(),
                         scope.state_name.to_string(),
+                        json!(state.iterator), // ✅ 现在可以访问 state
+                        waiting.input.clone().unwrap_or_default(),
                     )
                     .await
                     .map_err(|e| {
@@ -170,7 +179,7 @@ impl StateHandler for MapHandler {
                         e
                     })?;
             }
-
+    
             Ok(StateExecutionResult {
                 output: parent_context.clone(),
                 next_state: None,
