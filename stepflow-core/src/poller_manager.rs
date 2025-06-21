@@ -24,7 +24,7 @@ impl PollerManager {
         let subflow = self.subflow_completion.clone();
         let timer = self.timer.clone();
 
-        tokio::spawn(async move { subflow.run().await });
+        // tokio::spawn(async move { subflow.run().await });
         tokio::spawn(async move { timer.run().await });
     }
 }

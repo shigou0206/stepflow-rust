@@ -1,13 +1,12 @@
-// ✅ dispatch_command：仅负责调度，不处理参数映射
 use crate::{
     command::Command,
     handler::registry::StateHandlerRegistry,
+    handler::execution_scope::{StateExecutionScope, StateExecutionResult},
 };
 use serde_json::Value;
 use stepflow_dsl::State;
 use stepflow_storage::db::DynPM;
 use super::types::StepOutcome;
-use crate::handler::execution_scope::StateExecutionScope;
 
 /// 调度失败类型
 #[derive(thiserror::Error, Debug)]
@@ -47,7 +46,7 @@ pub(crate) async fn dispatch_command(
         .get(state_type)
         .ok_or_else(|| format!("No handler registered for state type: {state_type}"))?;
 
-    // ✅ 仅构造 scope，把 context 原样传下去
+    // 构造 StateExecutionScope（传递 context）
     let scope = StateExecutionScope::new(
         run_id,
         &state_name,
@@ -58,22 +57,25 @@ pub(crate) async fn dispatch_command(
         context,
     );
 
-    // ✅ handler 内部负责执行 input/output mapping
-    let result = handler
+    // 调用对应的 handler
+    let result: StateExecutionResult = handler
         .handle(&scope)
         .await
         .map_err(|e| DispatchError::StateError(e.to_string()))?;
 
+    // 特殊处理 Choice 的 next_state
     let logical_next = if let (Command::Choice { next_state, .. }, State::Choice(_)) = (cmd, state_enum) {
         Some(next_state.clone())
     } else {
         result.next_state.clone()
     };
 
+    // 返回 StepOutcome
     Ok((
         StepOutcome {
             should_continue: logical_next.is_some(),
             updated_context: result.output.clone(),
+            is_blocking: result.is_blocking,
         },
         logical_next,
         result.output,

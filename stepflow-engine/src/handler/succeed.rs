@@ -46,6 +46,7 @@ impl StateHandler for SucceedHandler {
             next_state: None,
             should_continue: false,
             metadata: None,
+            is_blocking: false,
         })
     }
 

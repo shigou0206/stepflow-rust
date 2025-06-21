@@ -139,52 +139,103 @@ impl WorkflowEngine {
     }
 
     // --------------------- 主入口 -------------------------------
-    pub async fn advance_until_blocked(&mut self) -> Result<StateExecutionResult, String> {
-        let out = self.run_state().await?;
-        Ok(StateExecutionResult {
-            output: out,
-            next_state: Some(self.current_state.clone()),
-            should_continue: !self.finished,
-            metadata: None,
-        })
-    }
+    // pub async fn advance_until_blocked(&mut self) -> Result<StateExecutionResult, String> {
+    //     let out = self.run_state().await?;
+    //     Ok(StateExecutionResult {
+    //         output: out,
+    //         next_state: Some(self.current_state.clone()),
+    //         should_continue: !self.finished,
+    //         metadata: None,
+    //     })
+    // }
 
-    async fn run_state(&mut self) -> Result<Value, String> {
+    // async fn run_state(&mut self) -> Result<Value, String> {
+    //     loop {
+    //         if self.finished {
+    //             break;
+    //         }
+
+    //         let is_blocking_state = matches!(
+    //             self.state_def(),
+    //             State::Task(_) | State::Wait(_) | State::Map(_) | State::Parallel(_)
+    //         );
+
+    //         let step_out = self.advance_once().await?;
+    //         debug!(
+    //             "🔁 advance_once done | should_continue={} | new_state={}",
+    //             step_out.should_continue, self.current_state
+    //         );
+
+    //         if !step_out.should_continue {
+    //             break; // End 节点
+    //         }
+
+    //         if is_blocking_state {
+    //             debug!("⏸ blocking state encountered, engine suspend");
+    //             break;
+    //         }
+
+    //         // Handle any pending signals at the end of each loop
+    //         if let Err(e) = self.handle_next_signal().await {
+    //             return Err(e);
+    //         }
+    //     }
+    //     debug!(
+    //         "🔚 loop exit | run_id={} | state={}",
+    //         self.run_id, self.current_state
+    //     );
+    //     Ok(self.context.clone())
+    // }
+
+    pub async fn advance_until_blocked(&mut self) -> Result<StateExecutionResult, String> {
         loop {
             if self.finished {
-                break;
+                return Ok(StateExecutionResult {
+                    output: self.context.clone(),
+                    next_state: Some(self.current_state.clone()),
+                    should_continue: false,
+                    metadata: None,
+                    is_blocking: false,
+                });
             }
-
+    
             let is_blocking_state = matches!(
                 self.state_def(),
                 State::Task(_) | State::Wait(_) | State::Map(_) | State::Parallel(_)
             );
-
+    
             let step_out = self.advance_once().await?;
             debug!(
                 "🔁 advance_once done | should_continue={} | new_state={}",
                 step_out.should_continue, self.current_state
             );
-
+    
             if !step_out.should_continue {
-                break; // End 节点
+                return Ok(StateExecutionResult {
+                    output: self.context.clone(),
+                    next_state: Some(self.current_state.clone()),
+                    should_continue: false,
+                    metadata: None,
+                    is_blocking: step_out.is_blocking,
+                });
             }
-
-            if is_blocking_state {
+    
+            if is_blocking_state || step_out.is_blocking {
                 debug!("⏸ blocking state encountered, engine suspend");
-                break;
+                return Ok(StateExecutionResult {
+                    output: self.context.clone(),
+                    next_state: Some(self.current_state.clone()),
+                    should_continue: false,
+                    metadata: None,
+                    is_blocking: true,
+                });
             }
-
-            // Handle any pending signals at the end of each loop
+    
+            // ✳️ 如果不挂起，处理完 signal 再继续
             if let Err(e) = self.handle_next_signal().await {
                 return Err(e);
             }
         }
-        debug!(
-            "🔚 loop exit | run_id={} | state={}",
-            self.run_id, self.current_state
-        );
-        Ok(self.context.clone())
     }
 
     // ---- 只在首次进入节点时写 input ---------------------------------
@@ -247,28 +298,23 @@ impl WorkflowEngine {
     }
 
     // ------------------ 单步执行 -------------------------------
-
     async fn advance_once(&mut self) -> Result<StepOutcome, String> {
-        // 已结束就直接返回
         if self.finished {
             return Ok(StepOutcome {
                 should_continue: false,
                 updated_context: self.context.clone(),
+                is_blocking: false,
             });
         }
-
-        // —— ① NodeEnter & 记录 STARTED ——
+    
         self.dispatch_event(EngineEvent::NodeEnter {
             run_id: self.run_id.clone(),
             state_name: self.current_state.clone(),
             input: self.context.clone(),
-        })
-        .await;
-
-        // ⚠️ 只在首次进入时插入，避免后续覆盖 input
+        }).await;
+    
         self.record_state_started().await?;
-
-        // —— ② 真正执行当前节点 ——
+    
         let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
         debug!(
             "[{}] step_once => {:?} @ {}",
@@ -276,49 +322,45 @@ impl WorkflowEngine {
             cmd.kind(),
             self.current_state
         );
-
-        let (outcome, next_state_opt, _raw_out, _meta) = dispatch_command(
+    
+        let (mut outcome, next_state_opt, _raw_out, _meta) = dispatch_command(
             &cmd,
             self.state_def(),
             &self.context,
             &self.run_id,
             &self.persistence,
             &self.state_handler_registry,
-        )
-        .await?;
-
-        // 更新本地 context
+        ).await?;
+    
         self.context = outcome.updated_context.clone();
         self.updated_at = Utc::now();
-
-        // —— ③ 记录 COMPLETED/FAILED，只更新 output/status ——
+    
+        // ✅ 判断是否为 blocking 状态，如 Task、Wait、Map、Parallel
+        let blocking_state = matches!(
+            self.state_def(),
+            State::Task(_) | State::Wait(_) | State::Map(_) | State::Parallel(_)
+        );
+        outcome.is_blocking = blocking_state && !outcome.should_continue;
+    
+        // 记录状态完成（或失败），但挂起状态也记录为 “STARTED -> COMPLETED”
         self.record_state_finished(
-            /* success */ outcome.should_continue,
-            /* output  */ Some(self.context.clone()),
-            /* error   */ None,
-        )
-        .await?;
-
-        // 发送 NodeExit
+            outcome.should_continue,
+            Some(self.context.clone()),
+            None,
+        ).await?;
+    
         self.dispatch_event(EngineEvent::NodeExit {
             run_id: self.run_id.clone(),
             state_name: self.current_state.clone(),
-            status: if outcome.should_continue {
-                "success"
-            } else {
-                "failed"
-            }
-            .into(),
+            status: if outcome.should_continue { "success" } else { "failed" }.into(),
             duration_ms: Some((Utc::now() - self.updated_at).num_milliseconds() as u64),
-        })
-        .await;
-
-        // —— ④ 推进游标 or 结束工作流 ——
+        }).await;
+    
         let mut exec_update = UpdateStoredWorkflowExecution {
             context_snapshot: Some(Some(self.context.clone())),
             ..Default::default()
         };
-
+    
         if outcome.should_continue {
             let next = next_state_opt.ok_or_else(|| {
                 format!(
@@ -326,24 +368,24 @@ impl WorkflowEngine {
                     self.current_state
                 )
             })?;
-
-            // Task 节点：记下 “上一个 task”
+    
             if matches!(self.state_def(), State::Task(_)) {
                 self.last_task_state = Some(self.current_state.clone());
             }
-
+    
             self.current_state = next.clone();
             exec_update.current_state_name = Some(Some(next));
-        } else {
+        } else if !outcome.is_blocking {
+            // ✅ 非挂起且 should_continue = false 表示真正结束
             self.finished = true;
             exec_update.status = Some("COMPLETED".into());
             exec_update.close_time = Some(Some(self.updated_at.naive_utc()));
+    
             self.dispatch_event(EngineEvent::WorkflowFinished {
                 run_id: self.run_id.clone(),
                 result: self.context.clone(),
-            })
-            .await;
-
+            }).await;
+    
             if let (Some(parent_run_id), Some(state_name)) =
                 (self.parent_run_id.clone(), self.parent_state_name.clone())
             {
@@ -352,23 +394,20 @@ impl WorkflowEngine {
                     child_run_id: self.run_id.clone(),
                     state_name,
                     result: self.context.clone(),
-                })
-                .await;
+                }).await;
             }
         }
-
-        // 写 execution 表
+    
         self.persistence
             .update_execution(&self.run_id, &exec_update)
             .await
             .map_err(|e| e.to_string())?;
-
+    
         debug!("🔁 step_once returned: {:?}", cmd);
         debug!("📤 step outcome: {:?}", outcome);
-
+    
         Ok(outcome)
     }
-
     // ------------------------- 恢复 ----------------------------------
 
     pub async fn restore(

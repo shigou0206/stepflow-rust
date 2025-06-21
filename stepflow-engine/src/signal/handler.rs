@@ -54,6 +54,7 @@ pub async fn apply_signal(
                 next_state: Some(engine.current_state.clone()),
                 should_continue: true,
                 metadata: Some(output),
+                is_blocking: false,
             })
         }
 

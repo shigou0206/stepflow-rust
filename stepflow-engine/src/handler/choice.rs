@@ -85,6 +85,7 @@ impl StateHandler for ChoiceHandler {
             next_state,                    // ✅ 下一状态（可能是 default）
             should_continue: true,        // ✅ 总是推进
             metadata: None,
+            is_blocking: false,
         })
     }
 

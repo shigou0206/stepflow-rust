@@ -123,8 +123,9 @@ impl StateHandler for WaitHandler {
         Ok(StateExecutionResult {
             output: exec_input,
             next_state: state.base.next.clone(),
-            should_continue: true,
+            should_continue: false,
             metadata,
+            is_blocking: true,
         })
     }
 

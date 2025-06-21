@@ -14,6 +14,7 @@ pub struct StateExecutionResult {
     pub next_state: Option<String>,
     pub should_continue: bool,
     pub metadata: Option<Value>, 
+    pub is_blocking: bool,
 }
 
 /// ------------------------------------------------------------

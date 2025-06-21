@@ -92,6 +92,7 @@ impl StateHandler for ParallelHandler {
             next_state: None,
             should_continue: false,
             metadata: Some(json!({ "subflows": state.branches.len() })),
+            is_blocking: true,
         })
     }
 
@@ -131,13 +132,15 @@ impl StateHandler for ParallelHandler {
                 next_state: scope.next().cloned(),
                 should_continue: true,
                 metadata: None,
+                is_blocking: false,
             })
         } else {
             Ok(StateExecutionResult {
                 output: parent_context.clone(),
                 next_state: None,
-                should_continue: true,
+                should_continue: false,
                 metadata: None,
+                is_blocking: true,
             })
         }
     }

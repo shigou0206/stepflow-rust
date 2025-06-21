@@ -73,6 +73,7 @@ impl StateHandler for TaskHandler {
             next_state: state.base.next.clone(),
             should_continue: true,
             metadata: Some(metadata),
+            is_blocking: true,
         })
     }
 

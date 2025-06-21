@@ -10,6 +10,7 @@ use serde_json::Value;
 pub struct StepOutcome {
     pub should_continue: bool,
     pub updated_context: Value,
+    pub is_blocking: bool, 
 } 
 
 // Re-export StateExecutionResult from handler

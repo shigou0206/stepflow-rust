@@ -134,6 +134,7 @@ impl StateHandler for MapHandler {
             next_state: None,
             should_continue: false,
             metadata: Some(json!({ "subflows": items.len() })),
+            is_blocking: true,
         })
     }
 
@@ -192,9 +193,10 @@ impl StateHandler for MapHandler {
 
             return Ok(StateExecutionResult {
                 output: ctx,
-                next_state: state.base.next.clone(), // ✅ 修复点：正确推进
+                next_state: state.base.next.clone(),
                 should_continue: true,
                 metadata: None,
+                is_blocking: false,
             });
         }
 
@@ -217,8 +219,9 @@ impl StateHandler for MapHandler {
         Ok(StateExecutionResult {
             output: parent_context.clone(),
             next_state: None,
-            should_continue: true,
+            should_continue: false,
             metadata: None,
+            is_blocking: true,
         })
     }
 }

@@ -63,6 +63,7 @@ impl StateHandler for FailHandler {
             next_state: None,           // 终止节点
             should_continue: false,     // 停止推进
             metadata: None,
+            is_blocking: false,
         })
     }
 

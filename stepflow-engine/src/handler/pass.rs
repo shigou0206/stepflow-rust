@@ -44,6 +44,7 @@ impl StateHandler for PassHandler {
             next_state: state.base.next.clone(),
             should_continue: true,
             metadata: None,
+            is_blocking: false,
         })
     }
 
