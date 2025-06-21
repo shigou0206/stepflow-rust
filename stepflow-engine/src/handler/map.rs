@@ -1,11 +1,11 @@
 use super::{StateExecutionResult, StateExecutionScope, StateHandler};
+use crate::mapping::MappingPipeline;
 use async_trait::async_trait;
 use chrono::Utc;
 use jsonpath_lib;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use stepflow_dsl::state::State;
-use crate::mapping::MappingPipeline;
 use stepflow_match::service::SubflowMatchService;
 use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
 use tracing::{debug, error, warn};
@@ -33,21 +33,33 @@ impl StateHandler for MapHandler {
 
         let item_key = state.item_context_key.as_str();
         let parent_context = scope.context;
-        debug!(run_id = scope.run_id, state = scope.state_name, "🧭 Entered MapHandler");
+        debug!(?parent_context, "📦 Current context");
+        debug!(
+            run_id = scope.run_id,
+            state = scope.state_name,
+            "🧭 Entered MapHandler"
+        );
 
-        // ① 从 itemsPath 提取列表
         let matched = jsonpath_lib::select(parent_context, &state.items_path)
             .map_err(|e| format!("Invalid itemsPath: {e}"))?;
 
-        let items: Vec<Value> = matched.into_iter().cloned().collect();
-        debug!(matched_len = items.len(), path = %state.items_path, "🔍 JsonPath matched items");
+        let items: Vec<Value> = if matched.len() == 1 && matched[0].is_array() {
+            matched[0]
+                .as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .cloned()
+                .collect()
+        } else {
+            matched.iter().map(|v| (*v).clone()).collect()
+        };
 
+        debug!(matched_len = items.len(), path = %state.items_path, "🔍 JsonPath matched items");
         if items.is_empty() {
             warn!(run_id = scope.run_id, "⚠️ itemsPath yielded no items");
             return Err("itemsPath did not yield any array items".into());
         }
 
-        // ② 构造每个子流程上下文
         let max_concurrency = state.max_concurrency.unwrap_or(items.len() as u32);
         let pipeline = MappingPipeline {
             input_mapping: state.base.input_mapping.as_ref(),
@@ -55,10 +67,16 @@ impl StateHandler for MapHandler {
         };
 
         for (index, item) in items.iter().enumerate() {
+            debug!(index, ?item, "📦 Processing item");
+
             let child_run_id = format!("{}:{}:{}", scope.run_id, scope.state_name, index);
             let mapped_input = pipeline.apply_input_for_map_item(parent_context, item_key, item)?;
 
-            let status = if index < max_concurrency as usize { "READY" } else { "WAITING" };
+            let status = if index < max_concurrency as usize {
+                "READY"
+            } else {
+                "WAITING"
+            };
 
             let subflow = StoredWorkflowExecution {
                 run_id: child_run_id.clone(),
@@ -85,10 +103,14 @@ impl StateHandler for MapHandler {
                 dsl_definition: Some(json!(state.iterator)),
             };
 
-            scope.persistence.create_execution(&subflow).await.map_err(|e| {
-                error!(%child_run_id, ?e, "❌ Failed to insert subflow");
-                format!("Failed to create subflow: {e}")
-            })?;
+            scope
+                .persistence
+                .create_execution(&subflow)
+                .await
+                .map_err(|e| {
+                    error!(%child_run_id, ?e, "❌ Failed to insert subflow");
+                    format!("Failed to create subflow: {e}")
+                })?;
 
             if status == "READY" {
                 self.subflow_match
@@ -110,7 +132,7 @@ impl StateHandler for MapHandler {
         Ok(StateExecutionResult {
             output: parent_context.clone(),
             next_state: None,
-            should_continue: true,
+            should_continue: false,
             metadata: Some(json!({ "subflows": items.len() })),
         })
     }
@@ -140,47 +162,63 @@ impl StateHandler for MapHandler {
                 e.to_string()
             })?;
 
+        if let Some(failed) = subflows
+            .iter()
+            .find(|s| s.status == "FAILED" || s.status == "CANCELLED")
+        {
+            return Err(format!(
+                "Subflow {} failed or cancelled (status = {})",
+                failed.run_id, failed.status
+            ));
+        }
+
         let all_done = subflows.iter().all(|s| s.status == "COMPLETED");
-        debug!(total = subflows.len(), all_done, "🔎 Subflow completion check");
+        debug!(
+            total = subflows.len(),
+            all_done, "🔎 Subflow completion check"
+        );
 
         if all_done {
-            let results: Vec<_> = subflows
-                .iter()
-                .map(|s| s.result.clone().unwrap_or(Value::Null))
-                .collect();
+            let pipeline = MappingPipeline {
+                input_mapping: None,
+                output_mapping: state.base.output_mapping.as_ref(),
+            };
 
-            let mut output = parent_context.clone();
-            output["mapResult"] = Value::Array(results);
-
-            Ok(StateExecutionResult {
-                output,
-                next_state: scope.next().cloned(),
-                should_continue: true,
-                metadata: None,
-            })
-        } else {
-            if let Some(waiting) = subflows.iter().find(|s| s.status == "WAITING") {
-                self.subflow_match
-                    .notify_subflow_ready(
-                        waiting.run_id.clone(),
-                        scope.run_id.to_string(),
-                        scope.state_name.to_string(),
-                        json!(state.iterator),
-                        waiting.input.clone().unwrap_or_default(),
-                    )
-                    .await
-                    .map_err(|e| {
-                        error!(%scope.run_id, "❌ notify_subflow_ready (waiting) failed: {}", e);
-                        e
-                    })?;
+            let mut ctx = parent_context.clone();
+            for sub in &subflows {
+                let sub_result = sub.result.clone().unwrap_or(Value::Null);
+                ctx = pipeline.apply_output(&sub_result, &ctx)?;
             }
 
-            Ok(StateExecutionResult {
-                output: parent_context.clone(),
-                next_state: None,
+            return Ok(StateExecutionResult {
+                output: ctx,
+                next_state: state.base.next.clone(), // ✅ 修复点：正确推进
                 should_continue: true,
                 metadata: None,
-            })
+            });
         }
+
+        if let Some(waiting) = subflows.iter().find(|s| s.status == "WAITING") {
+            self.subflow_match
+                .notify_subflow_ready(
+                    waiting.run_id.clone(),
+                    scope.run_id.to_string(),
+                    scope.state_name.to_string(),
+                    json!(state.iterator),
+                    waiting.input.clone().unwrap_or_default(),
+                )
+                .await
+                .map_err(|e| {
+                    error!(%scope.run_id, "❌ notify_subflow_ready (waiting) failed: {}", e);
+                    e
+                })?;
+        }
+
+        Ok(StateExecutionResult {
+            output: parent_context.clone(),
+            next_state: None,
+            should_continue: true,
+            metadata: None,
+        })
     }
 }

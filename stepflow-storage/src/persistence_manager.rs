@@ -13,7 +13,7 @@ pub trait PersistenceManager:
     + TemplateStorage
     + VisibilityStorage
     + QueueStorage
-    + TransactionManager            // ← 带上事务能力，但不写死 DB
+    + TransactionManager           
     + Send + Sync
 {}
 

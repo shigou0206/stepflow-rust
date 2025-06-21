@@ -43,4 +43,8 @@ pub trait WorkflowStorage: Send + Sync {
         parent_run_id: &str,
         parent_state_name: &str,
     ) -> Result<Vec<StoredWorkflowExecution>, StorageError>;
+
+    async fn find_fully_completed_subflow_groups(
+        &self,
+    ) -> Result<Vec<(String, String)>, StorageError>;
 }

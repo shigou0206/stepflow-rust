@@ -196,4 +196,11 @@ impl WorkflowExecutionPersistence {
             .map_err(StorageError::from)?;
         Ok(models.into_iter().map(Self::to_entity).collect())
     }
+
+    pub async fn find_fully_completed_subflow_groups(&self) -> Result<Vec<(String, String)>, StorageError> {
+        let models = workflow_execution_crud::find_fully_completed_subflow_groups(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
+        Ok(models)
+    }
 }

@@ -7,8 +7,15 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode},
 };
 use stepflow_engine::handler::{
-    choice::ChoiceHandler, fail::FailHandler, map::MapHandler, parallel::ParallelHandler, pass::PassHandler, registry::StateHandlerRegistry,
-    succeed::SucceedHandler, task::TaskHandler, wait::WaitHandler,
+    choice::ChoiceHandler, 
+    fail::FailHandler, 
+    map::MapHandler, 
+    parallel::ParallelHandler, 
+    pass::PassHandler, 
+    succeed::SucceedHandler, 
+    task::TaskHandler, 
+    wait::WaitHandler,
+    registry::StateHandlerRegistry,
 };
 use stepflow_eventbus::impls::local::LocalEventBus;
 use stepflow_hook::{
@@ -17,14 +24,27 @@ use stepflow_hook::{
 };
 use stepflow_match::queue::PersistentStore;
 use stepflow_match::service::{
-    HybridMatchService, HybridMatchServiceWithEvent, MatchService, MemoryMatchService,
-    PersistentMatchService, SubflowMatchService, EventDrivenSubflowMatchService,
+    HybridMatchService, 
+    HybridMatchServiceWithEvent, 
+    MatchService, 
+    MemoryMatchService,
+    PersistentMatchService, 
+    SubflowMatchService, 
+    EventDrivenSubflowMatchService,
 };
 use stepflow_sqlite::SqliteStorageManager;
 use stepflow_storage::traits::{EventStorage, StateStorage, WorkflowStorage};
 
 use crate::service_register::ServiceRegistry;
-use crate::service::{TemplateSvc, ExecutionSvc, ActivityTaskSvc, WorkflowEventSvc, QueueTaskSvc, TimerSvc};
+use crate::service::{
+    TemplateSvc, 
+    ExecutionSvc, 
+    ActivityTaskSvc, 
+    WorkflowEventSvc, 
+    QueueTaskSvc, 
+    TimerSvc, 
+    LocalEngineSvc};
+use crate::poller_manager::PollerManager;
 use prometheus::Registry;
 use stepflow_common::config::{StepflowConfig, StepflowExecMode};
 
@@ -39,6 +59,7 @@ pub fn build_service_registry(state: Arc<AppState>) -> ServiceRegistry {
         workflow_event: Arc::new(WorkflowEventSvc::new(state.persist.clone())),
         queue_task: Arc::new(QueueTaskSvc::new(state.clone())),
         timer: Arc::new(TimerSvc::new(state.clone())),
+        engine: Arc::new(LocalEngineSvc::new(state.clone())),
     }
 }
 
@@ -135,6 +156,9 @@ pub async fn build_app_state(cfg: &StepflowConfig) -> Result<AppState> {
     // ④ 构造服务注册表并注入
     let registry = Arc::new(build_service_registry(Arc::new(state.clone())));
     state.services = registry;
+
+    let pollers = PollerManager::new(Arc::new(state.clone()));
+    pollers.start_all();
 
     Ok(state)
 }

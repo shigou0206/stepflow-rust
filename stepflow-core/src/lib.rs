@@ -5,6 +5,8 @@ pub mod event_runner;
 pub mod service;
 pub mod service_register;
 pub mod event_handlers;
+pub mod watcher;
+pub mod poller_manager;
 pub use app_state::AppState;
 pub use error::{AppError, AppResult};
 

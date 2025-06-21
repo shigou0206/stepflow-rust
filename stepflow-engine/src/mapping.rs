@@ -19,6 +19,7 @@ impl<'a> MappingPipeline<'a> {
         }
     }
 
+    /// For MapState: inject one item with item_context_key into parent_ctx, then apply mapping.
     pub fn apply_input_for_map_item(
         &self,
         parent_ctx: &Value,
@@ -36,7 +37,6 @@ impl<'a> MappingPipeline<'a> {
         if let Some(cfg) = self.input_mapping {
             let mapped = MappingEngine::apply(cfg.clone(), &base)
                 .map_err(|e| format!("InputMapping error: {e}"))?;
-
             Ok(merge_shallow(&base, &mapped, MergeStrategy::Overwrite))
         } else {
             Ok(base)
@@ -45,7 +45,6 @@ impl<'a> MappingPipeline<'a> {
 
     /// Apply `output_mapping` to *raw_out* then merge with *base_ctx*.
     pub fn apply_output(&self, raw_out: &Value, base_ctx: &Value) -> Result<Value, String> {
-        // 1️⃣ 执行 OutputMapping（若有）
         let mapped = if let Some(cfg) = self.output_mapping {
             MappingEngine::apply(cfg.clone(), raw_out)
                 .map_err(|e| format!("OutputMapping error: {e}"))?
@@ -53,7 +52,6 @@ impl<'a> MappingPipeline<'a> {
             raw_out.clone()
         };
 
-        // 2️⃣ 根据第 1 条 rule 的 merge_strategy（默认 Overwrite）做浅合并
         let strategy = self
             .output_mapping
             .and_then(|m| m.mappings.first())
@@ -61,6 +59,19 @@ impl<'a> MappingPipeline<'a> {
             .unwrap_or(MergeStrategy::Overwrite);
 
         Ok(merge_shallow(base_ctx, &mapped, strategy))
+    }
+
+    /// Apply `output_mapping` to a list of results and merge all into base_ctx.
+    pub fn apply_output_for_map_items(
+        &self,
+        results: &[Value],
+        base_ctx: &Value,
+    ) -> Result<Value, String> {
+        let mut ctx = base_ctx.clone();
+        for result in results {
+            ctx = self.apply_output(result, &ctx)?;
+        }
+        Ok(ctx)
     }
 }
 
@@ -79,7 +90,6 @@ fn merge_shallow(base: &Value, mapped: &Value, strat: MergeStrategy) -> Value {
                     MergeStrategy::Ignore => {
                         combined.entry(k.clone()).or_insert_with(|| v.clone());
                     }
-                    // 其他策略待实现
                     MergeStrategy::Append | MergeStrategy::Merge => {
                         combined.insert(k.clone(), v.clone());
                     }
@@ -99,6 +109,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serde_yaml;
+
     #[test]
     fn test_merge_overwrite() {
         let a = json!({ "x": 1, "y": 2 });
@@ -142,14 +153,14 @@ mod tests {
         use stepflow_mapping::model::dsl::MappingDSL;
 
         let yaml = r#"
-    mappings:
-      - key: url
-        type: constant
-        value: https://example.com/api
-      - key: body
-        type: jsonPath
-        source: $.user
-    "#;
+mappings:
+  - key: url
+    type: constant
+    value: https://example.com/api
+  - key: body
+    type: jsonPath
+    source: $.user
+"#;
 
         let dsl: MappingDSL = serde_yaml::from_str(yaml).expect("Failed to parse YAML");
 
@@ -172,6 +183,36 @@ mod tests {
                 "user": { "name": "Alice", "age": 30 },
                 "url": "https://example.com/api",
                 "body": { "name": "Alice", "age": 30 }
+            })
+        );
+    }
+
+    #[test]
+    fn test_apply_output_for_map_items() {
+        let dsl_yaml = r#"
+mappings:
+  - key: allUsers
+    type: jsonPath
+    source: $
+"#;
+        let dsl: MappingDSL = serde_yaml::from_str(dsl_yaml).unwrap();
+        let pipeline = MappingPipeline {
+            input_mapping: None,
+            output_mapping: Some(&dsl),
+        };
+
+        let results = vec![
+            json!({ "name": "Alice", "age": 30 }),
+            json!({ "name": "Bob", "age": 25 }),
+        ];
+
+        let base = json!({});
+        let merged = pipeline.apply_output_for_map_items(&results, &base).unwrap();
+
+        assert_eq!(
+            merged,
+            json!({
+                "allUsers": { "name": "Bob", "age": 25 } // 最后一个覆盖
             })
         );
     }

@@ -208,3 +208,34 @@ where
     .fetch_all(executor)
     .await
 }
+
+/// 查询所有子流程（map/parallel）均已完成的父工作流组
+pub async fn find_fully_completed_subflow_groups<'e, E>(
+    executor: E,
+) -> Result<Vec<(String, String)>> 
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    let rows = sqlx::query!(
+        r#"
+        SELECT 
+            parent_run_id as "parent_run_id!", 
+            parent_state_name as "parent_state_name!"
+        FROM workflow_executions
+        WHERE workflow_type IN ('map_subflow', 'parallel_subflow')
+          AND parent_run_id IS NOT NULL
+          AND parent_state_name IS NOT NULL
+        GROUP BY parent_run_id, parent_state_name
+        HAVING COUNT(*) = SUM(
+            CASE 
+                WHEN status IN ('COMPLETED', 'FAILED', 'CANCELLED') THEN 1 
+                ELSE 0 
+            END
+        )
+        "#
+    )
+    .fetch_all(executor)
+    .await?;
+
+    Ok(rows.into_iter().map(|r| (r.parent_run_id, r.parent_state_name)).collect())
+}

@@ -6,6 +6,7 @@ use crate::service::{
     WorkflowEventService, 
     QueueTaskService,
     TimerService,
+    WorkflowEngineService,
     DummyServiceImpl,
 };
 
@@ -17,8 +18,10 @@ pub struct ServiceRegistry {
     pub workflow_event: Arc<dyn WorkflowEventService>,
     pub queue_task: Arc<dyn QueueTaskService>,
     pub timer: Arc<dyn TimerService>,
+    pub engine: Arc<dyn WorkflowEngineService>,
+    // pub match_service: Arc<dyn MatchService>,
+    // pub persist: DynPM,
 }
-
 
 impl ServiceRegistry {
     pub fn empty() -> Self {
@@ -29,7 +32,8 @@ impl ServiceRegistry {
             activity_task: dummy.clone(),
             workflow_event: dummy.clone(),
             queue_task: dummy.clone(),
-            timer: dummy,
+            timer: dummy.clone(),
+            engine: dummy.clone(),
         }
     }
 }

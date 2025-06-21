@@ -90,7 +90,7 @@ impl StateHandler for ParallelHandler {
         Ok(StateExecutionResult {
             output: scope.context.clone(),
             next_state: None,
-            should_continue: true,
+            should_continue: false,
             metadata: Some(json!({ "subflows": state.branches.len() })),
         })
     }

@@ -91,5 +91,23 @@ pub trait TimerService: Send + Sync + 'static {
     async fn find_timers_before(&self, before: DateTime<Utc>, limit: i64) -> AppResult<Vec<TimerDto>>;
 }
 
+/////////////////////////// engine service //////////////
+pub mod local_service;
+pub use local_service::LocalEngineService as LocalEngineSvc;
+use stepflow_dto::dto::engine::*;
+#[async_trait]
+pub trait WorkflowEngineService: Send + Sync + 'static {
+    async fn send_subflow_finished(&self, run_id: &str, state_name: &str) -> AppResult<()>;
+    async fn cancel(&self, req: ControlRequest) -> AppResult<()>;
+    async fn terminate(&self, req: ControlRequest) -> AppResult<()>;
+    async fn pause(&self, req: ControlRequest) -> AppResult<()>;
+    async fn resume(&self, req: ControlRequest) -> AppResult<()>;
+    async fn retry_failed(&self, req: RetryRequest) -> AppResult<()>;
+    async fn list_running(&self) -> AppResult<Vec<String>>;
+    async fn get_status(&self, run_id: &str) -> AppResult<Option<EngineStatusDto>>;
+    async fn cleanup(&self, req: ControlRequest) -> AppResult<()>;
+    async fn handle_timer_fired(&self, timer: &TimerDto) -> AppResult<()>;
+}
+
 pub mod dummy;
 pub use dummy::DummyServiceImpl;

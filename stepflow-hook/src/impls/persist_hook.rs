@@ -335,6 +335,9 @@ mod tests {
         ) -> Result<Vec<StoredWorkflowExecution>, StorageError> {
             Ok(vec![])
         }
+        async fn find_fully_completed_subflow_groups(&self) -> Result<Vec<(String, String)>, StorageError> {
+            Ok(vec![])
+        }
     }
 
     #[tokio::test]

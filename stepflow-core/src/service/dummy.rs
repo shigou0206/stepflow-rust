@@ -1,6 +1,20 @@
 use crate::error::AppResult;
-use crate::service::{TemplateService, ExecutionService, ActivityTaskService, WorkflowEventService, QueueTaskService, TimerService};
-use stepflow_dto::dto::{template::*, execution::*, activity_task::*, workflow_event::*, queue_task::*, timer::*};
+use crate::service::{
+    TemplateService, 
+    ExecutionService, 
+    ActivityTaskService, 
+    WorkflowEventService, 
+    QueueTaskService, 
+    TimerService, 
+    WorkflowEngineService};
+use stepflow_dto::dto::{
+    template::*, 
+    execution::*, 
+    activity_task::*, 
+    workflow_event::*, 
+    queue_task::*, 
+    timer::*, 
+    engine::*};
 use serde_json::Value;
 use chrono::{DateTime, Utc};
 
@@ -72,4 +86,17 @@ impl_dummy_service!(TimerService,
     update_timer(_timer_id: &str, _update: UpdateTimerDto): AppResult<TimerDto>,
     delete_timer(_timer_id: &str): AppResult<()>,
     find_timers_before(_before: DateTime<Utc>, _limit: i64): AppResult<Vec<TimerDto>>,
+);
+
+impl_dummy_service!(WorkflowEngineService,
+    send_subflow_finished(_run_id: &str, _state_name: &str): AppResult<()>,
+    cancel(_req: ControlRequest): AppResult<()>,
+    terminate(_req: ControlRequest): AppResult<()>,
+    pause(_req: ControlRequest): AppResult<()>,
+    resume(_req: ControlRequest): AppResult<()>,
+    retry_failed(_req: RetryRequest): AppResult<()>,
+    list_running(): AppResult<Vec<String>>,
+    get_status(_run_id: &str): AppResult<Option<EngineStatusDto>>,
+    cleanup(_req: ControlRequest): AppResult<()>,
+    handle_timer_fired(_timer: &TimerDto): AppResult<()>,
 );

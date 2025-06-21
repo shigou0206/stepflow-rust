@@ -121,6 +121,10 @@ impl stepflow_storage::traits::WorkflowStorage for SqliteStorageManager {
     async fn find_subflows_by_parent(&self, parent_run_id: &str, parent_state_name: &str) -> Result<Vec<StoredWorkflowExecution>, StorageError> {
         self.workflow_execution.find_subflows_by_parent(parent_run_id, parent_state_name).await
     }
+
+    async fn find_fully_completed_subflow_groups(&self) -> Result<Vec<(String, String)>, StorageError> {
+        self.workflow_execution.find_fully_completed_subflow_groups().await
+    }
 }
 
 #[async_trait::async_trait]
