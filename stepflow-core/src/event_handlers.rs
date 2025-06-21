@@ -1,10 +1,15 @@
-use tracing::{info, debug, error, warn};
+use crate::app_state::AppState;
+use serde_json::Value;
 use stepflow_dto::dto::execution::ExecStart;
 use stepflow_dto::dto::signal::ExecutionSignal;
 use stepflow_engine::engine::WorkflowEngine;
-use crate::app_state::AppState;
-use serde_json::Value;
-pub async fn handle_task_finished(app: &AppState, run_id: &str, state_name: &str, output: &serde_json::Value) {
+use tracing::{debug, error, info, warn};
+pub async fn handle_task_finished(
+    app: &AppState,
+    run_id: &str,
+    state_name: &str,
+    output: &serde_json::Value,
+) {
     info!(%run_id, %state_name, "📩 Received TaskFinished");
 
     let mut engines = app.engines.lock().await;
@@ -33,15 +38,39 @@ pub async fn handle_task_finished(app: &AppState, run_id: &str, state_name: &str
     }
 
     info!(%run_id, %state_name, "✅ Signal sent, advancing workflow...");
-    if let Err(e) = engine.handle_next_signal().await {
-        error!(%run_id, ?e, "❌ handle_next_signal failed");
-        return;
+
+    match engine.handle_next_signal().await {
+        Ok(Some(result)) => {
+            if result.should_continue && !result.is_blocking {
+                if let Err(e) = engine.advance_until_blocked().await {
+                    error!(%run_id, ?e, "❌ advance_until_blocked failed");
+                    return;
+                }
+                info!(%run_id, "✅ advance_until_blocked complete");
+            } else {
+                debug!(%run_id, "🛑 Signal handled, but engine is now blocked or finished.");
+            }
+        }
+        Ok(None) => {
+            debug!(%run_id, "⚠️ No signal to handle for run_id={}", run_id);
+        }
+        Err(e) => {
+            error!(%run_id, ?e, "❌ handle_next_signal failed");
+            return;
+        }
     }
-    if let Err(e) = engine.advance_until_blocked().await {
-        error!(%run_id, ?e, "❌ advance_until_blocked failed");
-        return;
-    }
-    info!(%run_id, "✅ advance_until_blocked complete");
+
+    // info!(%run_id, %state_name, "✅ Signal sent, advancing workflow...");
+    // if let Err(e) = engine.handle_next_signal().await {
+    //     error!(%run_id, ?e, "❌ handle_next_signal failed");
+    //     return;
+    // }
+
+    // if let Err(e) = engine.advance_until_blocked().await {
+    //     error!(%run_id, ?e, "❌ advance_until_blocked failed");
+    //     return;
+    // }
+    // info!(%run_id, "✅ advance_until_blocked complete");
 
     if engine.finished {
         engines.remove(run_id);
@@ -49,7 +78,13 @@ pub async fn handle_task_finished(app: &AppState, run_id: &str, state_name: &str
     }
 }
 
-pub async fn handle_subflow_finished(app: &AppState, parent_run_id: &str, child_run_id: &str, state_name: &str, result: &serde_json::Value) {
+pub async fn handle_subflow_finished(
+    app: &AppState,
+    parent_run_id: &str,
+    child_run_id: &str,
+    state_name: &str,
+    result: &serde_json::Value,
+) {
     info!(%parent_run_id, %child_run_id, %state_name, "📩 Received SubflowFinished");
 
     let mut engines = app.engines.lock().await;
@@ -84,10 +119,10 @@ pub async fn handle_subflow_finished(app: &AppState, parent_run_id: &str, child_
         error!(%parent_run_id, ?e, "❌ handle_next_signal failed");
         return;
     }
-    if let Err(e) = engine.advance_until_blocked().await {
-        error!(%parent_run_id, ?e, "❌ advance_until_blocked failed");
-        return;
-    }
+    // if let Err(e) = engine.advance_until_blocked().await {
+    //     error!(%parent_run_id, ?e, "❌ advance_until_blocked failed");
+    //     return;
+    // }
 
     if engine.finished {
         engines.remove(parent_run_id);
@@ -134,7 +169,7 @@ pub async fn handle_subflow_ready(
         )
         .await
         {
-            Ok(mut engine) => {
+            Ok(engine) => {
                 if engine.finished {
                     info!(%run_id, "⏭️ Subflow already finished, skipping advance");
                     return;

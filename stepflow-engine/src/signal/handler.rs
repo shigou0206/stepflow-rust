@@ -21,7 +21,7 @@ pub async fn apply_signal(
                     state_name, engine.current_state, engine.last_task_state
                 ));
             }
-
+        
             let state = if matches!(engine.state_def(), State::Task(_)) {
                 engine.state_def()
             } else if let Some(last_task) = &engine.last_task_state {
@@ -29,33 +29,75 @@ pub async fn apply_signal(
             } else {
                 return Err("No Task state found for signal".into());
             };
-
+        
             let State::Task(task_state) = state else {
                 return Err("TaskCompleted signal applied to non-Task state".into());
             };
+        
+            // ✅ 提取 next
+            let next_state_opt = if let Some(next) = task_state.base.next.clone() {
+                Some(next)
+            } else if task_state.base.end.unwrap_or(false) {
+                // ✅ end: true，表示这是终止状态
+                None
+            } else {
+                // ❌ 都没写，结构非法
+                return Err(format!(
+                    "Task state '{}' missing both .next and end=true",
+                    state_name
+                ));
+            };
 
+        
+            // ✅ 映射输出
             let pipeline = crate::mapping::MappingPipeline {
                 input_mapping: task_state.base.input_mapping.as_ref(),
                 output_mapping: task_state.base.output_mapping.as_ref(),
             };
-
+        
             engine.context = pipeline
                 .apply_output(&output, &engine.context)
                 .map_err(|e| format!("output mapping failed: {e}"))?;
+        
+            // ✅ 写入状态完成记录
+            engine.record_state_finished(true, Some(output.clone()), None).await?;
+        
+            if let Some(next) = next_state_opt.clone() {
+                engine.current_state = next.clone();
 
-            engine.dispatch_event(stepflow_dto::dto::engine_event::EngineEvent::NodeSuccess {
-                run_id,
-                state_name,
-                output: output.clone(),
-            }).await;
+                engine.persistence
+                    .update_execution(&engine.run_id, &UpdateStoredWorkflowExecution {
+                        current_state_name: Some(Some(next.clone())),
+                        context_snapshot: Some(Some(engine.context.clone())),
+                        ..Default::default()
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
 
-            Ok(StateExecutionResult {
-                output: engine.context.clone(),
-                next_state: Some(engine.current_state.clone()),
-                should_continue: true,
-                metadata: Some(output),
-                is_blocking: false,
-            })
+                // ✅ 派发 NodeSuccess 事件
+                engine.dispatch_event(stepflow_dto::dto::engine_event::EngineEvent::NodeSuccess {
+                    run_id,
+                    state_name,
+                    output: output.clone(),
+                }).await;
+
+                Ok(StateExecutionResult {
+                    output: engine.context.clone(),
+                    next_state: Some(next),
+                    should_continue: true,
+                    metadata: Some(output),
+                    is_blocking: false,
+                })
+            } else {
+                // Handle the end state (no next)
+                Ok(StateExecutionResult {
+                    output: engine.context.clone(),
+                    next_state: None,
+                    should_continue: false,
+                    metadata: Some(output),
+                    is_blocking: false,
+                })
+            }
         }
 
         ExecutionSignal::TaskFailed { run_id, state_name, error } => {

@@ -102,33 +102,49 @@ impl WorkflowEngine {
         self.signal_receiver = Some(receiver);
     }
 
-    pub async fn handle_next_signal(&mut self) -> Result<bool, String> {
-        // 先把 signal_receiver 移出来，避免后续借用冲突
+    // pub async fn handle_next_signal(&mut self) -> Result<bool, String> {
+    //     // 先把 signal_receiver 移出来，避免后续借用冲突
+    //     let mut receiver = match self.signal_receiver.take() {
+    //         Some(rx) => rx,
+    //         None => return Ok(false),
+    //     };
+
+    //     let mut handled_any = false;
+
+    //     loop {
+    //         match receiver.try_recv() {
+    //             Ok(signal) => {
+    //                 apply_signal(self, signal).await?;
+    //                 handled_any = true;
+    //             }
+    //             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+    //                 self.signal_receiver = Some(receiver);
+    //                 break;
+    //             }
+    //             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+    //                 warn!("Signal channel disconnected for run_id: {}", self.run_id);
+    //                 break;
+    //             }
+    //         }
+    //     }
+
+    //     Ok(handled_any)
+    // }
+
+    pub async fn handle_next_signal(&mut self) -> Result<Option<StateExecutionResult>, String> {
         let mut receiver = match self.signal_receiver.take() {
             Some(rx) => rx,
-            None => return Ok(false),
+            None => return Ok(None),
         };
-
-        let mut handled_any = false;
-
-        loop {
-            match receiver.try_recv() {
-                Ok(signal) => {
-                    apply_signal(self, signal).await?;
-                    handled_any = true;
-                }
-                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
-                    self.signal_receiver = Some(receiver);
-                    break;
-                }
-                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
-                    warn!("Signal channel disconnected for run_id: {}", self.run_id);
-                    break;
-                }
-            }
+    
+        while let Ok(signal) = receiver.try_recv() {
+            let result = apply_signal(self, signal).await?;
+            self.signal_receiver = Some(receiver);
+            return Ok(Some(result)); // ✅ 只处理一个 signal，返回结果
         }
-
-        Ok(handled_any)
+    
+        self.signal_receiver = Some(receiver);
+        Ok(None)
     }
 
     pub(crate) async fn dispatch_event(&self, ev: EngineEvent) {
@@ -199,6 +215,8 @@ impl WorkflowEngine {
                 });
             }
     
+            debug!(
+                "🔁 advance_once old_state={}", self.current_state);
             let step_out = self.advance_once().await?;
             debug!(
                 "🔁 advance_once done | should_continue={} | is_blocking={} | new_state={}",
@@ -256,7 +274,7 @@ impl WorkflowEngine {
     }
 
     // ---- 完成 / 失败时，只更新 output & status ------------------------
-    async fn record_state_finished(
+    pub async fn record_state_finished(
         &self,
         success: bool,
         output: Option<Value>,
