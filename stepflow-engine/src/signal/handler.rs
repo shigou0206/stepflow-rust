@@ -89,6 +89,7 @@ pub async fn apply_signal(
                     is_blocking: false,
                 })
             } else {
+                engine.finished = true;
                 // Handle the end state (no next)
                 Ok(StateExecutionResult {
                     output: engine.context.clone(),
