@@ -136,13 +136,13 @@ impl WorkflowEngine {
             Some(rx) => rx,
             None => return Ok(None),
         };
-    
+
         while let Ok(signal) = receiver.try_recv() {
             let result = apply_signal(self, signal).await?;
             self.signal_receiver = Some(receiver);
             return Ok(Some(result)); // ✅ 只处理一个 signal，返回结果
         }
-    
+
         self.signal_receiver = Some(receiver);
         Ok(None)
     }
@@ -214,17 +214,19 @@ impl WorkflowEngine {
                     is_blocking: false,
                 });
             }
-    
-            debug!(
-                "🔁 advance_once old_state={}", self.current_state);
+
+            debug!("🔁 advance_once old_state={}", self.current_state);
             let step_out = self.advance_once().await?;
             debug!(
                 "🔁 advance_once done | should_continue={} | is_blocking={} | new_state={}",
                 step_out.should_continue, step_out.is_blocking, self.current_state
             );
-    
+
             if !step_out.should_continue || step_out.is_blocking {
-                debug!("⏸ suspend or end: should_continue={}, is_blocking={}", step_out.should_continue, step_out.is_blocking);
+                debug!(
+                    "⏸ suspend or end: should_continue={}, is_blocking={}",
+                    step_out.should_continue, step_out.is_blocking
+                );
                 return Ok(StateExecutionResult {
                     output: self.context.clone(),
                     next_state: Some(self.current_state.clone()),
@@ -233,7 +235,7 @@ impl WorkflowEngine {
                     is_blocking: step_out.is_blocking,
                 });
             }
-    
+
             // ✳️ 如果不挂起，处理完 signal 再继续
             if let Err(e) = self.handle_next_signal().await {
                 return Err(e);
@@ -292,7 +294,6 @@ impl WorkflowEngine {
                     output: Some(output),
                     error: Some(error),
                     completed_at: Some(Some(Utc::now().naive_utc())),
-                    // ⛔ 不触碰 input
                     ..Default::default()
                 },
             )
@@ -309,17 +310,27 @@ impl WorkflowEngine {
                 is_blocking: false,
             });
         }
-    
+
+        if self.dsl.is_end_state(&self.current_state) {
+            self.finalize().await?;
+            return Ok(StepOutcome {
+                should_continue: false,
+                updated_context: self.context.clone(),
+                is_blocking: false,
+            });
+        }
+
         // ① NodeEnter
         self.dispatch_event(EngineEvent::NodeEnter {
             run_id: self.run_id.clone(),
             state_name: self.current_state.clone(),
             input: self.context.clone(),
-        }).await;
-    
+        })
+        .await;
+
         // ② 记录 STARTED（只在首次进入）
         self.record_state_started().await?;
-    
+
         // ③ 生成命令 & 调度 handler
         let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
         debug!(
@@ -328,7 +339,7 @@ impl WorkflowEngine {
             cmd.kind(),
             self.current_state
         );
-    
+
         let (outcome, next_state_opt, _raw_out, _meta) = dispatch_command(
             &cmd,
             self.state_def(),
@@ -336,33 +347,37 @@ impl WorkflowEngine {
             &self.run_id,
             &self.persistence,
             &self.state_handler_registry,
-        ).await?;
-    
+        )
+        .await?;
+
         // ④ 更新 context
         self.context = outcome.updated_context.clone();
         self.updated_at = Utc::now();
-    
+
         // ⑤ 写 COMPLETED（即使是挂起也算完成当前状态）
-        self.record_state_finished(
-            outcome.should_continue,
-            Some(self.context.clone()),
-            None,
-        ).await?;
-    
+        self.record_state_finished(outcome.should_continue, Some(self.context.clone()), None)
+            .await?;
+
         // ⑥ NodeExit
         self.dispatch_event(EngineEvent::NodeExit {
             run_id: self.run_id.clone(),
             state_name: self.current_state.clone(),
-            status: if outcome.should_continue { "success" } else { "failed" }.into(),
+            status: if outcome.should_continue {
+                "success"
+            } else {
+                "failed"
+            }
+            .into(),
             duration_ms: Some((Utc::now() - self.updated_at).num_milliseconds() as u64),
-        }).await;
-    
+        })
+        .await;
+
         // ⑦ 构造 execution 更新
         let mut exec_update = UpdateStoredWorkflowExecution {
             context_snapshot: Some(Some(self.context.clone())),
             ..Default::default()
         };
-    
+
         if outcome.should_continue {
             let next = next_state_opt.ok_or_else(|| {
                 format!(
@@ -370,11 +385,11 @@ impl WorkflowEngine {
                     self.current_state
                 )
             })?;
-    
+
             if matches!(self.state_def(), State::Task(_)) {
                 self.last_task_state = Some(self.current_state.clone());
             }
-    
+
             self.current_state = next.clone();
             exec_update.current_state_name = Some(Some(next));
         } else if !outcome.is_blocking {
@@ -382,12 +397,13 @@ impl WorkflowEngine {
             self.finished = true;
             exec_update.status = Some("COMPLETED".into());
             exec_update.close_time = Some(Some(self.updated_at.naive_utc()));
-    
+
             self.dispatch_event(EngineEvent::WorkflowFinished {
                 run_id: self.run_id.clone(),
                 result: self.context.clone(),
-            }).await;
-    
+            })
+            .await;
+
             if let (Some(parent_run_id), Some(state_name)) =
                 (self.parent_run_id.clone(), self.parent_state_name.clone())
             {
@@ -396,20 +412,60 @@ impl WorkflowEngine {
                     child_run_id: self.run_id.clone(),
                     state_name,
                     result: self.context.clone(),
-                }).await;
+                })
+                .await;
             }
         }
-    
+
         // ⑧ 保存 execution 状态
         self.persistence
             .update_execution(&self.run_id, &exec_update)
             .await
             .map_err(|e| e.to_string())?;
-    
+
         debug!("🔁 step_once returned: {:?}", cmd);
         debug!("📤 step outcome: {:?}", outcome);
-    
+
         Ok(outcome)
+    }
+
+    pub async fn finalize(&mut self) -> Result<(), String> {
+        if self.finished {
+            return Ok(()); // 避免重复 finalize
+        }
+
+        self.finished = true;
+
+        let update = UpdateStoredWorkflowExecution {
+            status: Some("COMPLETED".into()),
+            close_time: Some(Some(Utc::now().naive_utc())),
+            ..Default::default()
+        };
+
+        self.persistence
+            .update_execution(&self.run_id, &update)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        self.dispatch_event(EngineEvent::WorkflowFinished {
+            run_id: self.run_id.clone(),
+            result: self.context.clone(),
+        })
+        .await;
+
+        if let (Some(parent_run_id), Some(state_name)) =
+            (self.parent_run_id.clone(), self.parent_state_name.clone())
+        {
+            self.dispatch_event(EngineEvent::SubflowFinished {
+                parent_run_id,
+                child_run_id: self.run_id.clone(),
+                state_name,
+                result: self.context.clone(),
+            })
+            .await;
+        }
+
+        Ok(())
     }
     // ------------------------- 恢复 ----------------------------------
 

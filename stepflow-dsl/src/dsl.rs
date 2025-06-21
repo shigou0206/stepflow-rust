@@ -60,6 +60,11 @@ impl WorkflowDSL {
         };
         (st, base)
     }
+
+    pub fn is_end_state(&self, name: &str) -> bool {
+        let (_, base) = self.get_state_and_base(name);
+        base.end.unwrap_or(false)
+    }
 }
 
 impl Default for BaseState {
