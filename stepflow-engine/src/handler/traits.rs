@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use serde_json::Value;
 use super::execution_scope::{StateExecutionScope, StateExecutionResult};
 
 /// 统一的状态处理器接口
@@ -9,7 +8,6 @@ pub trait StateHandler: Send + Sync {
     async fn handle(
         &self,
         scope: &StateExecutionScope<'_>,
-        input: &Value,
     ) -> Result<StateExecutionResult, String>;
 
     /// 获取状态类型
@@ -19,8 +17,8 @@ pub trait StateHandler: Send + Sync {
     async fn on_subflow_finished(
         &self,
         scope: &StateExecutionScope<'_>,
-        parent_context: &Value,
+        parent_context: &serde_json::Value,
         child_run_id: &str,
-        result: &Value,
+        result: &serde_json::Value,
     ) -> Result<StateExecutionResult, String>;
-} 
+}

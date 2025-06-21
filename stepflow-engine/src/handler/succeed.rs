@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use serde_json::Value;
-use tracing::info;
+use tracing::{debug, info};
 
+use stepflow_dsl::state::State;
+use crate::mapping::MappingPipeline;
 use super::{StateHandler, StateExecutionScope, StateExecutionResult};
 
 /// ---------------------------------------------------------------------
@@ -19,17 +21,30 @@ impl SucceedHandler {
 impl StateHandler for SucceedHandler {
     async fn handle(
         &self,
-        _scope: &StateExecutionScope<'_>,
-        input: &Value, // ✅ 已是 input_mapping 处理后的输入
+        scope: &StateExecutionScope<'_>,
     ) -> Result<StateExecutionResult, String> {
-        let output = input.clone(); // ✅ handler 只需原样返回
+        let state = match scope.state_def {
+            State::Succeed(ref s) => s,
+            _ => return Err("Invalid state type for SucceedHandler".into()),
+        };
 
-        info!("✅ Workflow completed successfully");
+        let pipeline = MappingPipeline {
+            input_mapping: state.base.input_mapping.as_ref(),
+            output_mapping: state.base.output_mapping.as_ref(),
+        };
+
+        let exec_input = pipeline.apply_input(&scope.context)?;
+        debug!(run_id = scope.run_id, state = scope.state_name, ?exec_input, "SucceedHandler input mapped");
+
+        let final_output = pipeline.apply_output(&exec_input, &scope.context)?;
+        debug!(run_id = scope.run_id, state = scope.state_name, ?final_output, "SucceedHandler output mapped");
+
+        info!(run_id = scope.run_id, "✅ Workflow completed successfully");
 
         Ok(StateExecutionResult {
-            output,
-            next_state: None,          // ✅ 终止型节点
-            should_continue: false,    // ✅ 不再推进
+            output: final_output,
+            next_state: None,
+            should_continue: false,
             metadata: None,
         })
     }

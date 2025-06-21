@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tracing::{error, debug};
+use tracing::{debug, error};
 
 use stepflow_dsl::state::{fail::FailState, State};
+use crate::mapping::MappingPipeline;
 use super::{StateHandler, StateExecutionScope, StateExecutionResult};
 
 /// ---------------------------------------------------------------------
-/// FailHandler（无状态单例）
+/// FailHandler（终止型节点，处理失败信息）
 /// ---------------------------------------------------------------------
 pub struct FailHandler;
 
@@ -28,26 +29,39 @@ impl StateHandler for FailHandler {
     async fn handle(
         &self,
         scope: &StateExecutionScope<'_>,
-        _input: &Value,
     ) -> Result<StateExecutionResult, String> {
         let state = match scope.state_def {
             State::Fail(ref s) => s,
             _ => return Err("Invalid state type for FailHandler".into()),
         };
 
+        let pipeline = MappingPipeline {
+            input_mapping: state.base.input_mapping.as_ref(),
+            output_mapping: state.base.output_mapping.as_ref(),
+        };
+
+        // ✅ 映射输入（虽然通常无用，但为了统一）
+        let exec_input = pipeline.apply_input(&scope.context)?;
+        debug!(run_id = scope.run_id, state = scope.state_name, ?exec_input, "FailHandler input mapped");
+
+        // ⚠️ 失败节点强制生成 error 输出（覆盖一切）
+        let raw_output = self.build_error_output(state);
+
+        // ✅ 输出映射（如需包装失败信息到 context 中）
+        let final_output = pipeline.apply_output(&raw_output, &scope.context)?;
+        debug!(run_id = scope.run_id, state = scope.state_name, ?final_output, "FailHandler output mapped");
+
         error!(
-            "Workflow failed with error: {:?}, cause: {:?}",
-            state.error,
-            state.cause
+            run_id = scope.run_id,
+            state = scope.state_name,
+            "❌ Workflow failed: {:?} | cause: {:?}",
+            state.error, state.cause
         );
 
-        let output = self.build_error_output(state);
-        debug!("Generated error output: {:?}", output);
-
         Ok(StateExecutionResult {
-            output,
-            next_state: None,            // Fail 状态是终止状态
-            should_continue: false,     // 不再推进
+            output: final_output,
+            next_state: None,           // 终止节点
+            should_continue: false,     // 停止推进
             metadata: None,
         })
     }

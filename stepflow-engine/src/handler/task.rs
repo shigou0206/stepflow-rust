@@ -1,15 +1,19 @@
+use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::Value;
-use stepflow_dsl::state::{task::TaskState, State};
-use stepflow_dto::dto::queue_task::QueueTaskDto;
-use stepflow_match::service::MatchService;
-
-use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
+use stepflow_dsl::state::{task::TaskState, State};
+use stepflow_dto::dto::queue_task::QueueTaskDto;
+use stepflow_match::service::MatchService;
+use crate::mapping::MappingPipeline;
+
 use super::{StateExecutionResult, StateExecutionScope, StateHandler};
 
+/// ---------------------------------------------------------------------
+/// TaskHandler（带参数映射的延迟任务状态）
+/// ---------------------------------------------------------------------
 pub struct TaskHandler {
     match_service: Arc<dyn MatchService>,
 }
@@ -25,10 +29,7 @@ impl TaskHandler {
         state: &TaskState,
         input: &Value,
     ) -> Result<(Value, Value), String> {
-        debug!(
-            "Creating deferred task for resource: {} via MatchService",
-            state.resource
-        );
+        debug!(run_id = scope.run_id, state = scope.state_name, "📦 Creating deferred task");
 
         let task = build_queue_task(scope.run_id, scope.state_name, state, input);
 
@@ -49,23 +50,29 @@ impl StateHandler for TaskHandler {
     async fn handle(
         &self,
         scope: &StateExecutionScope<'_>,
-        input: &Value,
     ) -> Result<StateExecutionResult, String> {
         let state = match scope.state_def {
             State::Task(ref s) => s,
             _ => return Err("Invalid state type for TaskHandler".into()),
         };
 
-        let (output, metadata) = {
-            let (out, meta) = self.handle_deferred(scope, state, input).await?;
-            (out, Some(meta))
+        // ✅ 执行 input_mapping（将 context → task_input）
+        let pipeline = MappingPipeline {
+            input_mapping: state.base.input_mapping.as_ref(),
+            output_mapping: None, // output_mapping 由引擎统一处理
         };
+
+        let exec_input = pipeline.apply_input(&scope.context)?;
+        debug!(run_id = scope.run_id, "🎯 TaskHandler input mapped: {}", exec_input);
+
+        // ✅ 创建任务并提交
+        let (output, metadata) = self.handle_deferred(scope, state, &exec_input).await?;
 
         Ok(StateExecutionResult {
             output,
             next_state: state.base.next.clone(),
             should_continue: true,
-            metadata,
+            metadata: Some(metadata),
         })
     }
 
@@ -80,11 +87,14 @@ impl StateHandler for TaskHandler {
         _child_run_id: &str,
         _result: &Value,
     ) -> Result<StateExecutionResult, String> {
-        Err("on_subflow_finished not supported by this state".into())
+        Err("on_subflow_finished not supported by TaskHandler".into())
     }
 }
 
-// 保留任务构建辅助函数
+// ------------------------------------------------------------------------------------------------
+// 任务构建辅助函数
+// ------------------------------------------------------------------------------------------------
+
 fn extract_priority_and_timeout(
     state: &TaskState,
     run_id: &str,
@@ -99,8 +109,7 @@ fn extract_priority_and_timeout(
                 priority = Some(p);
             } else {
                 warn!(
-                    "Invalid priority in config for {}.{}, using None",
-                    run_id, state_name
+                    "⚠️ Invalid priority in config for {run_id}.{state_name}, using None"
                 );
             }
         }
@@ -110,8 +119,7 @@ fn extract_priority_and_timeout(
                 timeout_seconds = Some(t);
             } else {
                 warn!(
-                    "Invalid timeout_seconds in config for {}.{}, using None",
-                    run_id, state_name
+                    "⚠️ Invalid timeout_seconds in config for {run_id}.{state_name}, using None"
                 );
             }
         }

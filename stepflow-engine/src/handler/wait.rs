@@ -9,14 +9,17 @@ use stepflow_dsl::state::{wait::WaitState, State};
 use stepflow_dto::dto::timer::TimerDto;
 use stepflow_storage::entities::timer::StoredTimer;
 
+use crate::mapping::MappingPipeline;
 use super::{StateExecutionResult, StateExecutionScope, StateHandler};
+
+/// ---------------------------------------------------------------------
+/// WaitHandler：用于实现延迟等待的状态（DEFERRED）
+/// ---------------------------------------------------------------------
 
 #[derive(Error, Debug)]
 pub enum WaitError {
     #[error("Timestamp-based wait not yet supported")]
     TimestampNotSupported,
-    #[error("Wait time too long for inline mode: {0} seconds")]
-    WaitTooLong(u64),
     #[error("Database error: {0}")]
     DatabaseError(String),
 }
@@ -55,7 +58,7 @@ impl WaitHandler {
             .await
             .map_err(|e| WaitError::DatabaseError(e.to_string()).to_string())?;
 
-        info!("🕒 Deferred timer created to fire at {}", fire_at);
+        info!(run_id = scope.run_id, fire_at = %fire_at, "🕒 Timer scheduled");
 
         let metadata = serde_json::to_value(&TimerDto {
             timer_id: timer.timer_id,
@@ -78,18 +81,16 @@ impl WaitHandler {
         &self,
         scope: &StateExecutionScope<'_>,
         state: &WaitState,
-        _exec_input: &Value,
     ) -> Result<Option<Value>, String> {
         if let Some(secs) = state.seconds {
             if secs == 0 {
-                debug!("⏩ Wait = 0s, skipping wait");
+                debug!(run_id = scope.run_id, "⏩ seconds = 0, skip wait");
                 return Ok(None);
             }
 
-            let metadata = self.handle_deferred(scope, secs).await?;
-            Ok(Some(metadata))
+            self.handle_deferred(scope, secs).await.map(Some)
         } else if state.timestamp.is_some() {
-            warn!("Timestamp wait specified, but not supported yet");
+            warn!(run_id = scope.run_id, "⏱ timestamp wait not implemented");
             Err(WaitError::TimestampNotSupported.to_string())
         } else {
             Ok(None)
@@ -102,20 +103,25 @@ impl StateHandler for WaitHandler {
     async fn handle(
         &self,
         scope: &StateExecutionScope<'_>,
-        input: &Value, // 这是已经经过 input_mapping 后的执行输入
     ) -> Result<StateExecutionResult, String> {
         let state = match scope.state_def {
-            State::Wait(ref w) => w,
+            State::Wait(ref s) => s,
             _ => return Err("Invalid state type for WaitHandler".into()),
         };
 
-        debug!(run_id = scope.run_id, state = scope.state_name, "WaitHandler input: {}", input);
+        // ✅ 参数映射（仅 input_mapping）
+        let pipeline = MappingPipeline {
+            input_mapping: state.base.input_mapping.as_ref(),
+            output_mapping: None,
+        };
 
-        let metadata = self.process_wait(scope, state, input).await?;
+        let exec_input = pipeline.apply_input(&scope.context)?;
+        debug!(run_id = scope.run_id, state = scope.state_name, input = ?exec_input, "WaitHandler input");
 
-        // ✅ output_mapping 将由 dispatch_command 统一处理，handler 只需返回 input
+        let metadata = self.process_wait(scope, state).await?;
+
         Ok(StateExecutionResult {
-            output: input.clone(),
+            output: exec_input,
             next_state: state.base.next.clone(),
             should_continue: true,
             metadata,
@@ -133,6 +139,6 @@ impl StateHandler for WaitHandler {
         _child_run_id: &str,
         _result: &Value,
     ) -> Result<StateExecutionResult, String> {
-        Err("on_subflow_finished not supported by this state".into())
+        Err("WaitHandler does not support subflow".into())
     }
 }
