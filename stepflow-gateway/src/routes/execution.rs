@@ -1,15 +1,17 @@
+use std::sync::Arc;
 use axum::{
     routing::{get, post},
     Json, Router,
     extract::{Path, State, Query}
 };
 use stepflow_dto::dto::execution::*;
-use stepflow_core::service::{ExecutionSvc, ExecutionService};
-use serde_json::Value;
 use stepflow_core::{
     app_state::AppState,
     error::AppResult,
+    service::ExecutionService,
 };
+use serde_json::Value;
+
 #[derive(serde::Deserialize)]
 pub struct Page {
     pub limit: Option<i64>,
@@ -29,7 +31,7 @@ pub struct ExecUpdate {
     pub result: Option<Value>,
 }
 
-pub fn router(svc: ExecutionSvc) -> Router<AppState> {
+pub fn router(svc: Arc<dyn ExecutionService>) -> Router<AppState> {
     Router::new()
         .route("/", post(start).get(list))
         .route("/:id", get(get_one).put(update).delete(delete_one))
@@ -51,7 +53,7 @@ pub fn router(svc: ExecutionSvc) -> Router<AppState> {
     tag = "executions"
 )]
 pub async fn start(
-    State(svc): State<ExecutionSvc>,
+    State(svc): State<Arc<dyn ExecutionService>>,
     Json(body): Json<ExecStart>,
 ) -> AppResult<Json<ExecDto>> {
     Ok(Json(svc.start(body).await?))
@@ -72,7 +74,7 @@ pub async fn start(
     tag = "executions"
 )]
 pub async fn list(
-    State(svc): State<ExecutionSvc>,
+    State(svc): State<Arc<dyn ExecutionService>>,
     Query(p): Query<Page>,
 ) -> AppResult<Json<Vec<ExecDto>>> {
     Ok(Json(svc.list(p.limit.unwrap_or(20), p.offset.unwrap_or(0)).await?))
@@ -93,7 +95,7 @@ pub async fn list(
     tag = "executions"
 )]
 pub async fn get_one(
-    State(svc): State<ExecutionSvc>,
+    State(svc): State<Arc<dyn ExecutionService>>,
     Path(id): Path<String>,
 ) -> AppResult<Json<ExecDto>> {
     Ok(Json(svc.get(&id).await?))
@@ -115,7 +117,7 @@ pub async fn get_one(
     tag = "executions"
 )]
 pub async fn update(
-    State(svc): State<ExecutionSvc>,
+    State(svc): State<Arc<dyn ExecutionService>>,
     Path(id): Path<String>,
     Json(body): Json<ExecUpdate>,
 ) -> AppResult<Json<ExecDto>> {
@@ -139,7 +141,7 @@ pub async fn update(
     tag = "executions"
 )]
 pub async fn delete_one(
-    State(svc): State<ExecutionSvc>,
+    State(svc): State<Arc<dyn ExecutionService>>,
     Path(id): Path<String>,
 ) -> AppResult<()> {
     svc.delete(&id).await?;
@@ -162,7 +164,7 @@ pub async fn delete_one(
     tag = "executions"
 )]
 pub async fn list_by_status(
-    State(svc): State<ExecutionSvc>,
+    State(svc): State<Arc<dyn ExecutionService>>,
     Query(p): Query<StatusPage>,
 ) -> AppResult<Json<Vec<ExecDto>>> {
     Ok(Json(svc.list_by_status(

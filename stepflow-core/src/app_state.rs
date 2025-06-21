@@ -31,7 +31,7 @@ impl AppState {
         match_service: Arc<dyn MatchService>,
         event_bus: Arc<dyn EventBus>,
         state_handler_registry: Arc<StateHandlerRegistry>,
-        services: Arc<ServiceRegistry>, // ✅ 注入 ServiceRegistry
+        services: Arc<ServiceRegistry>, 
     ) -> Self {
         Self {
             persist,

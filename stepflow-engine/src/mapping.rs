@@ -1,26 +1,11 @@
-//! Mapping utilities shared by the workflow engine.
-//!
-//! `MappingPipeline` wraps optional **InputMapping** and **OutputMapping** definitions
-//! (both are `stepflow_mapping::MappingDSL`).  The engine调用顺序：
-//!
-//!   ① `apply_input(ctx)`   —— 在进入具体 handler 前执行
-//!   ② 业务 handler         —— 仅关心 exec_in → raw_out
-//!   ③ `apply_output(out)` —— handler 返回后执行
-//!
-//! **当前简化**
-//! * 只实现 `MergeStrategy::Overwrite` / `Ignore` 两种浅合并策略
-//! * `stepflow_mapping::MappingEngine` 仅需支持 `JsonPath` / `Constant` 两变体
-//!
-//! 后续若要支持 Append / Merge 深合并、更多映射类型，只需扩展此文件即可。
-
 use serde_json::{Map, Value};
-use stepflow_mapping::{MappingDSL, MappingEngine};
 use stepflow_mapping::model::rule::MergeStrategy;
+use stepflow_mapping::{MappingDSL, MappingEngine};
 
 /// Lightweight pipeline for a single state (borrowed refs to DSL).
 #[derive(Debug, Clone, Copy)]
 pub struct MappingPipeline<'a> {
-    pub input_mapping:  Option<&'a MappingDSL>,
+    pub input_mapping: Option<&'a MappingDSL>,
     pub output_mapping: Option<&'a MappingDSL>,
 }
 
@@ -28,10 +13,33 @@ impl<'a> MappingPipeline<'a> {
     /// Apply `input_mapping` to *ctx* (clone if None).
     pub fn apply_input(&self, ctx: &Value) -> Result<Value, String> {
         if let Some(cfg) = self.input_mapping {
-            MappingEngine::apply(cfg.clone(), ctx)
-                .map_err(|e| format!("InputMapping error: {e}"))
+            MappingEngine::apply(cfg.clone(), ctx).map_err(|e| format!("InputMapping error: {e}"))
         } else {
             Ok(ctx.clone())
+        }
+    }
+
+    pub fn apply_input_for_map_item(
+        &self,
+        parent_ctx: &Value,
+        item_context_key: &str,
+        item_value: &Value,
+    ) -> Result<Value, String> {
+        let mut merged = match parent_ctx {
+            Value::Object(map) => map.clone(),
+            _ => Map::new(),
+        };
+        merged.insert(item_context_key.to_string(), item_value.clone());
+
+        let base = Value::Object(merged.clone());
+
+        if let Some(cfg) = self.input_mapping {
+            let mapped = MappingEngine::apply(cfg.clone(), &base)
+                .map_err(|e| format!("InputMapping error: {e}"))?;
+
+            Ok(merge_shallow(&base, &mapped, MergeStrategy::Overwrite))
+        } else {
+            Ok(base)
         }
     }
 
@@ -79,7 +87,6 @@ fn merge_shallow(base: &Value, mapped: &Value, strat: MergeStrategy) -> Value {
             }
             Value::Object(combined)
         }
-        // 非对象直接根据策略选返回值
         _ => match strat {
             MergeStrategy::Ignore => base.clone(),
             _ => mapped.clone(),
@@ -91,7 +98,7 @@ fn merge_shallow(base: &Value, mapped: &Value, strat: MergeStrategy) -> Value {
 mod tests {
     use super::*;
     use serde_json::json;
-
+    use serde_yaml;
     #[test]
     fn test_merge_overwrite() {
         let a = json!({ "x": 1, "y": 2 });
@@ -106,5 +113,66 @@ mod tests {
         let b = json!({ "y": 99, "z": 3 });
         let r = merge_shallow(&a, &b, MergeStrategy::Ignore);
         assert_eq!(r, json!({ "x": 1, "y": 2, "z": 3 }));
+    }
+
+    #[test]
+    fn test_apply_input_for_map_item_simple_injection() {
+        let base_ctx = json!({ "token": "abc" });
+        let item = json!({ "id": 1, "name": "Alice" });
+        let pipeline = MappingPipeline {
+            input_mapping: None,
+            output_mapping: None,
+        };
+
+        let injected = pipeline
+            .apply_input_for_map_item(&base_ctx, "item", &item)
+            .unwrap();
+
+        assert_eq!(
+            injected,
+            json!({
+                "token": "abc",
+                "item": { "id": 1, "name": "Alice" }
+            })
+        );
+    }
+
+    #[test]
+    fn test_apply_input_for_map_item_with_yaml() {
+        use stepflow_mapping::model::dsl::MappingDSL;
+
+        let yaml = r#"
+    mappings:
+      - key: url
+        type: constant
+        value: https://example.com/api
+      - key: body
+        type: jsonPath
+        source: $.user
+    "#;
+
+        let dsl: MappingDSL = serde_yaml::from_str(yaml).expect("Failed to parse YAML");
+
+        let base_ctx = json!({ "token": "abc123" });
+        let item = json!({ "name": "Alice", "age": 30 });
+
+        let pipeline = MappingPipeline {
+            input_mapping: Some(&dsl),
+            output_mapping: None,
+        };
+
+        let mapped = pipeline
+            .apply_input_for_map_item(&base_ctx, "user", &item)
+            .unwrap();
+
+        assert_eq!(
+            mapped,
+            json!({
+                "token": "abc123",
+                "user": { "name": "Alice", "age": 30 },
+                "url": "https://example.com/api",
+                "body": { "name": "Alice", "age": 30 }
+            })
+        );
     }
 }

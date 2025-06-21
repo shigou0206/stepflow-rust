@@ -8,7 +8,7 @@ use stepflow_common::config::StepflowConfig;
 use stepflow_core::{
     builder::build_app_state, 
     app_state::AppState, 
-    event::{maybe_start_event_runner, spawn_event_logger},
+    event_runner::{maybe_start_event_runner, spawn_event_logger},
     init_tracing
 };
 use stepflow_eventbus::global::set_global_event_bus;

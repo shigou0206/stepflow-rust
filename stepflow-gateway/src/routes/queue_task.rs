@@ -1,24 +1,22 @@
+use std::{collections::HashMap, sync::Arc};
 use axum::{
-    routing::get,
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
+    routing::{get, post, delete},
     Json, Router,
 };
-
+use chrono::NaiveDateTime;
 use stepflow_dto::dto::queue_task::{QueueTaskDto, UpdateQueueTaskDto};
-use stepflow_core::service::{QueueTaskSvc, QueueTaskService};
 use stepflow_core::{
     app_state::AppState,
     error::{AppError, AppResult},
+    service::QueueTaskService,
 };
-use std::collections::HashMap;
-use chrono::NaiveDateTime;
 
-pub fn router(svc: QueueTaskSvc) -> Router<AppState> {
+pub fn router(svc: Arc<dyn QueueTaskService>) -> Router<AppState> {
     Router::new()
         .route("/", get(list_by_status))
         .route("/retry", get(list_to_retry))
         .route("/:id", get(get_one).put(update_one).delete(delete_one))
-        .route("/:id/validate-dsl", get(validate_dsl))
         .with_state(svc)
 }
 
@@ -37,7 +35,7 @@ pub fn router(svc: QueueTaskSvc) -> Router<AppState> {
     tag = "queue_tasks"
 )]
 pub async fn get_one(
-    State(svc): State<QueueTaskSvc>,
+    State(svc): State<Arc<dyn QueueTaskService>>,
     Path(id): Path<String>,
 ) -> AppResult<Json<QueueTaskDto>> {
     Ok(Json(svc.get_task(&id).await?))
@@ -47,10 +45,10 @@ pub async fn get_one(
 #[utoipa::path(
     put,
     path = "/v1/queue_tasks/{id}",
+    request_body = UpdateQueueTaskDto,
     params(
         ("id" = String, Path, description = "任务 ID")
     ),
-    request_body = UpdateQueueTaskDto,
     responses(
         (status = 200, description = "成功更新任务"),
         (status = 404, description = "任务不存在"),
@@ -60,7 +58,7 @@ pub async fn get_one(
     tag = "queue_tasks"
 )]
 pub async fn update_one(
-    State(svc): State<QueueTaskSvc>,
+    State(svc): State<Arc<dyn QueueTaskService>>,
     Path(id): Path<String>,
     Json(update): Json<UpdateQueueTaskDto>,
 ) -> AppResult<()> {
@@ -83,7 +81,7 @@ pub async fn update_one(
     tag = "queue_tasks"
 )]
 pub async fn delete_one(
-    State(svc): State<QueueTaskSvc>,
+    State(svc): State<Arc<dyn QueueTaskService>>,
     Path(id): Path<String>,
 ) -> AppResult<()> {
     svc.delete_task(&id).await?;
@@ -106,37 +104,14 @@ pub async fn delete_one(
     tag = "queue_tasks"
 )]
 pub async fn list_by_status(
-    State(svc): State<QueueTaskSvc>,
+    State(svc): State<Arc<dyn QueueTaskService>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> AppResult<Json<Vec<QueueTaskDto>>> {
-    let status = params.get("status").cloned().unwrap_or("pending".to_string());
+    let status = params.get("status").cloned().unwrap_or_else(|| "pending".to_string());
     let limit = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(100);
     let offset = params.get("offset").and_then(|v| v.parse().ok()).unwrap_or(0);
     let list = svc.list_tasks_by_status(&status, limit, offset).await?;
     Ok(Json(list))
-}
-
-/// 校验任务的 DSL 格式
-#[utoipa::path(
-    get,
-    path = "/v1/queue_tasks/{id}/validate-dsl",
-    params(
-        ("id" = String, Path, description = "任务 ID")
-    ),
-    responses(
-        (status = 200, description = "DSL 格式合法"),
-        (status = 400, description = "DSL 格式错误"),
-        (status = 404, description = "任务不存在"),
-        (status = 500, description = "服务器内部错误")
-    ),
-    tag = "queue_tasks"
-)]
-pub async fn validate_dsl(
-    State(svc): State<QueueTaskSvc>,
-    Path(id): Path<String>,
-) -> AppResult<()> {
-    svc.validate_task_dsl(&id).await?;
-    Ok(())
 }
 
 /// 查询待重试任务
@@ -155,14 +130,17 @@ pub async fn validate_dsl(
     tag = "queue_tasks"
 )]
 pub async fn list_to_retry(
-    State(svc): State<QueueTaskSvc>,
+    State(svc): State<Arc<dyn QueueTaskService>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> AppResult<Json<Vec<QueueTaskDto>>> {
-    let before_str = params.get("before").cloned().ok_or_else(|| {
+    let before_str = params.get("before").ok_or_else(|| {
         AppError::BadRequest("missing 'before' param".into())
-    })?;
-    let before = before_str.parse::<NaiveDateTime>()
+    })?.clone();
+
+    let before = before_str
+        .parse::<NaiveDateTime>()
         .map_err(|e| AppError::BadRequest(format!("invalid datetime: {e}")))?;
+
     let limit = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(50);
     let list = svc.list_tasks_to_retry(before, limit).await?;
     Ok(Json(list))

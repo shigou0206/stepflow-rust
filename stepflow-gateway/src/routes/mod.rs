@@ -1,4 +1,6 @@
-use axum::{Router, routing::get};
+use axum::{routing::get, Router};
+use stepflow_core::app_state::AppState;
+
 pub mod template;
 pub mod execution;
 pub mod worker;
@@ -7,40 +9,19 @@ pub mod workflow_event;
 pub mod queue_task;
 pub mod timer;
 pub mod match_router;
-use stepflow_core::service::{
-    template::TemplateSqlxSvc,
-    execution::ExecutionSqlxSvc,
-    activity_task::ActivityTaskSqlxSvc,
-    workflow_event::WorkflowEventSqlxSvc,
-    queue_task::QueueTaskSqlxSvc,
-    timer::TimerSqlxSvc
-};
-use stepflow_core::app_state::AppState;
-use std::sync::Arc;
 
 pub fn new(state: AppState) -> Router<AppState> {
-    let state = Arc::new(state);
-    // 创建要用的 ServiceImpl
-    let tpl_svc = TemplateSqlxSvc::new(state.persist.clone());
-    let exec_svc = ExecutionSqlxSvc::new(state.clone());
-    let event_svc = WorkflowEventSqlxSvc::new(state.persist.clone());
-    let task_svc = ActivityTaskSqlxSvc::new(state.persist.clone());
-    let queue_svc = QueueTaskSqlxSvc::new(state.clone());
-    let timer_svc = TimerSqlxSvc::new(state.clone());
-
-
-    let app = Router::new()
-        .nest("/v1/templates", template::router(tpl_svc))
-        .nest("/v1/executions", execution::router(exec_svc))
-        .nest("/v1/activity_tasks", activity_task::router(task_svc))
+    Router::new()
+        .nest("/v1/templates", template::router(state.services.template.clone()))
+        .nest("/v1/executions", execution::router(state.services.execution.clone()))
+        .nest("/v1/activity_tasks", activity_task::router(state.services.activity_task.clone()))
+        .nest("/v1/workflow_events", workflow_event::router(state.services.workflow_event.clone()))
+        .nest("/v1/queue_tasks", queue_task::router(state.services.queue_task.clone()))
+        .nest("/v1/timers", timer::router(state.services.timer.clone()))
         .nest("/v1/worker", worker::router())
-        .nest("/v1/workflow_events", workflow_event::router(event_svc))
-        .nest("/v1/queue_tasks", queue_task::router(queue_svc))
-        .nest("/v1/timers", timer::router(timer_svc))
         .nest("/v1/match", match_router::router())
         .route("/v1/healthz", get(|| async { "ok" }))
-        .with_state((*state).clone());      // 全局状态
-    app
+        .with_state(state)
 }
 
 use utoipa::OpenApi;
@@ -77,7 +58,6 @@ use stepflow_dto::dto;
         queue_task::get_one,
         queue_task::update_one,
         queue_task::list_by_status,
-        queue_task::validate_dsl,
         queue_task::list_to_retry,
         queue_task::delete_one,
         timer::create_timer,

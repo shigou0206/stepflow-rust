@@ -213,6 +213,7 @@ mod tests {
                     states: HashMap::new(),
                 },
                 max_concurrency: None,
+                item_context_key: "item".to_string(),
             }),
         ];
         for state in variants {

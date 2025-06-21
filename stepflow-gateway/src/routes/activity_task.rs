@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use axum::{
     Router,
     routing::{get, post},
@@ -9,14 +10,15 @@ use stepflow_dto::dto::activity_task::{
     ListQuery, 
     CompleteRequest, 
     FailRequest, 
-    HeartbeatRequest};
+    HeartbeatRequest
+};
 use stepflow_core::{
     app_state::AppState,
     error::AppResult,
+    service::ActivityTaskService,
 };
-use stepflow_core::service::{ActivityTaskService, ActivityTaskSvc};
 
-pub fn router(svc: ActivityTaskSvc) -> Router<AppState> {
+pub fn router(svc: Arc<dyn ActivityTaskService>) -> Router<AppState> {
     Router::new()
         .route("/", get(list_tasks))
         .route("/:task_token", get(get_task))
@@ -40,7 +42,7 @@ pub fn router(svc: ActivityTaskSvc) -> Router<AppState> {
     )
 )]
 async fn list_tasks(
-    State(svc): State<ActivityTaskSvc>,
+    State(svc): State<Arc<dyn ActivityTaskService>>,
     Query(query): Query<ListQuery>,
 ) -> AppResult<Json<Vec<ActivityTaskDto>>> {
     Ok(Json(svc.list_tasks(query.limit, query.offset).await?))
@@ -61,7 +63,7 @@ async fn list_tasks(
     )
 )]
 async fn get_task(
-    State(svc): State<ActivityTaskSvc>,
+    State(svc): State<Arc<dyn ActivityTaskService>>,
     Path(task_token): Path<String>,
 ) -> AppResult<Json<ActivityTaskDto>> {
     Ok(Json(svc.get_task(&task_token).await?))
@@ -81,7 +83,7 @@ async fn get_task(
     )
 )]
 async fn get_tasks_by_run_id(
-    State(svc): State<ActivityTaskSvc>,
+    State(svc): State<Arc<dyn ActivityTaskService>>,
     Path(run_id): Path<String>,
 ) -> AppResult<Json<Vec<ActivityTaskDto>>> {
     Ok(Json(svc.get_tasks_by_run_id(&run_id).await?))
@@ -102,7 +104,7 @@ async fn get_tasks_by_run_id(
     )
 )]
 async fn start_task(
-    State(svc): State<ActivityTaskSvc>,
+    State(svc): State<Arc<dyn ActivityTaskService>>,
     Path(task_token): Path<String>,
 ) -> AppResult<Json<ActivityTaskDto>> {
     Ok(Json(svc.start_task(&task_token).await?))
@@ -124,7 +126,7 @@ async fn start_task(
     )
 )]
 async fn complete_task(
-    State(svc): State<ActivityTaskSvc>,
+    State(svc): State<Arc<dyn ActivityTaskService>>,
     Path(task_token): Path<String>,
     Json(req): Json<CompleteRequest>,
 ) -> AppResult<Json<ActivityTaskDto>> {
@@ -147,7 +149,7 @@ async fn complete_task(
     )
 )]
 async fn fail_task(
-    State(svc): State<ActivityTaskSvc>,
+    State(svc): State<Arc<dyn ActivityTaskService>>,
     Path(task_token): Path<String>,
     Json(req): Json<FailRequest>,
 ) -> AppResult<Json<ActivityTaskDto>> {
@@ -170,7 +172,7 @@ async fn fail_task(
     )
 )]
 async fn heartbeat_task(
-    State(svc): State<ActivityTaskSvc>,
+    State(svc): State<Arc<dyn ActivityTaskService>>,
     Path(task_token): Path<String>,
     Json(req): Json<HeartbeatRequest>,
 ) -> AppResult<Json<ActivityTaskDto>> {

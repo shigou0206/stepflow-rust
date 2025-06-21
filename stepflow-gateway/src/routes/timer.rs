@@ -1,21 +1,18 @@
+use std::{collections::HashMap, sync::Arc};
 use axum::{
-    routing::{get, post},
     extract::{Path, Query, State},
+    routing::{get, post},
     Json, Router,
 };
-
-use stepflow_dto::dto::timer::{TimerDto, CreateTimerDto, UpdateTimerDto};
-
-use stepflow_core::service::{TimerSvc, TimerService};
-
+use chrono::{DateTime, Utc};
+use stepflow_dto::dto::timer::{CreateTimerDto, TimerDto, UpdateTimerDto};
 use stepflow_core::{
     app_state::AppState,
     error::{AppError, AppResult},
+    service::TimerService,
 };
-use chrono::{DateTime, Utc};
-use std::collections::HashMap;
 
-pub fn router(svc: TimerSvc) -> Router<AppState> {
+pub fn router(svc: Arc<dyn TimerService>) -> Router<AppState> {
     Router::new()
         .route("/", post(create_timer).get(find_before))
         .route("/:id", get(get_timer).put(update_timer).delete(delete_timer))
@@ -35,7 +32,7 @@ pub fn router(svc: TimerSvc) -> Router<AppState> {
     tag = "timers"
 )]
 pub async fn create_timer(
-    State(svc): State<TimerSvc>,
+    State(svc): State<Arc<dyn TimerService>>,
     Json(dto): Json<CreateTimerDto>,
 ) -> AppResult<Json<TimerDto>> {
     let result = svc.create_timer(dto).await?;
@@ -57,7 +54,7 @@ pub async fn create_timer(
     tag = "timers"
 )]
 pub async fn get_timer(
-    State(svc): State<TimerSvc>,
+    State(svc): State<Arc<dyn TimerService>>,
     Path(id): Path<String>,
 ) -> AppResult<Json<TimerDto>> {
     Ok(Json(svc.get_timer(&id).await?))
@@ -80,7 +77,7 @@ pub async fn get_timer(
     tag = "timers"
 )]
 pub async fn update_timer(
-    State(svc): State<TimerSvc>,
+    State(svc): State<Arc<dyn TimerService>>,
     Path(id): Path<String>,
     Json(update): Json<UpdateTimerDto>,
 ) -> AppResult<Json<TimerDto>> {
@@ -102,7 +99,7 @@ pub async fn update_timer(
     tag = "timers"
 )]
 pub async fn delete_timer(
-    State(svc): State<TimerSvc>,
+    State(svc): State<Arc<dyn TimerService>>,
     Path(id): Path<String>,
 ) -> AppResult<()> {
     svc.delete_timer(&id).await?;
@@ -125,7 +122,7 @@ pub async fn delete_timer(
     tag = "timers"
 )]
 pub async fn find_before(
-    State(svc): State<TimerSvc>,
+    State(svc): State<Arc<dyn TimerService>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> AppResult<Json<Vec<TimerDto>>> {
     let before_str = params.get("before").cloned().ok_or_else(|| {

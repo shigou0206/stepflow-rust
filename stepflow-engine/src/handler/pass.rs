@@ -3,7 +3,6 @@ use serde_json::Value;
 use tracing::debug;
 
 use stepflow_dsl::state::State;
-use crate::mapping::MappingPipeline;
 use super::{StateHandler, StateExecutionScope, StateExecutionResult};
 
 /// ---------------------------------------------------------------------
@@ -29,18 +28,10 @@ impl StateHandler for PassHandler {
             _ => return Err("Invalid state type for PassHandler".into()),
         };
 
-        let pipeline = MappingPipeline {
-            input_mapping: state.base.input_mapping.as_ref(),
-            output_mapping: state.base.output_mapping.as_ref(),
-        };
-
-        let exec_input = pipeline.apply_input(input)?;
-        let output = pipeline.apply_output(&exec_input, input)?;
-
-        debug!("PassHandler output: {}", output);
+        debug!(run_id = scope.run_id, state = scope.state_name, "PassHandler pass-through");
 
         Ok(StateExecutionResult {
-            output,
+            output: input.clone(), // 直接返回已映射后的 input 作为 output
             next_state: state.base.next.clone(),
             should_continue: true,
             metadata: None,

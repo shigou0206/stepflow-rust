@@ -48,6 +48,9 @@ pub struct WorkflowEngine {
     pub current_state: String,
     pub last_task_state: Option<String>, // 记录上一个 Task 状态
 
+    pub parent_run_id: Option<String>,
+    pub parent_state_name: Option<String>,
+
     pub event_dispatcher: Arc<EngineEventDispatcher>,
     pub persistence: DynPM,
     pub state_handler_registry: Arc<StateHandlerRegistry>,
@@ -75,6 +78,8 @@ impl WorkflowEngine {
             run_id,
             current_state: dsl.start_at.clone(),
             last_task_state: None, // 初始化为 None
+            parent_run_id: None,
+            parent_state_name: None,
             dsl,
             context: input,
             event_dispatcher,
@@ -338,6 +343,18 @@ impl WorkflowEngine {
                 result: self.context.clone(),
             })
             .await;
+
+            if let (Some(parent_run_id), Some(state_name)) =
+                (self.parent_run_id.clone(), self.parent_state_name.clone())
+            {
+                self.dispatch_event(EngineEvent::SubflowFinished {
+                    parent_run_id,
+                    child_run_id: self.run_id.clone(),
+                    state_name,
+                    result: self.context.clone(),
+                })
+                .await;
+            }
         }
 
         // 写 execution 表
@@ -350,5 +367,66 @@ impl WorkflowEngine {
         debug!("📤 step outcome: {:?}", outcome);
 
         Ok(outcome)
+    }
+
+    // ------------------------- 恢复 ----------------------------------
+
+    pub async fn restore(
+        run_id: String,
+        event_dispatcher: Arc<EngineEventDispatcher>,
+        persistence: DynPM,
+        state_handler_registry: Arc<StateHandlerRegistry>,
+    ) -> Result<Self, String> {
+        let execution = persistence
+            .get_execution(&run_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Execution {} not found", run_id))?;
+
+        // ✅ 从 dsl_definition 字段恢复 DSL
+        let dsl: WorkflowDSL = match execution.dsl_definition.clone() {
+            Some(Value::Object(_)) => serde_json::from_value(execution.dsl_definition.unwrap())
+                .map_err(|e| format!("Invalid DSL JSON object: {}", e))?,
+            Some(Value::String(s)) => {
+                serde_json::from_str(&s).map_err(|e| format!("Invalid DSL string: {}", e))?
+            }
+            Some(_) => return Err("Invalid DSL format".to_string()),
+            None => return Err("Missing DSL definition".to_string()),
+        };
+
+        let context = execution
+            .context_snapshot
+            .unwrap_or_else(|| Value::Object(Default::default()));
+
+        let current_state = execution
+            .current_state_name
+            .unwrap_or_else(|| dsl.start_at.clone());
+
+        let finished = matches!(
+            execution.status.as_str(),
+            "COMPLETED" | "FAILED" | "TERMINATED" | "PAUSED" | "SUSPENDED"
+        );
+
+        let (signal_sender, signal_receiver) = tokio::sync::mpsc::unbounded_channel();
+
+        Ok(Self {
+            run_id,
+            current_state,
+            last_task_state: None,
+            parent_run_id: execution.parent_run_id,
+            parent_state_name: execution.parent_state_name,
+            dsl,
+            context,
+            event_dispatcher,
+            persistence,
+            state_handler_registry,
+            finished,
+            updated_at: execution
+                .close_time
+                .unwrap_or_else(|| execution.start_time)
+                .and_utc(),
+            signal_sender: Some(signal_sender),
+            signal_receiver: Some(signal_receiver),
+        })
     }
 }

@@ -1,19 +1,17 @@
+use std::sync::Arc;
 use axum::{
     extract::{Path, Query, State},
     routing::{get, post, delete},
     Json, Router,
 };
-
-use stepflow_dto::dto::workflow_event::{WorkflowEventDto, RecordEventRequest, ListQuery};
-
-use stepflow_core::service::{WorkflowEventSvc, WorkflowEventService};
-
 use stepflow_core::{
     app_state::AppState,
     error::{AppError, AppResult},
+    service::WorkflowEventService,
 };
+use stepflow_dto::dto::workflow_event::{WorkflowEventDto, RecordEventRequest, ListQuery};
 
-pub fn router(svc: WorkflowEventSvc) -> Router<AppState> {
+pub fn router(svc: Arc<dyn WorkflowEventService>) -> Router<AppState> {
     Router::new()
         .route("/", get(list_events))
         .route("/", post(record_event))
@@ -36,7 +34,7 @@ pub fn router(svc: WorkflowEventSvc) -> Router<AppState> {
     )
 )]
 async fn list_events(
-    State(svc): State<WorkflowEventSvc>,
+    State(svc): State<Arc<dyn WorkflowEventService>>,
     Query(query): Query<ListQuery>,
 ) -> AppResult<Json<Vec<WorkflowEventDto>>> {
     let events = svc.list_events(query.limit, query.offset).await?;
@@ -58,11 +56,11 @@ async fn list_events(
     )
 )]
 async fn get_event(
-    State(svc): State<WorkflowEventSvc>,
+    State(svc): State<Arc<dyn WorkflowEventService>>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<WorkflowEventDto>> {
     let event = svc.get_event(id).await?
-        .ok_or_else(|| AppError::NotFound)?;
+        .ok_or(AppError::NotFound)?;
     Ok(Json(event))
 }
 
@@ -81,7 +79,7 @@ async fn get_event(
     )
 )]
 async fn list_events_for_run(
-    State(svc): State<WorkflowEventSvc>,
+    State(svc): State<Arc<dyn WorkflowEventService>>,
     Path(run_id): Path<String>,
     Query(query): Query<ListQuery>,
 ) -> AppResult<Json<Vec<WorkflowEventDto>>> {
@@ -102,7 +100,7 @@ async fn list_events_for_run(
     )
 )]
 async fn record_event(
-    State(svc): State<WorkflowEventSvc>,
+    State(svc): State<Arc<dyn WorkflowEventService>>,
     Json(req): Json<RecordEventRequest>,
 ) -> AppResult<Json<WorkflowEventDto>> {
     let event = svc.record_event(req).await?;
@@ -124,11 +122,11 @@ async fn record_event(
     )
 )]
 async fn archive_event(
-    State(svc): State<WorkflowEventSvc>,
+    State(svc): State<Arc<dyn WorkflowEventService>>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<WorkflowEventDto>> {
     let event = svc.archive_event(id).await?
-        .ok_or_else(|| AppError::NotFound)?;
+        .ok_or(AppError::NotFound)?;
     Ok(Json(event))
 }
 
@@ -147,9 +145,9 @@ async fn archive_event(
     )
 )]
 async fn delete_event(
-    State(svc): State<WorkflowEventSvc>,
+    State(svc): State<Arc<dyn WorkflowEventService>>,
     Path(id): Path<i64>,
 ) -> AppResult<()> {
     svc.delete_event(id).await?;
     Ok(())
-} 
+}

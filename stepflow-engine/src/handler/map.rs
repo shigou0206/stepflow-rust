@@ -72,7 +72,7 @@ impl StateHandler for MapHandler {
                 current_event_id: 0,
                 memo: None,
                 search_attrs: None,
-                context_snapshot: None,
+                context_snapshot: Some(child_context.clone()),
                 version: 1,
                 parent_run_id: Some(scope.run_id.to_string()),
                 parent_state_name: Some(scope.state_name.to_string()),

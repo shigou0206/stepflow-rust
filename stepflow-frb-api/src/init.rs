@@ -9,7 +9,7 @@ use once_cell::sync::OnceCell;
 use stepflow_common::config::{StepflowConfig, StepflowExecMode};
 use stepflow_core::{
     builder::build_app_state,
-    event::{maybe_start_event_runner, spawn_event_logger},
+    event_runner::{maybe_start_event_runner, spawn_event_logger},
     init_tracing,
 };
 

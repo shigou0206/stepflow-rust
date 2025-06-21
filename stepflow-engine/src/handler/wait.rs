@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
-use std::time::Duration;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
@@ -10,11 +9,7 @@ use stepflow_dsl::state::{wait::WaitState, State};
 use stepflow_dto::dto::timer::TimerDto;
 use stepflow_storage::entities::timer::StoredTimer;
 
-use crate::mapping::MappingPipeline;
-
 use super::{StateExecutionResult, StateExecutionScope, StateHandler};
-
-const MAX_INLINE_WAIT_SECONDS: u64 = 300;
 
 #[derive(Error, Debug)]
 pub enum WaitError {
@@ -31,16 +26,6 @@ pub struct WaitHandler;
 impl WaitHandler {
     pub fn new() -> Self {
         Self
-    }
-
-    async fn handle_inline(&self, secs: u64) -> Result<(), String> {
-        if secs > MAX_INLINE_WAIT_SECONDS {
-            return Err(WaitError::WaitTooLong(secs).to_string());
-        }
-        info!("⏳ Inline wait for {} seconds", secs);
-        tokio::time::sleep(Duration::from_secs(secs)).await;
-        debug!("✅ Inline wait complete");
-        Ok(())
     }
 
     async fn handle_deferred(
@@ -117,29 +102,20 @@ impl StateHandler for WaitHandler {
     async fn handle(
         &self,
         scope: &StateExecutionScope<'_>,
-        input: &Value,
+        input: &Value, // 这是已经经过 input_mapping 后的执行输入
     ) -> Result<StateExecutionResult, String> {
         let state = match scope.state_def {
             State::Wait(ref w) => w,
             _ => return Err("Invalid state type for WaitHandler".into()),
         };
 
-        let pipeline = MappingPipeline {
-            input_mapping: state.base.input_mapping.as_ref(),
-            output_mapping: state.base.output_mapping.as_ref(),
-        };
+        debug!(run_id = scope.run_id, state = scope.state_name, "WaitHandler input: {}", input);
 
-        let exec_input = pipeline.apply_input(input)?;
+        let metadata = self.process_wait(scope, state, input).await?;
 
-        debug!("WaitHandler input mapped: {}", exec_input);
-
-        let metadata = self.process_wait(scope, state, &exec_input).await?;
-        let final_output = pipeline.apply_output(&exec_input, input)?;
-
-        debug!("WaitHandler final output: {}", final_output);
-
+        // ✅ output_mapping 将由 dispatch_command 统一处理，handler 只需返回 input
         Ok(StateExecutionResult {
-            output: final_output,
+            output: input.clone(),
             next_state: state.base.next.clone(),
             should_continue: true,
             metadata,
