@@ -199,35 +199,20 @@ impl WorkflowEngine {
                 });
             }
     
-            let is_blocking_state = matches!(
-                self.state_def(),
-                State::Task(_) | State::Wait(_) | State::Map(_) | State::Parallel(_)
-            );
-    
             let step_out = self.advance_once().await?;
             debug!(
-                "🔁 advance_once done | should_continue={} | new_state={}",
-                step_out.should_continue, self.current_state
+                "🔁 advance_once done | should_continue={} | is_blocking={} | new_state={}",
+                step_out.should_continue, step_out.is_blocking, self.current_state
             );
     
-            if !step_out.should_continue {
+            if !step_out.should_continue || step_out.is_blocking {
+                debug!("⏸ suspend or end: should_continue={}, is_blocking={}", step_out.should_continue, step_out.is_blocking);
                 return Ok(StateExecutionResult {
                     output: self.context.clone(),
                     next_state: Some(self.current_state.clone()),
                     should_continue: false,
                     metadata: None,
                     is_blocking: step_out.is_blocking,
-                });
-            }
-    
-            if is_blocking_state || step_out.is_blocking {
-                debug!("⏸ blocking state encountered, engine suspend");
-                return Ok(StateExecutionResult {
-                    output: self.context.clone(),
-                    next_state: Some(self.current_state.clone()),
-                    should_continue: false,
-                    metadata: None,
-                    is_blocking: true,
                 });
             }
     
@@ -307,14 +292,17 @@ impl WorkflowEngine {
             });
         }
     
+        // ① NodeEnter
         self.dispatch_event(EngineEvent::NodeEnter {
             run_id: self.run_id.clone(),
             state_name: self.current_state.clone(),
             input: self.context.clone(),
         }).await;
     
+        // ② 记录 STARTED（只在首次进入）
         self.record_state_started().await?;
     
+        // ③ 生成命令 & 调度 handler
         let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
         debug!(
             "[{}] step_once => {:?} @ {}",
@@ -323,7 +311,7 @@ impl WorkflowEngine {
             self.current_state
         );
     
-        let (mut outcome, next_state_opt, _raw_out, _meta) = dispatch_command(
+        let (outcome, next_state_opt, _raw_out, _meta) = dispatch_command(
             &cmd,
             self.state_def(),
             &self.context,
@@ -332,23 +320,18 @@ impl WorkflowEngine {
             &self.state_handler_registry,
         ).await?;
     
+        // ④ 更新 context
         self.context = outcome.updated_context.clone();
         self.updated_at = Utc::now();
     
-        // ✅ 判断是否为 blocking 状态，如 Task、Wait、Map、Parallel
-        let blocking_state = matches!(
-            self.state_def(),
-            State::Task(_) | State::Wait(_) | State::Map(_) | State::Parallel(_)
-        );
-        outcome.is_blocking = blocking_state && !outcome.should_continue;
-    
-        // 记录状态完成（或失败），但挂起状态也记录为 “STARTED -> COMPLETED”
+        // ⑤ 写 COMPLETED（即使是挂起也算完成当前状态）
         self.record_state_finished(
             outcome.should_continue,
             Some(self.context.clone()),
             None,
         ).await?;
     
+        // ⑥ NodeExit
         self.dispatch_event(EngineEvent::NodeExit {
             run_id: self.run_id.clone(),
             state_name: self.current_state.clone(),
@@ -356,6 +339,7 @@ impl WorkflowEngine {
             duration_ms: Some((Utc::now() - self.updated_at).num_milliseconds() as u64),
         }).await;
     
+        // ⑦ 构造 execution 更新
         let mut exec_update = UpdateStoredWorkflowExecution {
             context_snapshot: Some(Some(self.context.clone())),
             ..Default::default()
@@ -376,7 +360,7 @@ impl WorkflowEngine {
             self.current_state = next.clone();
             exec_update.current_state_name = Some(Some(next));
         } else if !outcome.is_blocking {
-            // ✅ 非挂起且 should_continue = false 表示真正结束
+            // ✅ 非挂起 + should_continue = false 才真正结束
             self.finished = true;
             exec_update.status = Some("COMPLETED".into());
             exec_update.close_time = Some(Some(self.updated_at.naive_utc()));
@@ -398,6 +382,7 @@ impl WorkflowEngine {
             }
         }
     
+        // ⑧ 保存 execution 状态
         self.persistence
             .update_execution(&self.run_id, &exec_update)
             .await

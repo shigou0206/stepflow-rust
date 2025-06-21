@@ -134,26 +134,31 @@ pub async fn handle_subflow_ready(
         )
         .await
         {
-            Ok(engine) => {
-                info!(%run_id, "✅ Subflow engine restored");
+            Ok(mut engine) => {
+                if engine.finished {
+                    info!(%run_id, "⏭️ Subflow already finished, skipping advance");
+                    return;
+                }
 
-                // 👇 插入后再推进
+                info!(%run_id, "✅ Subflow engine restored");
+                {
+                    let mut engines = app.engines.lock().await;
+                    engines.insert(run_id.to_string(), engine);
+                }
+
+                // ✅ restore 成功后再推进（避免 use-after-move）
                 let mut engines = app.engines.lock().await;
-                engines.insert(run_id.to_string(), engine);
+                if let Some(engine) = engines.get_mut(run_id) {
+                    match engine.advance_until_blocked().await {
+                        Ok(_) => info!(%run_id, "✅ Subflow advanced after restore"),
+                        Err(e) => error!(%run_id, "❌ Subflow advance failed: {}", e),
+                    }
+                }
             }
 
             Err(e) => {
                 error!(%run_id, "❌ Failed to restore subflow engine: {}", e);
                 return;
-            }
-        }
-
-        // ✅ restore 成功后再推进（避免 use-after-move）
-        let mut engines = app.engines.lock().await;
-        if let Some(engine) = engines.get_mut(run_id) {
-            match engine.advance_until_blocked().await {
-                Ok(_) => info!(%run_id, "✅ Subflow advanced after restore"),
-                Err(e) => error!(%run_id, "❌ Subflow advance failed: {}", e),
             }
         }
     } else {

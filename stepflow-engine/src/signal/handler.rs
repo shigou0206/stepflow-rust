@@ -1,10 +1,10 @@
+use chrono::Utc;
 use stepflow_dsl::State;
 use stepflow_dto::dto::signal::ExecutionSignal;
-use crate::engine::WorkflowEngine;
-use crate::handler::execution_scope::StateExecutionScope;
-use crate::handler::execution_scope::StateExecutionResult;
 use stepflow_storage::entities::workflow_execution::UpdateStoredWorkflowExecution;
-use chrono::Utc;
+
+use crate::engine::WorkflowEngine;
+use crate::handler::execution_scope::{StateExecutionResult, StateExecutionScope};
 
 pub async fn apply_signal(
     engine: &mut WorkflowEngine,
@@ -194,10 +194,26 @@ pub async fn apply_signal(
                     })
                     .await
                     .map_err(|e| e.to_string())?;
+
+                return Ok(result);
+            }
+
+            if result.is_blocking {
+                tracing::info!(
+                    "[signal] Parallel still pending, engine suspended: state={}",
+                    engine.current_state
+                );
+
+                return Ok(StateExecutionResult {
+                    output: engine.context.clone(),
+                    next_state: Some(engine.current_state.clone()),
+                    should_continue: false,
+                    metadata: result.metadata.clone(),
+                    is_blocking: true,
+                });
             }
 
             Ok(result)
         }
-    
     }
 }

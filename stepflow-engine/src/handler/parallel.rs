@@ -1,11 +1,11 @@
 use super::{StateExecutionResult, StateExecutionScope, StateHandler};
+use crate::mapping::MappingPipeline;
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use stepflow_dsl::state::State;
 use stepflow_match::service::SubflowMatchService;
-use crate::mapping::MappingPipeline;
 use stepflow_storage::entities::workflow_execution::StoredWorkflowExecution;
 use tracing::{debug, error, warn};
 
@@ -30,7 +30,11 @@ impl StateHandler for ParallelHandler {
             _ => return Err("Invalid state type for ParallelHandler".into()),
         };
 
-        debug!(run_id = scope.run_id, state = scope.state_name, "🔀 Entered ParallelHandler");
+        debug!(
+            run_id = scope.run_id,
+            state = scope.state_name,
+            "🔀 Entered ParallelHandler"
+        );
 
         let pipeline = MappingPipeline {
             input_mapping: state.base.input_mapping.as_ref(),
@@ -67,10 +71,14 @@ impl StateHandler for ParallelHandler {
                 dsl_definition: Some(json!(branch)),
             };
 
-            scope.persistence.create_execution(&subflow).await.map_err(|e| {
-                error!(%child_run_id, ?e, "❌ Failed to insert subflow");
-                format!("Failed to create subflow: {e}")
-            })?;
+            scope
+                .persistence
+                .create_execution(&subflow)
+                .await
+                .map_err(|e| {
+                    error!(%child_run_id, ?e, "❌ Failed to insert subflow");
+                    format!("Failed to create subflow: {e}")
+                })?;
 
             self.subflow_match
                 .notify_subflow_ready(
@@ -107,7 +115,11 @@ impl StateHandler for ParallelHandler {
         _child_run_id: &str,
         _result: &Value,
     ) -> Result<StateExecutionResult, String> {
-        debug!(run_id = scope.run_id, state = scope.state_name, "🧩 on_subflow_finished (parallel)");
+        debug!(
+            run_id = scope.run_id,
+            state = scope.state_name,
+            "🧩 on_subflow_finished (parallel)"
+        );
 
         let state = match scope.state_def {
             State::Parallel(ref s) => s,
@@ -123,10 +135,17 @@ impl StateHandler for ParallelHandler {
                 e.to_string()
             })?;
 
-        let all_done = subflows.iter().all(|s| s.status == "COMPLETED");
-        debug!(total = subflows.len(), all_done, "🔎 Parallel subflow completion check");
+        let all_done = subflows
+            .iter()
+            .all(|s| matches!(s.status.as_str(), "COMPLETED" | "FAILED" | "CANCELLED"));
+
+        debug!(
+            total = subflows.len(),
+            all_done, "🔎 Parallel subflow completion check"
+        );
 
         if all_done {
+            // TODO: 可以聚合 subflow result 到 parent_context 里
             Ok(StateExecutionResult {
                 output: parent_context.clone(),
                 next_state: scope.next().cloned(),
