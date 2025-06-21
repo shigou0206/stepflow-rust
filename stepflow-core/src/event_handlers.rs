@@ -48,7 +48,20 @@ pub async fn handle_task_finished(
                 }
                 info!(%run_id, "✅ advance_until_blocked complete");
             } else {
-                debug!(%run_id, "🛑 Signal handled, but engine is now blocked or finished.");
+                if !result.should_continue && !result.is_blocking {
+                    // ✅ 检查是否是 end 状态
+                    if engine.dsl.is_end_state(&engine.current_state) {
+                        if let Err(e) = engine.finalize().await {
+                            error!(%run_id, ?e, "❌ finalize failed");
+                            return;
+                        }
+                        info!(%run_id, "🏁 workflow finished via signal");
+                    } else {
+                        warn!(%run_id, "⚠️ Signal indicates termination, but current state is not end: {}", engine.current_state);
+                    }
+                } else {
+                    debug!(%run_id, "🛑 Signal handled, but engine is now blocked or finished.");
+                }
             }
         }
         Ok(None) => {
@@ -56,7 +69,6 @@ pub async fn handle_task_finished(
         }
         Err(e) => {
             error!(%run_id, ?e, "❌ handle_next_signal failed");
-            return;
         }
     }
 

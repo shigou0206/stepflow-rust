@@ -154,55 +154,6 @@ impl WorkflowEngine {
         &self.dsl.states[&self.current_state]
     }
 
-    // --------------------- 主入口 -------------------------------
-    // pub async fn advance_until_blocked(&mut self) -> Result<StateExecutionResult, String> {
-    //     let out = self.run_state().await?;
-    //     Ok(StateExecutionResult {
-    //         output: out,
-    //         next_state: Some(self.current_state.clone()),
-    //         should_continue: !self.finished,
-    //         metadata: None,
-    //     })
-    // }
-
-    // async fn run_state(&mut self) -> Result<Value, String> {
-    //     loop {
-    //         if self.finished {
-    //             break;
-    //         }
-
-    //         let is_blocking_state = matches!(
-    //             self.state_def(),
-    //             State::Task(_) | State::Wait(_) | State::Map(_) | State::Parallel(_)
-    //         );
-
-    //         let step_out = self.advance_once().await?;
-    //         debug!(
-    //             "🔁 advance_once done | should_continue={} | new_state={}",
-    //             step_out.should_continue, self.current_state
-    //         );
-
-    //         if !step_out.should_continue {
-    //             break; // End 节点
-    //         }
-
-    //         if is_blocking_state {
-    //             debug!("⏸ blocking state encountered, engine suspend");
-    //             break;
-    //         }
-
-    //         // Handle any pending signals at the end of each loop
-    //         if let Err(e) = self.handle_next_signal().await {
-    //             return Err(e);
-    //         }
-    //     }
-    //     debug!(
-    //         "🔚 loop exit | run_id={} | state={}",
-    //         self.run_id, self.current_state
-    //     );
-    //     Ok(self.context.clone())
-    // }
-
     pub async fn advance_until_blocked(&mut self) -> Result<StateExecutionResult, String> {
         loop {
             if self.finished {
@@ -311,15 +262,6 @@ impl WorkflowEngine {
             });
         }
 
-        if self.dsl.is_end_state(&self.current_state) {
-            self.finalize().await?;
-            return Ok(StepOutcome {
-                should_continue: false,
-                updated_context: self.context.clone(),
-                is_blocking: false,
-            });
-        }
-
         // ① NodeEnter
         self.dispatch_event(EngineEvent::NodeEnter {
             run_id: self.run_id.clone(),
@@ -328,10 +270,10 @@ impl WorkflowEngine {
         })
         .await;
 
-        // ② 记录 STARTED（只在首次进入）
+        // ② 记录 STARTED
         self.record_state_started().await?;
 
-        // ③ 生成命令 & 调度 handler
+        // ③ step_once & dispatch handler
         let cmd = step_once(&self.dsl, &self.current_state, &self.context)?;
         debug!(
             "[{}] step_once => {:?} @ {}",
@@ -354,7 +296,7 @@ impl WorkflowEngine {
         self.context = outcome.updated_context.clone();
         self.updated_at = Utc::now();
 
-        // ⑤ 写 COMPLETED（即使是挂起也算完成当前状态）
+        // ⑤ 写 COMPLETED 状态
         self.record_state_finished(outcome.should_continue, Some(self.context.clone()), None)
             .await?;
 
@@ -378,6 +320,7 @@ impl WorkflowEngine {
             ..Default::default()
         };
 
+        // ⑧ 正常推进
         if outcome.should_continue {
             let next = next_state_opt.ok_or_else(|| {
                 format!(
@@ -392,32 +335,25 @@ impl WorkflowEngine {
 
             self.current_state = next.clone();
             exec_update.current_state_name = Some(Some(next));
-        } else if !outcome.is_blocking {
-            // ✅ 非挂起 + should_continue = false 才真正结束
-            self.finished = true;
-            exec_update.status = Some("COMPLETED".into());
-            exec_update.close_time = Some(Some(self.updated_at.naive_utc()));
+        }
 
-            self.dispatch_event(EngineEvent::WorkflowFinished {
-                run_id: self.run_id.clone(),
-                result: self.context.clone(),
-            })
-            .await;
-
-            if let (Some(parent_run_id), Some(state_name)) =
-                (self.parent_run_id.clone(), self.parent_state_name.clone())
-            {
-                self.dispatch_event(EngineEvent::SubflowFinished {
-                    parent_run_id,
-                    child_run_id: self.run_id.clone(),
-                    state_name,
-                    result: self.context.clone(),
-                })
-                .await;
+        // ⑨ 非挂起 + 不再继续 ⇒ 要么终结（end），要么报错
+        if !outcome.should_continue && !outcome.is_blocking {
+            if self.dsl.is_end_state(&self.current_state) {
+                // ✅ 确实是终结节点，正常 finalize
+                self.finalize().await?;
+                exec_update.status = Some("COMPLETED".into());
+                exec_update.close_time = Some(Some(self.updated_at.naive_utc()));
+            } else {
+                // ❌ 非 end 却尝试终结 ⇒ DSL 错误
+                return Err(format!(
+                    "State '{}' returned should_continue = false but is not an end state",
+                    self.current_state
+                ));
             }
         }
 
-        // ⑧ 保存 execution 状态
+        // ⑩ 保存 execution 状态
         self.persistence
             .update_execution(&self.run_id, &exec_update)
             .await

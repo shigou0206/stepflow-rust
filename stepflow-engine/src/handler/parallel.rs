@@ -135,9 +135,12 @@ impl StateHandler for ParallelHandler {
                 e.to_string()
             })?;
 
-        let all_done = subflows
-            .iter()
-            .all(|s| matches!(s.status.as_str(), "COMPLETED" | "FAILED" | "CANCELLED"));
+        let all_done = subflows.iter().all(|s| {
+            matches!(
+                s.status.to_uppercase().as_str(),
+                "COMPLETED" | "FAILED" | "CANCELLED"
+            )
+        });
 
         debug!(
             total = subflows.len(),
